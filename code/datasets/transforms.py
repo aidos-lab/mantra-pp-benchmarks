@@ -1,0 +1,364 @@
+from enum import Enum
+from typing import List, Callable, Dict
+
+import torch
+from toponetx.classes import SimplicialComplex
+from torch_geometric.transforms import FaceToEdge, OneHotDegree
+from torch_geometric.utils import degree
+
+from datasets.dataset_types import DatasetType
+from datasets.utils import (
+    create_signals_on_data_if_needed,
+    append_signals,
+    get_complex_connectivity,
+    create_or_empty_signals_on_data,
+    get_triangles_from_simplicial_complex,
+)
+from math_utils import recursive_barycentric_subdivision
+from models.cells.transformer.positional_encodings.PositionalEncodings import (
+    get_positional_encodings,
+    PositionalEncodingsType,
+)
+
+NAME_TO_CLASS = {"Klein bottle": 0, "RP^2": 1, "T^2": 2, "S^2": 3, "": 4}
+
+
+class SetNumNodesTransform:
+    def __call__(self, data):
+        data.num_nodes = data.n_vertices
+        return data
+
+
+class OrientableToClassTransform:
+    def __call__(self, data):
+        data.orientable = torch.tensor(data.betti_numbers)[..., -1]
+        data.y = data.orientable.long()
+        return data
+
+
+class BettiToY2:
+    def __call__(self, data):
+        data.y = torch.tensor(data.betti_numbers, dtype=torch.float).view(1, 3)
+        return data
+
+
+class BettiToY3:
+    def __call__(self, data):
+        data.y = torch.tensor(data.betti_numbers, dtype=torch.float).view(1, 4)
+        return data
+
+
+class DegreeTransform:
+    def __call__(self, data):
+        deg = degree(data.edge_index[0], dtype=torch.float)
+        data.x = deg.view(-1, 1)
+        return data
+
+
+class TriangulationToZeroIndexTransform:
+    def __call__(self, data):
+        data.face = torch.tensor(data.triangulation).T - 1
+        data.num_nodes = data.face.max() + 1
+        data.triangulation = None
+        return data
+
+
+class TriangulationToFaceTransform:
+    """
+    Transforms tetrahedra to faces.
+    Expects a triangulation of shape [4,N] and
+    returns the faces of shape [3,M].
+
+    NOTE: It will contain duplicate triangles with different ordering.
+    Hence the result is not a "minimal" triangulation. When subsequently
+    converting the triangles to edges, this will not pose a problem as
+    the FaceToEdge transform by default creates undirected edges.
+    """
+
+    def __init__(self, remove_triangulation: bool = False) -> None:
+        self.remove_triangulation = remove_triangulation
+
+    def __call__(self, data):
+        idx = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
+        if hasattr(data, "triangulation"):
+            assert data.triangulation is not None
+            face = torch.cat(
+                [torch.tensor(data.triangulation)[i] for i in idx], dim=1
+            )
+
+            # Remove duplicate triangles in
+            data.face = torch.unique(face, dim=1)
+
+            if self.remove_triangulation:
+                data.triangulation = None
+            else:
+                data.triangulation = torch.tensor(data.triangulation)
+
+        return data
+
+
+class SimplicialComplexTransform:
+    def __call__(self, data):
+        data.sc = SimplicialComplex(data.triangulation)
+        create_signals_on_data_if_needed(data)
+        return data
+
+
+class BarycentricSubdivisionTransform:
+    def __init__(self, recursive_calls=1):
+        self.recursive_calls = recursive_calls
+
+    def __call__(self, data):
+        data.sc = recursive_barycentric_subdivision(
+            data.sc, self.recursive_calls
+        )
+        data.triangulation = get_triangles_from_simplicial_complex(data)
+        data = create_or_empty_signals_on_data(data)
+        return data
+
+
+class SimplicialComplexDegreeTransform:
+    def __call__(self, data):
+        data = create_signals_on_data_if_needed(data)
+        degree_signals = torch.from_numpy(
+            data.sc.adjacency_matrix(0).sum(axis=1)
+        )
+        data = append_signals(data, 0, degree_signals)
+        return data
+
+
+class SimplicialComplexOnesTransform:
+    def __init__(self, ones_length=10):
+        self.ones_length = ones_length
+
+    def __call__(self, data):
+        data = create_signals_on_data_if_needed(data)
+        for dim in range(len(data.sc.shape)):
+            ones_signals = torch.ones(data.sc.shape[dim], self.ones_length)
+            data = append_signals(data, dim, ones_signals)
+        return data
+
+
+class SimplicialComplexEdgeCoadjacencyDegreeTransform:
+    def __call__(self, data):
+        data = create_signals_on_data_if_needed(data)
+        degree_signals = torch.from_numpy(
+            data.sc.coadjacency_matrix(1).sum(axis=1)
+        )
+        data = append_signals(data, 1, degree_signals)
+        return data
+
+
+class SimplicialComplexEdgeAdjacencyDegreeTransform:
+    def __call__(self, data):
+        data = create_signals_on_data_if_needed(data)
+        degree_signals = torch.from_numpy(
+            data.sc.adjacency_matrix(1).sum(axis=1)
+        )
+        data = append_signals(data, 1, degree_signals)
+        return data
+
+
+class SimplicialComplexTriangleAdjacencyDegreeTransform:
+    def __call__(self, data):
+        data = create_signals_on_data_if_needed(data)
+        degree_signals = torch.from_numpy(
+            data.sc.adjacency_matrix(2).sum(axis=1)
+        )
+        data = append_signals(data, 2, degree_signals)
+        return data
+
+
+class SimplicialComplexTriangleCoadjacencyDegreeTransform:
+    def __call__(self, data):
+        data = create_signals_on_data_if_needed(data)
+        degree_signals = torch.from_numpy(
+            data.sc.coadjacency_matrix(2).sum(axis=1)
+        )
+        data = append_signals(data, 2, degree_signals)
+        return data
+
+
+class SimplicialComplexTetrahedraCoajacencyDegreeTransform:
+    def __call__(self, data):
+        data = create_signals_on_data_if_needed(data)
+        degree_signals = torch.from_numpy(
+            data.sc.coadjacency_matrix(3).sum(axis=1)
+        )
+        data = append_signals(data, 3, degree_signals)
+        return data
+
+
+class SimplicialComplexStructureMatricesTransform:
+    def __init__(self, scipy_format=False):
+        self.scipy_format = scipy_format
+
+    def __call__(self, data):
+        data.connectivity = get_complex_connectivity(
+            data.sc, data.sc.dim, self.scipy_format
+        )
+        return data
+
+
+class SimplicialComplexHodgeLapEigPETransform:
+    def __init__(self, length_pe: int = 8):
+        self.length_pe = length_pe
+
+    def __call__(self, data):
+        data.pe = get_positional_encodings(
+            t_complex=data.sc,
+            pe_type=PositionalEncodingsType.HODGE_LAPLACIAN_EIGENVECTORS,
+            length_positional_encodings=self.length_pe,
+        )
+        return data
+
+
+class NameToClassTransform:
+    def __init__(self):
+        self.class_dict = NAME_TO_CLASS
+
+    def __call__(self, data):
+        # data.y = F.one_hot(torch.tensor(self.class_dict[data.name]),num_classes=5)
+        data.y = torch.tensor(self.class_dict[data.name])
+        return data
+
+
+class RandomNodeFeatures:
+    def __init__(self, size):
+        self.size = size
+
+    def __call__(self, data):
+        data.x = torch.normal(0, 1, size=(data.num_nodes, self.size))
+        return data
+
+
+class RandomSimplicesFeatures:
+    def __init__(self, size):
+        self.size = size
+
+    def __call__(self, data):
+        data = create_signals_on_data_if_needed(data)
+        for dim in range(data.sc.dim + 1):
+            data = append_signals(
+                data,
+                dim,
+                torch.normal(0, 1, size=(data.sc.shape[dim], self.size)),
+            )
+        return data
+
+
+random_node_features = [
+    TriangulationToZeroIndexTransform(),
+    FaceToEdge(remove_faces=False),
+    RandomNodeFeatures(size=8),
+]
+
+degree_transform_onehot = [
+    TriangulationToZeroIndexTransform(),
+    FaceToEdge(remove_faces=False),
+    OneHotDegree(max_degree=9, cat=False),
+]
+
+degree_transform = [
+    TriangulationToZeroIndexTransform(),
+    FaceToEdge(remove_faces=False),
+    DegreeTransform(),
+]
+
+orientability_transforms = [
+    OrientableToClassTransform(),
+]
+name_transforms = [
+    NameToClassTransform(),
+]
+homeo_comp_transforms_2manifold = [
+    SetNumNodesTransform(),
+    SimplicialComplex()
+]
+betti_numbers_transforms_2manifold = [
+    BettiToY2(),
+]
+
+betti_numbers_transforms_3manifold = [
+    BettiToY3(),
+]
+
+degree_transform_sc_2d = [
+    SimplicialComplexTransform(),
+    SimplicialComplexStructureMatricesTransform(),
+    SimplicialComplexDegreeTransform(),
+    SimplicialComplexEdgeAdjacencyDegreeTransform(),
+    SimplicialComplexEdgeCoadjacencyDegreeTransform(),
+    SimplicialComplexTriangleCoadjacencyDegreeTransform(),
+]
+
+degree_transform_sc_3d = [
+    SimplicialComplexTransform(),
+    SimplicialComplexStructureMatricesTransform(),
+    SimplicialComplexDegreeTransform(),
+    SimplicialComplexEdgeAdjacencyDegreeTransform(),
+    SimplicialComplexEdgeCoadjacencyDegreeTransform(),
+    SimplicialComplexTriangleAdjacencyDegreeTransform(),
+    SimplicialComplexTriangleCoadjacencyDegreeTransform(),
+    SimplicialComplexTetrahedraCoajacencyDegreeTransform(),
+]
+
+random_simplices_features = [
+    SimplicialComplexTransform(),
+    SimplicialComplexStructureMatricesTransform(),
+    RandomSimplicesFeatures(size=8),
+]
+
+
+class TransformType(Enum):
+    degree_transform = "degree_transform"
+    degree_transform_onehot = "degree_transform_onehot"
+    random_node_features = "random_node_features"
+    degree_transform_sc_2d = "degree_transform_sc_2d"
+    degree_transform_sc_3d = "degree_transform_sc_3d"
+    random_simplices_features_2d = "random_simplices_features_2d"
+    random_simplices_features_3d = "random_simplices_features_3d"
+
+
+graphbased_transforms: Dict[str, List[TransformType]] = {
+    "degree": [
+        TransformType.degree_transform,
+        TransformType.degree_transform_onehot,
+    ],
+    "random": [TransformType.random_node_features],
+}
+
+simplicial_transforms_2d: Dict[str, List[TransformType]] = {
+    "degree": [TransformType.degree_transform_sc_2d],
+    "random": [TransformType.random_simplices_features_2d],
+}
+
+simplicial_transforms_3d: Dict[str, List[TransformType]] = {
+    "degree": [TransformType.degree_transform_sc_3d],
+    "random": [TransformType.random_simplices_features_3d],
+}
+
+
+def transforms_lookup(
+    tr_type: TransformType, ds_type: DatasetType
+) -> List[Callable]:
+    _transforms_lookup = {
+        TransformType.degree_transform: degree_transform,
+        TransformType.degree_transform_onehot: degree_transform_onehot,
+        TransformType.random_node_features: random_node_features,
+        TransformType.degree_transform_sc_2d: degree_transform_sc_2d,
+        TransformType.degree_transform_sc_3d: degree_transform_sc_3d,
+        TransformType.random_simplices_features_2d: random_simplices_features,
+        TransformType.random_simplices_features_3d: random_simplices_features,
+    }
+
+    tr = _transforms_lookup[tr_type]
+    if (
+        tr_type != TransformType.degree_transform_sc_2d
+        and tr_type != TransformType.random_simplices_features_2d
+        and tr_type != TransformType.degree_transform_sc_3d
+        and tr_type != TransformType.random_simplices_features_3d
+    ):
+        tr[0] = TriangulationToFaceTransform()
+
+    return tr
