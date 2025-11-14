@@ -18,3 +18,7 @@ def orientability_loss_fn(y_pred, y, weight: torch.Tensor | None):
     return nn.functional.binary_cross_entropy_with_logits(
         y_pred, y.float(), weight=weight_tensor
     )
+
+def homeomorphic_contrast_loss_fn(x1_pred, x2_pred, weight: None, gamma: float = 0):
+    # implementation of the contrastive loss
+    return max(0, (x1_pred @ x2_pred)/(torch.norm(x1_pred)*torch.norm(x2_pred)) - gamma)
