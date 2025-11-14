@@ -84,16 +84,32 @@ def get_setup(
 
     model = model_lookup[config.conf_model.type](config.conf_model)
     metrics = task_lookup[config.task_type].get_metrics(config.ds_type)
-    lit_model = BaseModel(
-        model=model,
-        training_accuracy=metrics.train,
-        test_accuracy=metrics.test,
-        validation_accuracy=metrics.val,
-        accuracies_fn=task_lookup[config.task_type].accuracies,
-        loss_fn=task_lookup[config.task_type].loss_fn,
-        learning_rate=config.learning_rate,
-        imbalance=imbalance,
-    )
+
+    if (
+        config.task_type == TaskType.HOMEO_COMP
+    ):
+        lit_model = TwinModel(
+            model=model,
+            training_accuracy=metrics.train,
+            test_accuracy=metrics.test,
+            validation_accuracy=metrics.val,
+            accuracies_fn=task_lookup[config.task_type].accuracies,
+            loss_fn=task_lookup[config.task_type].loss_fn,
+            learning_rate=config.learning_rate,
+            imbalance=imbalance,
+        )
+    else:
+        lit_model = BaseModel(
+            model=model,
+            training_accuracy=metrics.train,
+            test_accuracy=metrics.test,
+            validation_accuracy=metrics.val,
+            accuracies_fn=task_lookup[config.task_type].accuracies,
+            loss_fn=task_lookup[config.task_type].loss_fn,
+            learning_rate=config.learning_rate,
+            imbalance=imbalance,
+        )
+
     if use_logger:
         logger = get_wandb_logger(
             save_dir=os.path.join(data_dir, "lightning_logs"),
