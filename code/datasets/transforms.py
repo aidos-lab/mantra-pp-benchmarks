@@ -275,6 +275,9 @@ homeo_comp_transforms_2manifold = [
     SetNumNodesTransform(),
     SimplicialComplex()
 ]
+homeo_comp_transforms_3manifold = [
+   # Todo: implement for 3 mainfolds
+]
 betti_numbers_transforms_2manifold = [
     BettiToY2(),
 ]

@@ -15,6 +15,8 @@ class DatasetType(Enum):
     FULL_2D = "full_2d"
     FULL_3D = "full_3d"
     NO_NAMELESS_2D = "no_nameless_2d"
+    PAIRWISE_HOMEO_2D = "pairwise_homeo_2d"
+    PAIRWISE_HOMEO_3D = "pairwise_homeo_3d"
 
 
 def filter_nameless(data: Data) -> bool:

@@ -26,7 +26,8 @@ from metrics.tasks import (
 from metrics.tasks import TaskType
 from models import model_lookup, ModelType
 from models.base import BaseModel
-from models.models import dataloader_lookup
+from models.twin_models import TwinModel
+from models.models import dataloader_lookup, dataloader_lookup_pairwise
 from .imbalance_handling import sorted_imbalance_weights
 
 
@@ -52,7 +53,7 @@ def get_data_module(
         use_stratified=config.use_stratified,
         task_type=config.task_type,
         seed=config.seed,
-        dataloader_builder=dataloader_lookup[config.conf_model.type],
+        dataloader_builder=dataloader_lookup_pairwise[config.conf_model.type] if config.task_type == TaskType.HOMEOMORPHIC_DIST else dataloader_lookup[config.conf_model.type],
         num_barycentric_subdivisions=number_of_barycentric_subdivisions,
     )
     return dm

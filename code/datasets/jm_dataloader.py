@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torch_geometric.data import Data
 
 
-class JMDataloader(DataLoader):
+class JMDataLoader(DataLoader):
     def __init__(self, dataset, **kwargs):
         collate_fn = kwargs.get("collate_fn", collate_pairwise)
         kwargs = {k: v for k, v in kwargs.items() if k != "collate_fn"}

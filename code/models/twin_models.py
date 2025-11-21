@@ -44,12 +44,14 @@ class TwinModel(L.LightningModule):
             self.imbalance = self.imbalance / np.sum(self.imbalance)
 
     def forward(self, batch):
-        y1 = self.model(batch.x1)
-        y2 = self.model(batch.x2)
+        x = self.model(batch) #[2*B, f]
         if self.mlp is not None:
-            x = self.mlp(y1+y2)
+            x = x[::2] + x[1::2] #[B, f]
+            x = self.mlp(x)
         else:
-            x = y1+y2
+            x1 = x[::2]
+            x2 = x[1::2]
+            x = (x1, x2)
         return x
 
     def get_log_name(self, log_type: str, step: str):
@@ -85,7 +87,6 @@ class TwinModel(L.LightningModule):
             loss = self.loss_fn(
                 x1_hat,
                 x2_hat,
-
             )
         else:
             x = self(batch)

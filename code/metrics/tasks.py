@@ -9,7 +9,8 @@ from datasets.transforms import (
     name_transforms,
     betti_numbers_transforms_2manifold,
     betti_numbers_transforms_3manifold,
-    homeo_comp_transforms_2manifold    
+    homeo_comp_transforms_2manifold,
+    homeo_comp_transforms_3manifold,
 )
 from .accuracies import (
     compute_betti_numbers_accuracies,
@@ -20,6 +21,7 @@ from .loss import (
     name_loss_fn,
     orientability_loss_fn,
     betti_loss_fn,
+    homeomorphic_contrast_loss_fn
 )
 from .metrics import (
     get_betti_numbers_metrics,
@@ -78,6 +80,20 @@ class BettiNumbersTask(Task):
             accuracies=compute_betti_numbers_accuracies,
         )
 
+class HomeoCompTask(Task):
+    def __init__(self, transforms: List[Callable], ds_type: DatasetType) -> None:
+        homeo_tr = (
+            homeo_comp_transforms_3manifold
+            if ds_type == DatasetType.PAIRWISE_HOMEO_3D
+            else homeo_comp_transforms_2manifold
+        )
+        super().__init__(
+            transforms=Compose(transforms + homeo_tr),
+            loss_fn=homeomorphic_contrast_loss_fn,
+            metrics=None,  # not applicable for the contrastive task
+            accuracies=None,  # not applicable for the contrastive task
+        )
+
 
 class TaskType(Enum):
     NAME = "name"
@@ -101,6 +117,7 @@ def get_task_lookup(
         TaskType.NAME: NameTask(transforms),
         TaskType.ORIENTABILITY: OrientabilityTask(transforms),
         TaskType.BETTI_NUMBERS: BettiNumbersTask(transforms, ds_type=ds_type),
+        TaskType.HOMEOMORPHIC_DIST: HomeoCompTask(transforms, ds_type=ds_type),  # to be implemented
     }
 
     return res
@@ -110,10 +127,11 @@ class_transforms_lookup_2manifold: Dict[TaskType, List[Callable]] = {
     TaskType.BETTI_NUMBERS: betti_numbers_transforms_2manifold,
     TaskType.ORIENTABILITY: orientability_transforms,
     TaskType.NAME: name_transforms,
-    TaskType.HOMEO_COMP: homeo_comp_transforms_2manifold
+    TaskType.HOMEOMORPHIC_DIST: homeo_comp_transforms_2manifold,
 }
 
 class_transforms_lookup_3manifold: Dict[TaskType, List[Callable]] = {
     TaskType.BETTI_NUMBERS: betti_numbers_transforms_3manifold,
     TaskType.ORIENTABILITY: orientability_transforms,
+    TaskType.HOMEOMORPHIC_DIST: homeo_comp_transforms_3manifold,
 }
