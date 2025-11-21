@@ -83,7 +83,7 @@ class TaskType(Enum):
     NAME = "name"
     ORIENTABILITY = "orientability"
     BETTI_NUMBERS = "betti_numbers"
-    HOMEO_COMP = "homeo_comp"
+    HOMEOMORPHIC_DIST = "homeo_comp"
 
 class Manifold2Type(Enum):
     S_2 = "S^2"

@@ -10,15 +10,8 @@ from mantra.datasets import ManifoldTriangulations
 from torch_geometric.data import InMemoryDataset, Data
 from torch_geometric.transforms import Compose
 
-from mantra.configs import SplitConfig, Mode
 
-from mantra.manifold_types import Manifold2Type, Manifold3Type
-from mantra.tasks.task_types import TaskType
-
-from mantra.transforms.structural_transforms import (
-    AddSimplicialComplexTransform,
-    SetNumNodesTransform,
-)
+from metrics.tasks import TaskType, Manifold2Type, Manifold3Type
 
 
 class PairwiseSimplicialDS(InMemoryDataset):
