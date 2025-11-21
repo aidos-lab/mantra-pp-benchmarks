@@ -4,22 +4,34 @@ from typing import Literal, Tuple, TypeAlias
 from tqdm import tqdm
 
 import torch
-from mantra.datasets.base import ManifoldTriangulations
+from mantra.datasets import ManifoldTriangulations
 
 from torch_geometric.data import InMemoryDataset, Data
 from torch_geometric.transforms import Compose
 
-from mantra.configs import SplitConfig, Mode
 
-from mantra.manifold_types import Manifold2Type, Manifold3Type
-from mantra.tasks.task_types import TaskType
+from code.datasets.pairwise import PairwiseSimplicialDS
+from metrics.tasks import TaskType, Manifold2Type, Manifold3Type
 
 from sklearn.model_selection import train_test_split
 
+class SplitConfig:
+    def __init__(
+        self,
+        split: Tuple[float, float, float],
+        seed: int,
+        use_stratified: bool,
+    ) -> None:
+        self.split = split
+        self.seed = seed
+        self.use_stratified = use_stratified
 
-class PropertyPredictionDS(InMemoryDataset):
+
+Mode = Literal["train", "test", "val"]
+
+class PropertyPredictionPWDS(InMemoryDataset):
     """
-    Wrapper of ManifoldTriangulations to extend it with train/test/val split functionality.
+    Wrapper of PairwiseSimplicialDS to extend it with train/test/val split functionality.
 
     train/test/val splits depend on the task type due to stratification, i.e. that
     a proper split shall maintain the same class imbalance in all splits.
@@ -30,9 +42,12 @@ class PropertyPredictionDS(InMemoryDataset):
     def __init__(
         self,
         root: str,
-        task_type: TaskType,
         split: Mode,
         split_config: SplitConfig,
+        comparison_pair: (
+            Tuple[Manifold3Type, Manifold3Type]
+            | Tuple[Manifold2Type, Manifold2Type]
+        ) = (Manifold2Type.S_2, Manifold2Type.T_2),
         manifold="2",
         version="latest",
         transform=None,
@@ -40,10 +55,10 @@ class PropertyPredictionDS(InMemoryDataset):
         pre_filter=None,
     ):
         self.manifold = manifold
-        self.task_type = task_type
         self.split_config = split_config
-        self.raw_simplicial_ds = ManifoldTriangulations(
-            os.path.join(root, "raw_simplicial"),
+        self.pairwise_ds = PairwiseSimplicialDS(
+            root,
+            comparison_pair,
             manifold,
             version,
             None,
@@ -53,7 +68,7 @@ class PropertyPredictionDS(InMemoryDataset):
         self.transform = transform
         super().__init__(root, transform=transform)
 
-        self.load(self._get_processed_path(task_type, split))
+        self.load(self._get_processed_path(split))
 
     @property
     def raw_file_names(self):
@@ -62,12 +77,10 @@ class PropertyPredictionDS(InMemoryDataset):
     def download(self) -> None:
         pass
 
-    def _data_filename(self, task_type: TaskType, split: str):
+    def _data_filename(self, split: str):
         """
         Parameters
         -----------
-            task_type: TaskType
-                Type of the task to perform.
             split: ManifoldType
                 Type of the second manifold the triangulations represent.
         Returns
@@ -75,13 +88,13 @@ class PropertyPredictionDS(InMemoryDataset):
             The name of the data file in .pt format.
 
         """
-        return f"data_{task_type.name}_{split}.pt"
+        return f"data_{split}.pt"
 
-    def _get_processed_path(self, task_type: TaskType, split: str):
+    def _get_processed_path(self, split: str):
         fnames = self.processed_file_names
         idx = 0
         for fname in fnames:
-            if fname == self._data_filename(task_type, split):
+            if fname == self._data_filename(split):
                 return self.processed_paths[idx]
             idx += 1
         raise ValueError(
@@ -92,8 +105,7 @@ class PropertyPredictionDS(InMemoryDataset):
     def processed_file_names(self):
         if self.manifold == "2":
             f_names = [
-                self._data_filename(task_type, split)
-                for task_type in TaskType
+                self._data_filename(split)
                 for split in ["train", "val", "test"]
             ]
         else:
@@ -106,12 +118,12 @@ class PropertyPredictionDS(InMemoryDataset):
         if self.manifold == "3":
             raise NotImplementedError("TODO")
 
-        indices = range(self.raw_simplicial_ds.len())
+        indices = range(self.pairwise_ds.len())
 
         if self.transform != None:
-            data_list_processed = [self.transform(d) for d in self.raw_simplicial_ds]
+            data_list_processed = [self.transform(d) for d in self.pairwise_ds]
         else:
-            data_list_processed = [d for d in self.raw_simplicial_ds]
+            data_list_processed = [d for d in self.pairwise_ds]
 
         stratified = torch.vstack([data.y for data in data_list_processed])
         train_val_indices, test_indices = train_test_split(
@@ -140,17 +152,17 @@ class PropertyPredictionDS(InMemoryDataset):
         )
 
         #  Save splits
-        data_list = [self.raw_simplicial_ds.get(idx) for idx in indices]
+        data_list = [self.pairwise_ds.get(idx) for idx in indices]
         train_data_list = [data_list[idx] for idx in train_indices]
         val_data_list = [data_list[idx] for idx in val_indices]
         test_data_list = [data_list[idx] for idx in test_indices]
 
         self.save(
-            train_data_list, self._get_processed_path(self.task_type, "train")
+            train_data_list, self._get_processed_path("train")
         )
         self.save(
-            val_data_list, self._get_processed_path(self.task_type, "val")
+            val_data_list, self._get_processed_path("val")
         )
         self.save(
-            test_data_list, self._get_processed_path(self.task_type, "test")
+            test_data_list, self._get_processed_path("test")
         )

@@ -10,19 +10,6 @@ from mantra.datasets import ManifoldTriangulations
 from torch_geometric.data import InMemoryDataset, Data
 from torch_geometric.transforms import Compose
 
-class SplitConfig:
-    def __init__(
-        self,
-        split: Tuple[float, float, float],
-        seed: int,
-        use_stratified: bool,
-    ) -> None:
-        self.split = split
-        self.seed = seed
-        self.use_stratified = use_stratified
-
-
-Mode = Literal["train", "test", "val"]
 
 from metrics.tasks import TaskType, Manifold2Type, Manifold3Type
 
