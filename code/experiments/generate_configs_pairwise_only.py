@@ -2,6 +2,7 @@ import os
 import sys
 
 sys.path.append(os.curdir)
+
 from metrics.tasks import TaskType
 from datasets.transforms import TransformType
 from datasets.dataset_types import DatasetType
@@ -13,6 +14,7 @@ import os
 import shutil
 import argparse
 from typing import List, Dict
+
 
 # ARGS ------------------------------------------------------------------------
 parser = argparse.ArgumentParser(
@@ -81,14 +83,14 @@ dataset_types = [
     # DatasetType.FULL_3D,
     # DatasetType.NO_NAMELESS_2D,
     DatasetType.PAIRWISE_HOMEO_2D,
-    # DatasetType.PAIRWISE_HOMEO_3D,
+    # DatasetType.HOMEOMORPHIC_DIST_3D,
 ]
 # ###########
 
 # TASKS #####
 tasks_mantra2 = [TaskType.ORIENTABILITY, TaskType.NAME, TaskType.BETTI_NUMBERS]
 tasks_mantra3 = [TaskType.BETTI_NUMBERS, TaskType.ORIENTABILITY]
-task_pairwise = [TaskType.PAIRWISE_HOMEO]
+task_pairwise = [TaskType.HOMEOMORPHIC_DIST]
 # ###########
 
 # TRANSFORMS
@@ -191,7 +193,7 @@ out_channels_dict_mantra3 = {
 }
 
 out_channels_dict_pairwise = {
-    TaskType.PAIRWISE_HOMEO: 16,
+    TaskType.HOMEOMORPHIC_DIST: 16,
 }
 
 
@@ -205,7 +207,7 @@ def get_feature_types(model: ModelType, ds_type: DatasetType):
     if model in graph_models:
         return graph_features
     else:
-        if ds_type in [DatasetType.FULL_2D, DatasetType.NO_NAMELESS_2D, DatasetType.PAIRWISE_HOMEO_2D]:
+        if ds_type in [DatasetType.FULL_2D, DatasetType.NO_NAMELESS_2D, DatasetType.HOMEOMORPHIC_DIST_2D]:
             return simplicial_features_2d
         return simplicial_features_3d
 
@@ -271,7 +273,7 @@ def get_out_channels_dict(ds_type: DatasetType) -> Dict[TaskType, int]:
         return out_channels_dict_mantra3.copy()
     elif ds_type == DatasetType.NO_NAMELESS_2D:
         return out_channels_dict_mantra2_no_nameless.copy()
-    elif ds_type == DatasetType.PAIRWISE_HOMEO:
+    elif ds_type == DatasetType.PAIRWISE_HOMEO_2D:
         return out_channels_dict_pairwise.copy()
     else:
         raise ValueError("Unknown dataset type")

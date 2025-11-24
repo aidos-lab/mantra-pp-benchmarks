@@ -24,10 +24,6 @@ from models.simplicial_complexes.sccn import SCCN, SCCNConfig
 from models.simplicial_complexes.sccnn import SCCNN, SCCNNConfig
 from models.simplicial_complexes.scn import SCN, SCNConfig
 from models.cells.mp.cin0 import CIN0, CellMPConfig, SparseCIN
-from .cells.transformer.CellularTransformer import (
-    CellularTransformer,
-    CellularTransformerConfig,
-)
 from .model_types import ModelType
 
 model_lookup: Dict[ModelType, nn.Module] = {
@@ -42,7 +38,6 @@ model_lookup: Dict[ModelType, nn.Module] = {
     ModelType.SCN: SCN,
     ModelType.TransfConv: TransfConv,
     ModelType.CELL_MP: SparseCIN,
-    ModelType.CELL_TRANSF: CellularTransformer,
 }
 
 ModelConfig = Union[
@@ -57,7 +52,6 @@ ModelConfig = Union[
     Annotated[SCCNNConfig, Tag(ModelType.SCCNN)],
     Annotated[SCNConfig, Tag(ModelType.SCN)],
     Annotated[CellMPConfig, Tag(ModelType.CELL_MP)],
-    Annotated[CellularTransformerConfig, Tag(ModelType.CELL_TRANSF)],
 ]
 
 model_cfg_lookup: Dict[ModelType, ModelConfig] = {
@@ -72,7 +66,6 @@ model_cfg_lookup: Dict[ModelType, ModelConfig] = {
     ModelType.SCN: SCNConfig,
     ModelType.TransfConv: TransfConvConfig,
     ModelType.CELL_MP: CellMPConfig,
-    ModelType.CELL_TRANSF: CellularTransformerConfig,
 }
 
 dataloader_lookup: Dict[ModelType, Callable] = {
