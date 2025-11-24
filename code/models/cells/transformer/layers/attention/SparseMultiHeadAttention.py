@@ -1,10 +1,10 @@
 from typing import Optional
 
-import dgl.sparse as dglsp
 import torch
 from dgl.sparse import SparseMatrix
 from jaxtyping import Float
 from torch import nn
+from dgl.sparse import spmatrix, bsddmm, bspmm, add, softmax
 
 from general_utils import generate_repeated_sparse_matrix
 from models.cells.transformer.WeightInitialization import (
@@ -85,7 +85,7 @@ class SparseMultiHeadAttention(nn.Module):
                 p=self.dropout,
                 training=self.training,
             )
-            attention_coefficients_d = dglsp.spmatrix(
+            attention_coefficients_d = spmatrix(
                 attention_coefficients.indices(),
                 values_with_dropout,
                 attention_coefficients.shape,
@@ -142,27 +142,27 @@ class SparseMultiHeadAttention(nn.Module):
         if self.attention_mask_type == MaskType.PRODUCT:
             # In the case we have a product mask type, we simply perform the sparse product of q and k_transposed
             # using the attention_mask and ignoring the batch_mask.
-            not_normalized_attn = dglsp.bsddmm(attention_mask, q, k_transposed)
+            not_normalized_attn = bsddmm(attention_mask, q, k_transposed)
         else:
             # Otherwise, we use the batch mask, if available, and then we apply the attention mask
             not_normalized_attn = (
-                dglsp.bsddmm(batch_mask, q, k_transposed)
+                bsddmm(batch_mask, q, k_transposed)
                 if batch_mask is not None
                 else torch.matmul(q, k_transposed)
             )
         if self.attention_mask_type == MaskType.SUM:
             # If we have a SUM mask type, we add the attention mask multiplied by the bias_importance parameter.
             # We perform this addition on each head.
-            not_normalized_attn = dglsp.add(
+            not_normalized_attn = add(
                 not_normalized_attn,
                 generate_repeated_sparse_matrix(
                     self.bias_importance * attention_mask, self.num_heads
                 ),
             )
         # Normalize the attention coefficients
-        attn = dglsp.softmax(not_normalized_attn, dim=1)
+        attn = softmax(not_normalized_attn, dim=1)
         # Apply dropout after the softmax and multiply by the values.
         attn = self.apply_dropout_to_attention_coefficients(attn)
-        out = dglsp.bspmm(attn, v)
+        out = bspmm(attn, v)
         # Finally, perform the output projection and return
         return self.out_proj(out.reshape(n_target, -1))

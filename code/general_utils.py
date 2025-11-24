@@ -3,13 +3,12 @@ from typing import Any
 import numpy as np
 import scipy
 import torch
-from dgl import sparse as dglsp
-from dgl.sparse import SparseMatrix
+from dgl.sparse import SparseMatrix, spmatrix
 
 
 def scipy_sparse_matrix_to_dgl_sparse(
     scipy_sparse_matrix: scipy.sparse.spmatrix,
-) -> dglsp.SparseMatrix:
+) -> SparseMatrix:
     scipy_sparse_matrix = scipy_sparse_matrix.tocoo()
     rows = scipy_sparse_matrix.row
     cols = scipy_sparse_matrix.col
@@ -21,7 +20,7 @@ def scipy_sparse_matrix_to_dgl_sparse(
     if indices.numel() == 0 and values.numel() == 0:
         indices = torch.LongTensor([[0], [0]])
         values = torch.FloatTensor([0.0])
-    return dglsp.spmatrix(indices, values, size)
+    return spmatrix(indices, values, size)
 
 
 def dict_of_tensors_to_device(
@@ -49,4 +48,4 @@ def generate_repeated_sparse_matrix(
     indices = S.indices()
     values = S.val
     new_values = values.repeat_interleave(times).view(-1, times)
-    return dglsp.spmatrix(indices, new_values, shape=(S.shape[0], S.shape[1]))
+    return spmatrix(indices, new_values, shape=(S.shape[0], S.shape[1]))

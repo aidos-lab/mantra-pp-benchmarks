@@ -1,12 +1,11 @@
 import itertools
 from typing import Optional, Dict, List
 
-import dgl.sparse as dglsp
 import torch
-from dgl.sparse import SparseMatrix
 from jaxtyping import Float, Int
 from pydantic import BaseModel
 from torch import nn
+from dgl.sparse import SparseMatrix, spmatrix
 
 from math_utils import sparse_abs
 from ...model_types import ModelType
@@ -90,7 +89,7 @@ def _get_batch_mask(
         batch_mask_dense = (
             target_belongings.unsqueeze(1) == source_belongings
         ).to_sparse()
-    batch_mask = dglsp.spmatrix(
+    batch_mask = spmatrix(
         indices=batch_mask_dense.indices().to(target_belongings.device),
         shape=tuple(batch_mask_dense.shape),
     )
@@ -130,7 +129,7 @@ def _get_attention_mask(x: CellComplexData, interaction: Interaction):
             x.neighborhood_matrices[neighborhood_type]
         )
     else:
-        attention_masks = dglsp.spmatrix(
+        attention_masks = spmatrix(
             indices=torch.tensor([[0], [0]]).to(x.signals[0].device),
             val=torch.tensor([0.0]).to(x.signals[0].device),
             shape=(
