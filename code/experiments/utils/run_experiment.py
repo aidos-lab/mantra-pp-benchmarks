@@ -12,8 +12,8 @@ import lightning as L
 from lightning import LightningDataModule, LightningModule
 from lightning.pytorch.loggers import WandbLogger
 
-from datasets.dataset_types import DatasetType
 from datasets.simplicial import SimplicialDataModule
+from datasets.pairwise_simplicial import PairwiseSimplicialDataModule
 from datasets.transforms import (
     transforms_lookup,
     SimplicialComplexHodgeLapEigPETransform,
@@ -30,7 +30,6 @@ from models.base import BaseModel
 from models.twin_models import TwinModel
 from models.models import dataloader_lookup, dataloader_lookup_pairwise
 from .imbalance_handling import sorted_imbalance_weights
-from ..generate_configs import ds_type
 
 
 def get_data_module(
@@ -48,7 +47,7 @@ def get_data_module(
 
     dataset_transforms = task_lookup[config.task_type].transforms
 
-    if ds_type != DatasetType.HOMEOMORPHIC_DIST:
+    if config.task_type != TaskType.HOMEOMORPHIC_DIST:
         dm = SimplicialDataModule(
             ds_type=config.ds_type,
             data_dir=data_dir,
@@ -60,12 +59,11 @@ def get_data_module(
             num_barycentric_subdivisions=number_of_barycentric_subdivisions,
         )
     else:
-        dm = SimplicialDataModule(
+        dm = PairwiseSimplicialDataModule(
             ds_type=config.ds_type,
             data_dir=data_dir,
             transform=dataset_transforms,
             use_stratified=config.use_stratified,
-            task_type=config.task_type,
             seed=config.seed,
             dataloader_builder=dataloader_lookup_pairwise[config.conf_model.type],
             num_barycentric_subdivisions=number_of_barycentric_subdivisions,
