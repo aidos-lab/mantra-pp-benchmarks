@@ -265,7 +265,11 @@ class Pairwise:
 
         for k,v in data.to_dict():
             # data.triangulation => [2, 3]
-            t_1, t_2 = v
+            if isinstance(v, torch.Tensor):
+                t_1 = v[:len(v)//2]
+                t_2 = v[len(v)//2:]
+            else:
+                t_1, t_2 = v
             data_1[k] = t_1
             data_2[k] = t_2
         
