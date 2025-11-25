@@ -53,7 +53,7 @@ class PairwiseSimplicialDS(InMemoryDataset):
         pre_transform=None,
         pre_filter=None,
     ):
-        self.task_type = TaskType.HOMEO_COMP
+        self.task_type = TaskType.HOMEOMORPHIC_DIST
         self.manifold = manifold
         self.comparison_pair = comparison_pair
         self.split = mode

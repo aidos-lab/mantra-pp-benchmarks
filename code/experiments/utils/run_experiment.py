@@ -87,7 +87,7 @@ def get_setup(
     metrics = task_lookup[config.task_type].get_metrics(config.ds_type) if config.task_type != TaskType.HOMEOMORPHIC_DIST else None
 
     if (
-        config.task_type == TaskType.HOMEO_COMP
+        config.task_type == TaskType.HOMEOMORPHIC_DIST
     ):
         # Todo: metrics and accuracies are not applicable for contrastive task (yet)
         lit_model = TwinModel(
