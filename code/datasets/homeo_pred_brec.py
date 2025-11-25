@@ -17,7 +17,7 @@ from sklearn.model_selection import train_test_split
 
 Mode = Literal["train", "val"]
 
-class PropertyPredictionPWDS(InMemoryDataset):
+class BRECPredictionPWDS(InMemoryDataset):
     """
     Wrapper of PairwiseSimplicialDS to extend it with train/test/val split functionality.
 

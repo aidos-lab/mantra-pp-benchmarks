@@ -12,7 +12,7 @@ from datasets.transforms import (
     SimplicialComplexTransform,
 )
 from metrics.tasks import Manifold2Type, Manifold3Type, TaskType
-from .pairwise_simplicial_ds import PairwiseSimplicialDS
+from .homeo_pred_brec import BRECPredictionPWDS
 
 
 def unique_counts(input_list: List[str]) -> Counter:
@@ -34,6 +34,7 @@ class PairwiseSimplicialDataModule(LightningDataModule):
     def __init__(
         self,
         data_dir: str = "./data",
+        split: str = 'train',
         transform: Compose | None = None,
         use_stratified: bool = False,
         comparison_pair: Tuple[Manifold3Type, Manifold3Type] | Tuple[Manifold2Type, Manifold2Type] = (Manifold2Type.S_2, Manifold2Type.T_2),
@@ -44,6 +45,7 @@ class PairwiseSimplicialDataModule(LightningDataModule):
         num_barycentric_subdivisions: int = 0,
     ):
         super().__init__()
+        self.split = split
         self.ds_type = ds_type
         self.data_dir = data_dir
         self.transform = transform
@@ -63,7 +65,7 @@ class PairwiseSimplicialDataModule(LightningDataModule):
             f"{self.num_barycentric_subdivisions}",
         )
 
-    def get_ds(self, mode: str = "train") -> PairwiseSimplicialDS:
+    def get_ds(self, mode: str = "train") -> BRECPredictionPWDS:
         if self.ds_type == DatasetType.FULL_2D:
             manifold = "2"
             pre_filter = None
@@ -90,17 +92,14 @@ class PairwiseSimplicialDataModule(LightningDataModule):
             else None
         )
 
-        return PairwiseSimplicialDS(
+        return BRECPredictionPWDS(
             root=self.get_ds_root_dir(),
             split=self.split,
-            seed=self.seed,
-            use_stratified=self.use_stratified,
             comparison_pair=self.comparison_pair,
-            mode=mode,
             manifold=manifold,
             transform=self.transform,
-            pre_transform=barycentric_subdivision_pre_tr,
-            pre_filter=pre_filter,
+            pre_transform=None,
+            pre_filter=None,
         )
 
     def prepare_data(self) -> None:
@@ -115,7 +114,6 @@ class PairwiseSimplicialDataModule(LightningDataModule):
     def setup(self, stage=None):
         self.train_ds = self.get_ds("train")
         self.val_ds = self.get_ds("val")
-        self.test_ds = self.get_ds("test")
 
     def train_dataloader(self):
         return self.dataloader_builder(
@@ -125,11 +123,6 @@ class PairwiseSimplicialDataModule(LightningDataModule):
     def val_dataloader(self):
         return self.dataloader_builder(
             self.val_ds, batch_size=self.batch_size, num_workers=8
-        )
-
-    def test_dataloader(self):
-        return self.dataloader_builder(
-            self.test_ds, batch_size=self.batch_size, num_workers=8
         )
 
 
