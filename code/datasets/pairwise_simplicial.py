@@ -73,6 +73,12 @@ class PairwiseSimplicialDataModule(LightningDataModule):
         elif self.ds_type == DatasetType.NO_NAMELESS_2D:
             manifold = "2"
             pre_filter = filter_nameless
+        elif self.ds_type == DatasetType.PAIRWISE_HOMEO_2D:
+            manifold = "2"
+            pre_filter = None
+        elif self.ds_type == DatasetType.PAIRWISE_HOMEO_3D:
+            manifold = "3"
+            pre_filter = None
         else:
             raise ValueError(f"Unknown dataset type {self.ds_type}")
 
