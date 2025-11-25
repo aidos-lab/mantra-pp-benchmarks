@@ -22,7 +22,7 @@ class TwinModel(L.LightningModule):
         contrastive_loss_activated,
         learning_rate,
         imbalance,
-        out_channels,
+        out_channels=None,
         mlp=None,
     ):
         super().__init__()

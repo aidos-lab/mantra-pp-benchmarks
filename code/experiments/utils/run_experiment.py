@@ -99,6 +99,8 @@ def get_setup(
             loss_fn=task_lookup[config.task_type].loss_fn,
             learning_rate=config.learning_rate,
             imbalance=imbalance,
+            # Todo: make these parameters configurable and potentially add model out_channels to config
+            contrastive_loss_activated=True,
         )
     else:
         lit_model = BaseModel(
