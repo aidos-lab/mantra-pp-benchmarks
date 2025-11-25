@@ -171,7 +171,7 @@ def get_feature_dim(tr_type: TransformType, model_type: ModelType):
         TransformType.random_simplices_features_2d: [8, 8, 8],
         TransformType.degree_transform_sc_3d: [1, 2, 2, 1],
         TransformType.random_simplices_features_3d: [8, 8, 8, 8],
-        TransformType.homeo_comp_transforms_2manifold: [8, 8, 8] #TODO!!! is this correct?
+        TransformType.homeo_comp_transforms_2manifold: [8, 8, 8], #TODO!!! is this correct?
         TransformType.homeo_comp_transforms_3manifold: [8, 8, 8, 8], #TODO!!! is this correct?
     }
 
