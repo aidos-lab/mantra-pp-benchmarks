@@ -84,17 +84,18 @@ def get_setup(
         imbalance = None
 
     model = model_lookup[config.conf_model.type](config.conf_model)
-    metrics = task_lookup[config.task_type].get_metrics(config.ds_type)
+    metrics = task_lookup[config.task_type].get_metrics(config.ds_type) if config.task_type != TaskType.HOMEOMORPHIC_DIST else None
 
     if (
         config.task_type == TaskType.HOMEO_COMP
     ):
+        # Todo: metrics and accuracies are not applicable for contrastive task (yet)
         lit_model = TwinModel(
             model=model,
-            training_accuracy=metrics.train,
-            test_accuracy=metrics.test,
-            validation_accuracy=metrics.val,
-            accuracies_fn=task_lookup[config.task_type].accuracies,
+            training_accuracy=metrics,
+            test_accuracy=metrics,
+            validation_accuracy=metrics,
+            accuracies_fn=metrics,
             loss_fn=task_lookup[config.task_type].loss_fn,
             learning_rate=config.learning_rate,
             imbalance=imbalance,

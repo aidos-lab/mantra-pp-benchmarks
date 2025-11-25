@@ -26,11 +26,11 @@ class TwinModel(L.LightningModule):
         mlp=None,
     ):
         super().__init__()
-        self.training_accuracy = training_accuracy
-        self.validation_accuracy = validation_accuracy
-        self.test_accuracy = test_accuracy
+        #self.training_accuracy = training_accuracy
+        #self.validation_accuracy = validation_accuracy
+        #self.test_accuracy = test_accuracy
         self.loss_fn = loss_fn
-        self.accuracies_fn = accuracies_fn
+        #self.accuracies_fn = accuracies_fn
         self.model = model
         self.contrastive_loss_activated = contrastive_loss_activated
         if mlp is not None:
@@ -107,6 +107,7 @@ class TwinModel(L.LightningModule):
             sync_dist=True,
         )
         if not self.contrastive_loss_activated:
+            # todo: accuracies can be calculated for binary classification
             self.log_accuracies(x_hat, batch.y, batch_len, step)
         return loss
 
@@ -119,6 +120,7 @@ class TwinModel(L.LightningModule):
     def log_accuracies(
         self, x_hat, y, batch_len, step: Literal["train", "test", "validation"]
     ):
+        assert self.contrastive_loss_activated != False, "Accuracies can only be logged for non-contrastive tasks."
         if step == "train":
             acc_fun = self.training_accuracy
         elif step == "test":
