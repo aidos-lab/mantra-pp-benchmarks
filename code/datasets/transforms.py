@@ -5,6 +5,7 @@ import torch
 from toponetx.classes import SimplicialComplex
 from torch_geometric.transforms import FaceToEdge, OneHotDegree
 from torch_geometric.utils import degree
+from torch_geometric.data import Data
 
 from datasets.dataset_types import DatasetType
 from datasets.utils import (
@@ -95,7 +96,6 @@ class TriangulationToFaceTransform:
                 data.triangulation = torch.tensor(data.triangulation)
 
         return data
-
 
 class SimplicialComplexTransform:
     def __call__(self, data):
@@ -199,6 +199,16 @@ class SimplicialComplexStructureMatricesTransform:
         )
         return data
 
+class SimplicialNumDim:
+    def __call__(self, data):
+        simp_shape = data.sc.shape()
+
+        for i in range(simp_shape+1):
+            setattr(data, f"num_{i}_simplices", simp_shape[i])
+
+        return data
+
+
 
 class SimplicialComplexHodgeLapEigPETransform:
     def __init__(self, length_pe: int = 8):
@@ -246,6 +256,28 @@ class RandomSimplicesFeatures:
             )
         return data
 
+class Pairwise:
+    def __init__(self, single_transforms):
+        self.single_transforms = single_transforms
+
+    def __call__(self, data):
+        data_1, data_2 = Data(), Data()
+
+        for k,v in data.to_dict():
+            # data.triangulation => [2, 3]
+            t_1, t_2 = v
+            data_1[k] = t_1
+            data_2[k] = t_2
+        
+        for transf in self.single_transforms:
+            data_1 = transf(data_1)
+            data_2 = transf(data_2)
+
+        data_final = Data()
+        data_final["triangulation_1"] = data_1.to_dict()
+        data_final["triangulation_2"] = data_2.to_dict()
+
+        return data_final
 
 random_node_features = [
     TriangulationToZeroIndexTransform(),
@@ -271,10 +303,17 @@ orientability_transforms = [
 name_transforms = [
     NameToClassTransform(),
 ]
+
 homeo_comp_transforms_2manifold = [
-    SetNumNodesTransform(),
-    SimplicialComplex()
+    Pairwise([
+            SimplicialComplex(),
+            SimplicialComplexStructureMatricesTransform(),
+            SimplicialComplexDegreeTransform(),
+            SimplicialNumDim(),
+        ]
+    )
 ]
+
 homeo_comp_transforms_3manifold = [
    # Todo: implement for 3 mainfolds
 ]
