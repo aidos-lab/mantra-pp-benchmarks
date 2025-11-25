@@ -381,6 +381,9 @@ simplicial_transforms_3d: Dict[str, List[TransformType]] = {
     "degree": [TransformType.degree_transform_sc_3d],
     "random": [TransformType.random_simplices_features_3d],
 }
+simplicial_transforms_homeo_comp_2d: Dict[str, List[TransformType]] = {
+    "homeo_comp": [TransformType.homeo_comp_transforms_2manifold],
+}
 
 
 def transforms_lookup(
