@@ -255,14 +255,12 @@ def manage_directory(path: str):
 
 
 def get_tasks(ds_type: DatasetType) -> List[TaskType]:
-    tasks = (
-        tasks_mantra2.copy()
-        if (
-            ds_type == DatasetType.FULL_2D
-            or ds_type == DatasetType.NO_NAMELESS_2D
-        )
-        else tasks_mantra3.copy()
-    )
+    if ds_type == DatasetType.PAIRWISE_HOMEO_2D:
+        tasks = task_pairwise.copy()
+    elif ds_type == DatasetType.FULL_2D or ds_type == DatasetType.NO_NAMELESS_2D:
+        tasks = tasks_mantra2.copy()
+    else:
+        tasks = tasks_mantra3.copy()
     return tasks
 
 
