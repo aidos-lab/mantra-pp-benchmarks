@@ -118,6 +118,14 @@ simplicial_features_3d = [
     TransformType.random_simplices_features_3d,
 ]
 
+simplicial_features_homeo_2d = [
+    TransformType.homeo_comp_transforms_2manifold,
+]
+
+simplicial_features_homeo_3d = [
+    TransformType.homeo_comp_transforms_3manifold,
+]
+
 if degree_transform_only:
     graph_features = graph_features_degree
     simplicial_features_2d = [TransformType.degree_transform_sc_2d]
@@ -193,7 +201,7 @@ out_channels_dict_mantra3 = {
 }
 
 out_channels_dict_pairwise = {
-    TaskType.HOMEOMORPHIC_DIST: 16,
+    TaskType.HOMEOMORPHIC_DIST: 4,
 }
 
 
@@ -207,8 +215,12 @@ def get_feature_types(model: ModelType, ds_type: DatasetType):
     if model in graph_models:
         return graph_features
     else:
-        if ds_type in [DatasetType.FULL_2D, DatasetType.NO_NAMELESS_2D, DatasetType.HOMEOMORPHIC_DIST_2D]:
+        if ds_type in [DatasetType.FULL_2D, DatasetType.NO_NAMELESS_2D]:
             return simplicial_features_2d
+        elif ds_type in [DatasetType.PAIRWISE_HOMEO_2D]:
+            return simplicial_features_homeo_2d
+        elif ds_type in [DatasetType.PAIRWISE_HOMEO_3D]:
+            return simplicial_features_homeo_3d
         return simplicial_features_3d
 
 

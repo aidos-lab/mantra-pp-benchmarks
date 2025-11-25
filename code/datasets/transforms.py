@@ -360,6 +360,8 @@ class TransformType(Enum):
     degree_transform_sc_3d = "degree_transform_sc_3d"
     random_simplices_features_2d = "random_simplices_features_2d"
     random_simplices_features_3d = "random_simplices_features_3d"
+    homeo_comp_transforms_2manifold = "homeo_comp_transforms_2manifold"
+    homeo_comp_transforms_3manifold = "homeo_comp_transforms_3manifold"
 
 
 graphbased_transforms: Dict[str, List[TransformType]] = {
@@ -392,6 +394,8 @@ def transforms_lookup(
         TransformType.degree_transform_sc_3d: degree_transform_sc_3d,
         TransformType.random_simplices_features_2d: random_simplices_features,
         TransformType.random_simplices_features_3d: random_simplices_features,
+        TransformType.homeo_comp_transforms_2manifold: homeo_comp_transforms_2manifold,
+        TransformType.homeo_comp_transforms_3manifold: homeo_comp_transforms_3manifold,
     }
 
     tr = _transforms_lookup[tr_type]
@@ -400,6 +404,8 @@ def transforms_lookup(
         and tr_type != TransformType.random_simplices_features_2d
         and tr_type != TransformType.degree_transform_sc_3d
         and tr_type != TransformType.random_simplices_features_3d
+        and tr_type != TransformType.homeo_comp_transforms_2manifold
+        and tr_type != TransformType.homeo_comp_transforms_3manifold
     ):
         tr[0] = TriangulationToFaceTransform()
 
