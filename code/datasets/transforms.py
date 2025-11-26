@@ -263,7 +263,7 @@ class Pairwise:
     def __call__(self, data):
         data_1, data_2 = Data(), Data()
 
-        for k,v in data.to_dict():
+        for k,v in data.to_dict().items():
             # data.triangulation => [2, 3]
             if isinstance(v, torch.Tensor):
                 t_1 = v[:len(v)//2]
