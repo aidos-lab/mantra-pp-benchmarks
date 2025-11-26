@@ -201,9 +201,10 @@ class SimplicialComplexStructureMatricesTransform:
 
 class SimplicialNumDim:
     def __call__(self, data):
-        simp_shape = data.sc.shape()
+        # Tuple with the simplex dimensions (n, m, l)
+        simp_shape = data.sc.shape
 
-        for i in range(simp_shape+1):
+        for i in range(len(simp_shape)):
             setattr(data, f"num_{i}_simplices", simp_shape[i])
 
         return data
@@ -265,7 +266,8 @@ class Pairwise:
 
         for k,v in data.to_dict().items():
             # data.triangulation => [2, 3]
-            t_1, t_2 = v
+            print(v)
+            t_1, t_2 = v[0], v[1]
             data_1[k] = t_1
             data_2[k] = t_2
         
