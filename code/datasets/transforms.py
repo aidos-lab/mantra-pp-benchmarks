@@ -265,8 +265,9 @@ class Pairwise:
         data_1, data_2 = Data(), Data()
 
         for k,v in data.to_dict().items():
+            if k == 'y':
+                continue
             # data.triangulation => [2, 3]
-            print(v)
             t_1, t_2 = v[0], v[1]
             data_1[k] = t_1
             data_2[k] = t_2
@@ -278,6 +279,7 @@ class Pairwise:
         data_final = Data()
         data_final["triangulation_1"] = data_1.to_dict()
         data_final["triangulation_2"] = data_2.to_dict()
+        data_final["y"] = data["y"]
 
         return data_final
 
