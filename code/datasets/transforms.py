@@ -201,7 +201,7 @@ class SimplicialComplexStructureMatricesTransform:
 
 class SimplicialNumDim:
     def __call__(self, data):
-        simp_shape = data.sc.shape()
+        simp_shape = data.sc.shape
 
         for i in range(simp_shape+1):
             setattr(data, f"num_{i}_simplices", simp_shape[i])
