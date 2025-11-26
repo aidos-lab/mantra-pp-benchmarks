@@ -304,6 +304,8 @@ name_transforms = [
     NameToClassTransform(),
 ]
 
+homeo_feature_transform = []
+
 homeo_comp_transforms_2manifold = [
     Pairwise([
             SimplicialComplexTransform(),
@@ -360,8 +362,8 @@ class TransformType(Enum):
     degree_transform_sc_3d = "degree_transform_sc_3d"
     random_simplices_features_2d = "random_simplices_features_2d"
     random_simplices_features_3d = "random_simplices_features_3d"
-    homeo_comp_transforms_2manifold = "homeo_comp_transforms_2manifold"
-    homeo_comp_transforms_3manifold = "homeo_comp_transforms_3manifold"
+    homeo_comp_transforms_2manifold = "homeo_feature_transform"
+    homeo_comp_transforms_3manifold = "homeo_feature_transform"
 
 
 graphbased_transforms: Dict[str, List[TransformType]] = {
@@ -397,8 +399,8 @@ def transforms_lookup(
         TransformType.degree_transform_sc_3d: degree_transform_sc_3d,
         TransformType.random_simplices_features_2d: random_simplices_features,
         TransformType.random_simplices_features_3d: random_simplices_features,
-        TransformType.homeo_comp_transforms_2manifold: homeo_comp_transforms_2manifold,
-        TransformType.homeo_comp_transforms_3manifold: homeo_comp_transforms_3manifold,
+        TransformType.homeo_comp_transforms_2manifold: homeo_feature_transform,
+        TransformType.homeo_comp_transforms_3manifold: homeo_feature_transform,
     }
 
     tr = _transforms_lookup[tr_type]
