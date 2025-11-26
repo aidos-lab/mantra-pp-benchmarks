@@ -96,7 +96,7 @@ class PairwiseSimplicialDataModule(LightningDataModule):
 
         return BRECPredictionPWDS(
             root=self.get_ds_root_dir(),
-            split=self.split,
+            split=mode,
             comparison_pair=self.comparison_pair,
             manifold=manifold,
             transform=self.transform,
