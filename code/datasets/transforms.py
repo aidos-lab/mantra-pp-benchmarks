@@ -201,9 +201,10 @@ class SimplicialComplexStructureMatricesTransform:
 
 class SimplicialNumDim:
     def __call__(self, data):
+        # Tuple with the simplex dimensions (n, m, l)
         simp_shape = data.sc.shape
 
-        for i in range(simp_shape+1):
+        for i in range(len(simp_shape)+1):
             setattr(data, f"num_{i}_simplices", simp_shape[i])
 
         return data
