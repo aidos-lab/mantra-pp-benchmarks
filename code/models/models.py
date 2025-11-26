@@ -90,11 +90,11 @@ dataloader_lookup_pairwise: Dict[ModelType, Callable | None] = {
     ModelType.MLP: JMDataLoader,
     ModelType.TAG: JMDataLoader,
     ModelType.TransfConv: JMDataLoader,
-    ModelType.SAN: None,
-    ModelType.SCCN: None,
-    ModelType.SCCNN: None ,
-    ModelType.SCN: None,
-    ModelType.CELL_MP: None,
-    ModelType.CELL_TRANSF: None,
+    ModelType.SAN: JMDataLoader,
+    ModelType.SCCN: JMDataLoader,
+    ModelType.SCCNN: JMDataLoader ,
+    ModelType.SCN: JMDataLoader,
+    ModelType.CELL_MP: JMDataLoader,
+    ModelType.CELL_TRANSF: JMDataLoader,
 }
 
