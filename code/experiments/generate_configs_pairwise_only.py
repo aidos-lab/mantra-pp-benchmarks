@@ -119,11 +119,11 @@ simplicial_features_3d = [
 ]
 
 simplicial_features_homeo_2d = [
-    TransformType.homeo_comp_transforms_2manifold,
+    TransformType.homeo_features_2d,
 ]
 
 simplicial_features_homeo_3d = [
-    TransformType.homeo_comp_transforms_3manifold,
+    TransformType.homeo_features_3d,
 ]
 
 if degree_transform_only:

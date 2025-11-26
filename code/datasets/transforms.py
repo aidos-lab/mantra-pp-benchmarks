@@ -308,7 +308,8 @@ name_transforms = [
     NameToClassTransform(),
 ]
 
-homeo_feature_transform = []
+homeo_feature_transforms_2d = []
+homeo_feature_transforms_3d = []
 
 homeo_comp_transforms_2manifold = [
     Pairwise([
@@ -366,8 +367,8 @@ class TransformType(Enum):
     degree_transform_sc_3d = "degree_transform_sc_3d"
     random_simplices_features_2d = "random_simplices_features_2d"
     random_simplices_features_3d = "random_simplices_features_3d"
-    homeo_comp_transforms_2manifold = "homeo_feature_transform"
-    homeo_comp_transforms_3manifold = "homeo_feature_transform"
+    homeo_features_2d = "homeo_features_2d"
+    homeo_features_3d = "homeo_features_3d"
 
 
 graphbased_transforms: Dict[str, List[TransformType]] = {
@@ -387,10 +388,14 @@ simplicial_transforms_3d: Dict[str, List[TransformType]] = {
     "degree": [TransformType.degree_transform_sc_3d],
     "random": [TransformType.random_simplices_features_3d],
 }
-simplicial_transforms_homeo_comp_2d: Dict[str, List[TransformType]] = {
-    "homeo_comp": [TransformType.homeo_comp_transforms_2manifold],
+
+homeo_feature_transform_2d: Dict[str, List[TransformType]] = {
+    "homeo_comp": [TransformType.homeo_features_2d],
 }
 
+homeo_feature_transform_3d: Dict[str, List[TransformType]] = {
+    "homeo_comp": [TransformType.homeo_features_2d],
+}
 
 def transforms_lookup(
     tr_type: TransformType, ds_type: DatasetType
@@ -403,8 +408,8 @@ def transforms_lookup(
         TransformType.degree_transform_sc_3d: degree_transform_sc_3d,
         TransformType.random_simplices_features_2d: random_simplices_features,
         TransformType.random_simplices_features_3d: random_simplices_features,
-        TransformType.homeo_comp_transforms_2manifold: homeo_feature_transform,
-        TransformType.homeo_comp_transforms_3manifold: homeo_feature_transform,
+        TransformType.homeo_features_2d: homeo_feature_transform_2d,
+        TransformType.homeo_features_3d: homeo_feature_transform_3d,
     }
 
     tr = _transforms_lookup[tr_type]
@@ -413,8 +418,8 @@ def transforms_lookup(
         and tr_type != TransformType.random_simplices_features_2d
         and tr_type != TransformType.degree_transform_sc_3d
         and tr_type != TransformType.random_simplices_features_3d
-        and tr_type != TransformType.homeo_comp_transforms_2manifold
-        and tr_type != TransformType.homeo_comp_transforms_3manifold
+        and tr_type != TransformType.homeo_features_2d
+        and tr_type != TransformType.homeo_features_3d
     ):
         tr[0] = TriangulationToFaceTransform()
 
