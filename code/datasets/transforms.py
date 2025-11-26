@@ -204,7 +204,7 @@ class SimplicialNumDim:
         # Tuple with the simplex dimensions (n, m, l)
         simp_shape = data.sc.shape
 
-        for i in range(len(simp_shape)+1):
+        for i in range(len(simp_shape)):
             setattr(data, f"num_{i}_simplices", simp_shape[i])
 
         return data
