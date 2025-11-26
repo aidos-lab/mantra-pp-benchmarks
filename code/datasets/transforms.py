@@ -408,8 +408,8 @@ def transforms_lookup(
         TransformType.degree_transform_sc_3d: degree_transform_sc_3d,
         TransformType.random_simplices_features_2d: random_simplices_features,
         TransformType.random_simplices_features_3d: random_simplices_features,
-        TransformType.homeo_features_2d: homeo_feature_transform_2d,
-        TransformType.homeo_features_3d: homeo_feature_transform_3d,
+        TransformType.homeo_features_2d: homeo_feature_transforms_2d,
+        TransformType.homeo_features_3d: homeo_feature_transforms_3d,
     }
 
     tr = _transforms_lookup[tr_type]
