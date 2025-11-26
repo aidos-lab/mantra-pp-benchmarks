@@ -266,6 +266,7 @@ class Pairwise:
 
         for k,v in data.to_dict().items():
             # data.triangulation => [2, 3]
+            print(v)
             t_1, t_2 = v[0], v[1]
             data_1[k] = t_1
             data_2[k] = t_2

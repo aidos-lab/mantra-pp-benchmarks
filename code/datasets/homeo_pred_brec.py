@@ -15,6 +15,8 @@ from metrics.tasks import TaskType, Manifold2Type, Manifold3Type
 
 from sklearn.model_selection import train_test_split
 
+from datasets.transforms import homeo_comp_transforms_2manifold
+
 Mode = Literal["train", "val"]
 
 class BRECPredictionPWDS(InMemoryDataset):
@@ -110,18 +112,17 @@ class BRECPredictionPWDS(InMemoryDataset):
 
 
         if self.transform != None:
-            data_list_processed = [self.transform(d) for d in self.pairwise_ds]
+            data_list_processed = [self.transform(self.pairwise_ds.get(idx)) for idx in indices]
         else:
-            data_list_processed = [d for d in self.pairwise_ds]
+            data_list_processed = [self.pairwise_ds.get(idx) for idx in indices]
 
         label_tensor = torch.vstack([data.y for data in data_list_processed])
         train_indices = label_tensor == 0
         val_indices = label_tensor != 0
 
         #  Save splits
-        data_list = [self.pairwise_ds.get(idx) for idx in indices]
-        train_data_list = [data_list[idx] for idx in train_indices]
-        val_data_list = [data_list[idx] for idx in val_indices]
+        train_data_list = [data_list_processed[idx] for idx in train_indices]
+        val_data_list = [data_list_processed[idx] for idx in val_indices]
 
         self.save(
             train_data_list, self._get_processed_path("train")
@@ -129,3 +130,13 @@ class BRECPredictionPWDS(InMemoryDataset):
         self.save(
             val_data_list, self._get_processed_path("val")
         )
+
+if __name__ == '__main__':
+    ds = BRECPredictionPWDS(
+        'data',
+        split='train',
+        manifold='2',
+            debug = True)
+
+
+
