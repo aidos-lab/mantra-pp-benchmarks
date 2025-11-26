@@ -161,5 +161,6 @@ class PairwiseSimplicialDS(InMemoryDataset):
 
                 # Create the data object with two triangulations
                 data_obj = Data(**dict_obj)
+                data_obj.y = torch.tensor([_m1.name == _m2.name])
                 data_list.append(data_obj)
         self.save(data_list, self._get_processed_path(*self.comparison_pair))

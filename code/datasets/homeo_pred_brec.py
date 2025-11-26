@@ -116,6 +116,7 @@ class BRECPredictionPWDS(InMemoryDataset):
         else:
             data_list_processed = [self.pairwise_ds.get(idx) for idx in indices]
 
+        
         label_tensor = torch.vstack([data.y for data in data_list_processed])
         train_indices = label_tensor == 0
         val_indices = label_tensor != 0
@@ -130,13 +131,6 @@ class BRECPredictionPWDS(InMemoryDataset):
         self.save(
             val_data_list, self._get_processed_path("val")
         )
-
-if __name__ == '__main__':
-    ds = BRECPredictionPWDS(
-        'data',
-        split='train',
-        manifold='2',
-            debug = True)
 
 
 
