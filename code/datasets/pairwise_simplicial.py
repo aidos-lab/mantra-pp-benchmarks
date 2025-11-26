@@ -43,8 +43,10 @@ class PairwiseSimplicialDataModule(LightningDataModule):
         dataloader_builder: Callable = DataLoaderGeometric,
         ds_type: DatasetType = DatasetType.FULL_2D,
         num_barycentric_subdivisions: int = 0,
+        debug = False
     ):
         super().__init__()
+        self.debug = debug
         self.split = split
         self.ds_type = ds_type
         self.data_dir = data_dir
@@ -100,6 +102,7 @@ class PairwiseSimplicialDataModule(LightningDataModule):
             transform=self.transform,
             pre_transform=None,
             pre_filter=None,
+            debug=self.debug
         )
 
     def prepare_data(self) -> None:

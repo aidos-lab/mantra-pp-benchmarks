@@ -36,7 +36,9 @@ class PairwiseSimplicialDS(InMemoryDataset):
         transform=None,
         pre_transform=None,
         pre_filter=None,
+        debug = False,
     ):
+        self.debug = debug
         self.task_type = TaskType.HOMEOMORPHIC_DIST
         self.manifold = manifold
         self.comparison_pair = comparison_pair
@@ -123,12 +125,19 @@ class PairwiseSimplicialDS(InMemoryDataset):
         print("---> Constructing pairwise comparison...")
 
         data_list = []
+        cnt = 0
         # NOTE: Makeup pairwise comparisons between the triangulations
         for i, _m1 in enumerate(tqdm(data_list_preprocessed)):
+            if self.debug and cnt == 100:
+                break
             for j, _m2 in enumerate(data_list_preprocessed):
                 # NOTE: Do not add a pair of the same triangulation
                 if i == j:
                     continue
+
+                if self.debug and cnt == 100:
+                    break
+
 
                 # We are not interested in this pairwise comparison
                 if _m1.name not in [m_1, m_2] or _m2.name not in [m_1, m_2]:
@@ -146,6 +155,9 @@ class PairwiseSimplicialDS(InMemoryDataset):
                         )
                     else:
                         dict_obj[k] = tuple([v, getattr(_m2, k)])
+
+                if self.debug:
+                    cnt += 1
 
                 # Create the data object with two triangulations
                 data_obj = Data(**dict_obj)

@@ -40,6 +40,7 @@ class BRECPredictionPWDS(InMemoryDataset):
         transform=None,
         pre_transform=None,
         pre_filter=None,
+        debug = False,
     ):
         self.manifold = manifold
         self.pairwise_ds = PairwiseSimplicialDS(
@@ -50,6 +51,7 @@ class BRECPredictionPWDS(InMemoryDataset):
             None,
             pre_transform=pre_transform,
             pre_filter=pre_filter,
+            debug = debug
         )
         self.transform = transform
         super().__init__(root, transform=transform)
