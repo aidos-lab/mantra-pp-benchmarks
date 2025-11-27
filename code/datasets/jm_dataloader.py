@@ -21,8 +21,8 @@ def collate_pairwise(batch: List[Data]):
     batched_data = Data()
     batched_data.batch_size = len(batch)
 
-    # Get the dimension of the triangulation
-    max_dimension = batch[0].dimension.item()
+    # Get the dimension of the triangulation (both triangulations have the same dimension)
+    max_dimension = int(batch[0].dimension[0].item())
 
     # Get the connectivity matrix names
     connectivity_matrices = [k for k in batch[0].triangulation_1.keys() if k.split('_')[0] in connectivity_types]
