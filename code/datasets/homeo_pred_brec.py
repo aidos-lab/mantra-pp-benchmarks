@@ -102,7 +102,7 @@ class BRECPredictionPWDS(InMemoryDataset):
         return f_names
 
     def process(self):
-        print("---> Preprocessing dataset...)")
+        print("---> Splitting into train/val...)")
 
         if self.manifold == "3":
             raise NotImplementedError("TODO")
@@ -113,7 +113,6 @@ class BRECPredictionPWDS(InMemoryDataset):
         if self.transform is not None:
             data_list_processed = [self.transform(self.pairwise_ds.get(idx)) for idx in indices]
         else:
-            print("A")
             data_list_processed = [self.pairwise_ds.get(idx) for idx in indices]
 
         

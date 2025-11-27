@@ -112,7 +112,7 @@ class PairwiseSimplicialDS(InMemoryDataset):
         return f_names
 
     def process(self):
-        print("---> Preprocessing dataset...)")
+        print("---> Constructing pairwise comparison...")
 
         if self.manifold == "3":
             raise NotImplementedError("TODO")
@@ -122,7 +122,6 @@ class PairwiseSimplicialDS(InMemoryDataset):
 
         data_list_preprocessed = [obj for obj in self.raw_simplicial_ds]
 
-        print("---> Constructing pairwise comparison...")
 
         data_list = []
         cnt = 0

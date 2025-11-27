@@ -22,10 +22,11 @@ def collate_pairwise(batch: List[Data]):
     batched_data.batch_size = len(batch)
 
     # Get the dimension of the triangulation (both triangulations have the same dimension)
-    max_dimension = int(batch[0].dimension[0].item())
+    max_dimension = int(batch[0].triangulation_1['dimension'].item())
 
     # Get the connectivity matrix names
-    connectivity_matrices = [k for k in batch[0]["triangulation_1"].keys() if k.split('_')[0] in connectivity_types]
+    connectivity_matrices = [k for k in batch[0]["triangulation_1"]['connectivity'].keys() if k.split('_')[0] in connectivity_types]
+    print([k for k in batch[0]["triangulation_1"]['connectivity'].keys()])
 
     batched_list_connectivities: Dict[str, List] = defaultdict(list)
     batched_features: Dict[int, List] = defaultdict(list)
@@ -44,20 +45,21 @@ def collate_pairwise(batch: List[Data]):
 
             # For every dimension
             for dimension in range(0, max_dimension+1):
-                cnt_n_simplices = t[f'num_{dimension}_simplices'] 
+                cnt_n_simplices[dimension] = t[f'num_{dimension}_simplices'] 
 
             # Do batching for connetivity
             for connect_mat in connectivity_matrices:
+                t['connectivity'][connect_mat] =  t['connectivity'][connect_mat].to_dense().nonzero()
                 if 'incidence' in connect_mat:
                     rank_to = int(connect_mat.split('_')[1]) 
                     rank_from = rank_to - 1
 
                     # TODO: Check direction
-                    r_from_tensor = t[connect_mat][0] 
+                    r_from_tensor = t['connectivity'][connect_mat][0] 
                     r_from_tensor += running_idx_r_simplex[rank_from]
                     running_idx_r_simplex[rank_from] += cnt_n_simplices[rank_from]
 
-                    r_to_tensor = t[connect_mat][1] 
+                    r_to_tensor = t['connectivity'][connect_mat][1] 
                     r_to_tensor += running_idx_r_simplex[rank_to]
                     running_idx_r_simplex[rank_to] += cnt_n_simplices[rank_to]
 
@@ -72,22 +74,25 @@ def collate_pairwise(batch: List[Data]):
                     rank = int(connect_mat.split('_')[1])
 
                     # Update with off
-                    t[connect_mat] += running_idx_r_simplex[rank]
+                    t['connectivity'][connect_mat] += running_idx_r_simplex[rank]
 
                     # Update the offset
                     running_idx_r_simplex[rank] += cnt_n_simplices[rank]
 
-                    batched_list_connectivities[connect_mat].append(t[connect_mat])
+                    batched_list_connectivities[connect_mat].append(t['connectivity'][connect_mat])
                 else:
                     raise KeyError(f"Invalid connectivity matrix {connect_mat}")
            # Do batching for features         
             for dimension in range(0, max_dimension+1):
-                batched_features[dimension].append(t[f'x_{dimension}'])
+                batched_features[dimension].append(t["x"][dimension])
 
+
+    # Initialize tensor x
+    batched_data["x"] = dict()
 
     # Concat the tensors for the batch
     for dimension in range(0, max_dimension+1):
-        batched_data[f'x_{dimension}'] = torch.cat(batched_features[dimension], dim=0)
+        batched_data["x"][dimension] = torch.cat(batched_features[dimension], dim=0)
 
     for connect_mat in connectivity_matrices:
         batched_data[connect_mat] = torch.cat(batched_list_connectivities[connect_mat], dim=0)

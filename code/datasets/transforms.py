@@ -316,6 +316,8 @@ homeo_comp_transforms_2manifold = [
             SimplicialComplexTransform(),
             SimplicialComplexStructureMatricesTransform(),
             SimplicialComplexDegreeTransform(),
+            SimplicialComplexEdgeAdjacencyDegreeTransform(),
+            SimplicialComplexTriangleCoadjacencyDegreeTransform(),
             SimplicialNumDim(),
         ]
     )
