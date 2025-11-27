@@ -55,9 +55,8 @@ class BRECPredictionPWDS(InMemoryDataset):
             pre_filter=pre_filter,
             debug = debug
         )
+        super().__init__(root)
         self.transform = transform
-        super().__init__(root, transform=None)
-
         self.load(self._get_processed_path(split))
 
     @property
@@ -111,9 +110,10 @@ class BRECPredictionPWDS(InMemoryDataset):
         indices = range(self.pairwise_ds.len())
 
 
-        if self.transform != None:
+        if self.transform is not None:
             data_list_processed = [self.transform(self.pairwise_ds.get(idx)) for idx in indices]
         else:
+            print("A")
             data_list_processed = [self.pairwise_ds.get(idx) for idx in indices]
 
         
