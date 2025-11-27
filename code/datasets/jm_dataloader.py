@@ -25,7 +25,7 @@ def collate_pairwise(batch: List[Data]):
     max_dimension = int(batch[0].dimension[0].item())
 
     # Get the connectivity matrix names
-    connectivity_matrices = [k for k in batch[0].triangulation_1.keys() if k.split('_')[0] in connectivity_types]
+    connectivity_matrices = [k for k in batch[0]["triangulation_1"].keys() if k.split('_')[0] in connectivity_types]
 
     batched_list_connectivities: Dict[str, List] = defaultdict(list)
     batched_features: Dict[int, List] = defaultdict(list)
@@ -36,7 +36,7 @@ def collate_pairwise(batch: List[Data]):
     # For each pair of triangulation that we want to `flatten` while collating
     for pair in batch:
         batched_ys.append(pair.y)
-        t_1, t_2 = pair.triangulation_1, pair.triangulation_2
+        t_1, t_2 = pair["triangulation_1"], pair["triangulation_2"]
 
         # For each of the two triangulations
         for t in [t_1, t_2]:
