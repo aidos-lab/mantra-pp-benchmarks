@@ -56,7 +56,7 @@ class BRECPredictionPWDS(InMemoryDataset):
             debug = debug
         )
         self.transform = transform
-        super().__init__(root, transform=transform)
+        super().__init__(root, transform=None)
 
         self.load(self._get_processed_path(split))
 
