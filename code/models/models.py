@@ -10,7 +10,7 @@ from torch_geometric.loader import DataLoader
 
 from datasets.topox_dataloader import SimplicialTopoXDataloader
 from datasets.cell_dataloader import CellDataloader
-from datasets.jm_dataloader import JMDataLoader
+from datasets.jm_dataloader import JMDataLoader, JMTopoXDataLoader
 from models.GCN import GCN, GCNConfig
 from datasets.transformer_dataloader import TransformerDataloader
 from models.GAT import GAT, GATConfig
@@ -90,10 +90,10 @@ dataloader_lookup_pairwise: Dict[ModelType, Callable | None] = {
     ModelType.MLP: JMDataLoader,
     ModelType.TAG: JMDataLoader,
     ModelType.TransfConv: JMDataLoader,
-    ModelType.SAN: JMDataLoader,
-    ModelType.SCCN: JMDataLoader,
-    ModelType.SCCNN: JMDataLoader ,
-    ModelType.SCN: JMDataLoader,
+    ModelType.SAN: JMTopoXDataLoader,
+    ModelType.SCCN: JMTopoXDataLoader,
+    ModelType.SCCNN: JMTopoXDataLoader,
+    ModelType.SCN: JMTopoXDataLoader,
     ModelType.CELL_MP: JMDataLoader,
     ModelType.CELL_TRANSF: JMDataLoader,
 }
