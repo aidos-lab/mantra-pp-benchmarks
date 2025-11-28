@@ -65,6 +65,9 @@ class TwinModel(L.LightningModule):
         # signatures.
         if hasattr(batch, "batch_size"):
             batch_len = batch.batch_size
+        # We batch based on number of nodes
+        elif hasattr(batch, "x_belonging"):
+            batch_len = batch.x_belonging[0].max() + 1
         elif hasattr(batch, "batch"):
             batch_len = batch.batch.max() + 1
         else:

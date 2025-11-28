@@ -22,23 +22,31 @@ def collate_pairwise(batch: List[Data]):
     connectivity_types = [
         'incidence',
         'adjacency',
-        'coadjacency'
-        #Todo: add the laplacian and hodge laplacian
+        'coadjacency',
+        'laplacian',
     ]
+
     batched_data = Data()
+
     #Todo: @Martin is this correct - since we flatten the pairwise data object?
-    batched_data.batch_size = len(batch) * 2
+    #batched_data.batch_size = len(batch) * 2
 
     # Get the dimension of the triangulation (both triangulations have the same dimension)
     max_dimension = int(batch[0]["triangulation_1"]["dimension"].item())
 
-    # Get the connectivity matrix names
-    connectivity_matrices = [k for k in batch[0]["triangulation_1"]['connectivity'].keys() if k.split('_')[0] in connectivity_types]
-    print([k for k in batch[0]["triangulation_1"]['connectivity'].keys()])
+    connectivity_matrices = []
 
-    batched_list_connectivities: Dict[str, List] = defaultdict(list)
-    batched_features: Dict[int, List] = defaultdict(list)
-    batched_ys: List = []
+    # Get the connectivity matrix names
+    for k in batch[0]["triangulation_1"]['connectivity'].keys():
+        split_k = k.split('_')
+        if split_k[0] in connectivity_types or split_k[1] in connectivity_types:
+            connectivity_matrices.append(k)
+
+
+    batched_list_connectivities: Dict[str, List] = defaultdict(list) # Batching of connectivities
+    batched_features: Dict[int, List] = defaultdict(list) # Batching of x_i
+    batched_ys: List = [] # Batching of y
+    batched_batch: Dict = defaultdict(list) # Batching of batch_i
 
     running_idx_r_simplex = defaultdict(int)
 
@@ -51,103 +59,73 @@ def collate_pairwise(batch: List[Data]):
         for t in [t_1, t_2]:
             cnt_n_simplices: Dict = defaultdict(int)
 
+
             # For every dimension
             for dimension in range(0, max_dimension+1):
-                cnt_n_simplices[dimension] = t[f'num_{dimension}_simplices'] 
+                cnt_n_simplices[dimension] =  t['x'][dimension].shape[0]
+
+           # Do batching for features         
+            for dimension in range(0, max_dimension+1):
+                batched_features[dimension].append(t["x"][dimension])
+                batched_batch[dimension].append(torch.tensor([running_idx_r_simplex[dimension]] * cnt_n_simplices[dimension]))
 
             # Do batching for connetivity
             for connect_mat in connectivity_matrices:
-                t['connectivity'][connect_mat] =  t['connectivity'][connect_mat].to_dense().nonzero()
+                t['connectivity'][connect_mat] =  t['connectivity'][connect_mat].to_dense().nonzero().T
                 if 'incidence' in connect_mat:
-                    rank_to = int(connect_mat.split('_')[1]) 
+                    rank_to = int(connect_mat.split('_')[-1]) 
                     rank_from = rank_to - 1
 
                     # TODO: Check direction
                     r_from_tensor = t['connectivity'][connect_mat][0] 
                     r_from_tensor += running_idx_r_simplex[rank_from]
-                    running_idx_r_simplex[rank_from] += cnt_n_simplices[rank_from]
 
                     r_to_tensor = t['connectivity'][connect_mat][1] 
                     r_to_tensor += running_idx_r_simplex[rank_to]
-                    running_idx_r_simplex[rank_to] += cnt_n_simplices[rank_to]
 
                     # Concat both tensor again
-                    r_final_tensor = torch.cat([r_from_tensor, r_to_tensor], dim=0)
+                    r_final_tensor = torch.cat([r_from_tensor.unsqueeze(0), r_to_tensor.unsqueeze(0)], dim=0)
                     batched_list_connectivities[connect_mat].append(r_final_tensor)
-                    
-                elif 'laplacian' in connect_mat:
-                    raise NotImplementedError("TODO")
                 # TODO:  Check if in does substrings
-                elif 'adjacency' in connect_mat or 'coadjacency' in connect_mat:
-                    rank = int(connect_mat.split('_')[1])
+                elif 'adjacency' in connect_mat or 'coadjacency' in connect_mat or 'down_laplacian' in connect_mat or 'up_laplacian' in connect_mat or 'hodge_laplacian' in connect_mat:
+                    rank = int(connect_mat.split('_')[-1])
 
                     # Update with off
                     t['connectivity'][connect_mat] += running_idx_r_simplex[rank]
 
                     # Update the offset
-                    running_idx_r_simplex[rank] += cnt_n_simplices[rank]
 
                     batched_list_connectivities[connect_mat].append(t['connectivity'][connect_mat])
                 else:
                     raise KeyError(f"Invalid connectivity matrix {connect_mat}")
-           # Do batching for features         
+            # Update running index
             for dimension in range(0, max_dimension+1):
-                batched_features[dimension].append(t["x"][dimension])
+                running_idx_r_simplex[dimension] += cnt_n_simplices[dimension]
 
 
-    # Initialize tensor x
-    batched_data["x"] = dict()
-    x_belonging = dict()
 
-    # Concat the tensors for the batch
-    for dimension in range(0, max_dimension+1):
-        batched_data["x"][dimension] = torch.cat(batched_features[dimension], dim=0)
-        signals_of_dim_belonging = [
-            torch.tensor([i] * len(batch[i].x[dimension]), dtype=torch.int64)
-            for i in range(len(batch))
-            if dimension in batch[i].x
-        ]
-        x_belonging[dimension] = torch.cat(signals_of_dim_belonging, dim=0)
+    # Initialize connectivity
+    batched_data['connectivity'] = defaultdict()
 
+    # Set x-s as a tuple
+    batched_data["x"] = [
+        torch.cat(batched_features[dimension], dim=0)
+        for dimension in range(0, max_dimension+1)
+    ]
+    
+    # Set belonging as a tuple
+    batched_data["x_belonging"] = [
+        torch.cat(batched_batch[dimension], dim=0)
+        for dimension in range(0, max_dimension+1)
+    ]
+
+    print(batched_data["x_belonging"][0].shape)
+
+
+    # Connectivity matrices at least can be referenced as dictionaries ....
     for connect_mat in connectivity_matrices:
-        batched_data[connect_mat] = torch.cat(batched_list_connectivities[connect_mat], dim=0)
+        batched_data['connectivity'][connect_mat] = torch.cat(batched_list_connectivities[connect_mat], dim=1)
 
     batched_data.y = torch.cat(batched_ys, dim=0)
 
     return batched_data
-
-def collate_pairwise_topox(batch: List[Data]):
-    batched_data = Data()
-    batched_data.batch_size = len(batch) * 2
-    collated_batch = collate_pairwise(batch)
-    batched_data.x_belonging = collated_batch.x_belonging
-    batched_data.x_batched = collated_batch.x
-
-    #Todo: Add correct connectivity matrices here
-    batched_data.connectivity = collated_batch.connectivity
-
-
-    batched_data.y = collated_batch.y
-
-    return batched_data
-
-
-
-def collate_simplicial_models_topox(batch):
-    batched_data = Data()
-    batched_data.batch_size = len(batch)
-    # First, batch signals
-    x_batched, x_belonging = collate_signals(batch)
-    batched_data.x = x_batched
-    batched_data.x_belonging = x_belonging
-    # Second, batch structure matrices
-    batched_data.connectivity = collate_connectivity_matrices(batch)
-    # Third, batch output
-    if len(batch[0].y.shape) == 0:
-        # We directly create the tensor because we have scalars.
-        batched_data.y = torch.tensor([example.y for example in batch])
-    else:
-        # We concatenate the tensors.
-        batched_data.y = torch.cat([example.y for example in batch], dim=0)
-    return batched_data
-
