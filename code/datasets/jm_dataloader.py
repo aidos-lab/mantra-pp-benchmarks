@@ -11,13 +11,6 @@ class JMDataLoader(DataLoader):
         kwargs = {k: v for k, v in kwargs.items() if k != "collate_fn"}
         super().__init__(dataset, collate_fn=collate_fn, **kwargs)
 
-class JMTopoXDataLoader(DataLoader):
-    """DataLoader for pairwise data with TopoX-style key mapping."""
-    def __init__(self, dataset, **kwargs):
-        collate_fn = kwargs.get("collate_fn", collate_pairwise_topox)
-        kwargs = {k: v for k, v in kwargs.items() if k != "collate_fn"}
-        super().__init__(dataset, collate_fn=collate_fn, **kwargs)
-
 def collate_pairwise(batch: List[Data]):
     connectivity_types = [
         'incidence',
