@@ -10,7 +10,7 @@ from pydantic import Discriminator, Field
 from pydantic_settings import BaseSettings
 
 from datasets.dataset_types import DatasetType
-from datasets.transforms import TransformType
+from datasets.transforms import TransformType, GraphRepresentationType
 from metrics.tasks import TaskType
 from models.models import ModelConfig
 from models.models import ModelType
@@ -39,6 +39,7 @@ class ConfigExperimentRun(BaseSettings):
     seed: int = 10
     ds_type: DatasetType = DatasetType.FULL_2D
     transforms: TransformType = TransformType.degree_transform_onehot
+    graph_representation: GraphRepresentationType = GraphRepresentationType.STANDARD
     use_stratified: bool = True
     logging: WandbConfig = WandbConfig()
     task_type: TaskType = TaskType.BETTI_NUMBERS
@@ -50,7 +51,8 @@ class ConfigExperimentRun(BaseSettings):
     )
 
     def get_identifier(self):
-        identifier = f"{self.ds_type.name.lower()}_{self.transforms.name.lower()}_{self.task_type.name.lower()}_{self.conf_model.type.name.lower()}_seed_{self.seed}"
+        graph_repr_str = f"_{self.graph_representation.value}" if self.graph_representation != GraphRepresentationType.STANDARD else ""
+        identifier = f"{self.ds_type.name.lower()}_{self.transforms.name.lower()}{graph_repr_str}_{self.task_type.name.lower()}_{self.conf_model.type.name.lower()}_seed_{self.seed}"
         return identifier
 
     def get_checkpoint_path(self, base_folder: str, run: Optional[int] = 0):

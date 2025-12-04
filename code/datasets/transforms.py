@@ -7,6 +7,10 @@ from torch_geometric.transforms import FaceToEdge, OneHotDegree
 from torch_geometric.utils import degree
 from torch_geometric.data import Data
 
+from mantra.representations.dual_graph import DualGraph
+from mantra.representations.one_skeleton import OneSkeleton
+
+
 from datasets.dataset_types import DatasetType
 from datasets.utils import (
     create_signals_on_data_if_needed,
@@ -311,6 +315,7 @@ name_transforms = [
 homeo_feature_transforms_2d = []
 homeo_feature_transforms_3d = []
 
+
 homeo_comp_transforms_2manifold = [
     Pairwise([
             SimplicialComplexTransform(),
@@ -361,6 +366,14 @@ random_simplices_features = [
 ]
 
 
+class GraphRepresentationType(Enum):
+    """Defines which graph structure to use for graph-based models."""
+    STANDARD = "standard"  # Face-to-edge graph from triangulation
+    DUAL_GRAPH = "dual_graph"  # Dual graph
+    ONE_SKELETON = "one_skeleton"  # 1-skeleton
+    HESSE_DIAGRAM = "hesse_diagram"  # Hesse diagram
+    AUGMENTED_HESSE = "augmented_hesse"  # Augmented Hesse diagram
+
 class TransformType(Enum):
     degree_transform = "degree_transform"
     degree_transform_onehot = "degree_transform_onehot"
@@ -399,8 +412,31 @@ homeo_feature_transform_3d: Dict[str, List[TransformType]] = {
     "homeo_comp": [TransformType.homeo_features_2d],
 }
 
+def graph_representation_lookup(
+    repr_type: GraphRepresentationType
+) -> List[Callable]:
+    """
+    Get the transform that builds the specified graph representation.
+
+    This transform should be applied BEFORE feature transforms for graph-based models.
+    It takes data with 'triangulation' and adds graph structure (edge_index, etc.).
+    """
+    _repr_lookup = {
+        GraphRepresentationType.STANDARD: [TriangulationToFaceTransform(), FaceToEdge(remove_faces=False)],
+        GraphRepresentationType.DUAL_GRAPH: [DualGraph()],
+        GraphRepresentationType.ONE_SKELETON: [OneSkeleton()],
+        GraphRepresentationType.HESSE_DIAGRAM: [
+            # Todo: implement proper Hesse diagram
+        ],
+        GraphRepresentationType.AUGMENTED_HESSE: [
+            # Todo: implement proper augmented Hesse diagram
+        ],
+    }
+    return _repr_lookup[repr_type]
+
 def transforms_lookup(
-    tr_type: TransformType, ds_type: DatasetType
+    tr_type: TransformType, ds_type: DatasetType,
+    graph_repr: GraphRepresentationType = GraphRepresentationType.STANDARD
 ) -> List[Callable]:
     _transforms_lookup = {
         TransformType.degree_transform: degree_transform,
@@ -415,14 +451,28 @@ def transforms_lookup(
     }
 
     tr = _transforms_lookup[tr_type]
-    if (
-        tr_type != TransformType.degree_transform_sc_2d
-        and tr_type != TransformType.random_simplices_features_2d
-        and tr_type != TransformType.degree_transform_sc_3d
-        and tr_type != TransformType.random_simplices_features_3d
-        and tr_type != TransformType.homeo_features_2d
-        and tr_type != TransformType.homeo_features_3d
-    ):
-        tr[0] = TriangulationToFaceTransform()
+
+    #Todo: this block needs to be reworked to allow homeomorphic distinction w/ graph models
+    # For graph-based transforms that need graph structure
+    is_graph_based_feature_transform = (
+        tr_type == TransformType.degree_transform
+        or tr_type == TransformType.degree_transform_onehot
+        or tr_type == TransformType.random_node_features
+    )
+
+    # For simplicial transforms, don't prepend anything
+    is_simplicial_transform = (
+        tr_type == TransformType.degree_transform_sc_2d
+        or tr_type == TransformType.random_simplices_features_2d
+        or tr_type == TransformType.degree_transform_sc_3d
+        or tr_type == TransformType.random_simplices_features_3d
+        or tr_type == TransformType.homeo_features_2d
+        or tr_type == TransformType.homeo_features_3d
+    )
+
+    if is_graph_based_feature_transform:
+        graph_repr_transforms = graph_representation_lookup(graph_repr)
+        feature_transforms = tr[1:] if len(tr) > 0 else [] # todo: is this correct?
+        return graph_repr_transforms + feature_transforms
 
     return tr

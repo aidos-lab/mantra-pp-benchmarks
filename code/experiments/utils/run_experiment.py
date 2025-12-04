@@ -37,7 +37,11 @@ def get_data_module(
     data_dir: str = "./data",
     number_of_barycentric_subdivisions: int = 0,
 ) -> SimplicialDataModule:
-    transforms = transforms_lookup(config.transforms, config.ds_type)
+    transforms = transforms_lookup(
+        config.transforms,
+        config.ds_type,
+        graph_repr=config.graph_representation
+    )
     # Hack: If we use the transformers, then we add the positional encodings
     if config.conf_model.type == ModelType.CELL_TRANSF:
         transforms.append(SimplicialComplexHodgeLapEigPETransform())
@@ -78,7 +82,11 @@ def get_setup(
     devices=None,
 ) -> Tuple[SimplicialDataModule, BaseModel, L.Trainer, WandbLogger]:
     run_id = str(uuid.uuid4())
-    transforms = transforms_lookup(config.transforms, config.ds_type)
+    transforms = transforms_lookup(
+        config.transforms,
+        config.ds_type,
+        graph_repr=config.graph_representation
+    )
     task_lookup: Dict[TaskType, Task] = get_task_lookup(
         transforms, ds_type=config.ds_type
     )
