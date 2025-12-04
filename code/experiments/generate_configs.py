@@ -295,46 +295,46 @@ for ds_type in dataset_types:
         else:
             # Simplicial models don't use graph representations
             graph_reprs = [GraphRepresentationType.STANDARD]  # if a simplex model is chosen -> revert to dummy transform
+        for seed in [41,42,43]:
+            for feature in features:
+                for graph_repr in graph_reprs:
+                    for task in tasks:
+                        dim_features = get_feature_dim(feature, model)
 
-        for feature in features:
-            for graph_repr in graph_reprs:
-                for task in tasks:
-                    dim_features = get_feature_dim(feature, model)
+                        out_channels = get_out_channels_dict(ds_type)[task]
+                        model_config = get_model_config(
+                            model, out_channels, dim_features
+                        )
+                        model_config_cls = model_cfg_lookup[model]
+                        trainer_config = TrainerConfig(
+                            accelerator="auto",
+                            max_epochs=max_epochs,
+                            log_every_n_steps=1,
+                        )
+                        config = ConfigExperimentRun(
+                            ds_type=ds_type,
+                            task_type=task,
+                            seed=seed,
+                            transforms=feature,
+                            graph_representation=graph_repr,
+                            use_stratified=(
+                                False if task == TaskType.BETTI_NUMBERS else True
+                            ),
+                            use_imbalance_weighting=use_imbalance_weights,
+                            learning_rate=lr,
+                            trainer_config=trainer_config,
+                            conf_model=model_config,
+                        )
 
-                    out_channels = get_out_channels_dict(ds_type)[task]
-                    model_config = get_model_config(
-                        model, out_channels, dim_features
-                    )
-                    model_config_cls = model_cfg_lookup[model]
-                    trainer_config = TrainerConfig(
-                        accelerator="auto",
-                        max_epochs=max_epochs,
-                        log_every_n_steps=1,
-                    )
-                    config = ConfigExperimentRun(
-                        ds_type=ds_type,
-                        task_type=task,
-                        seed=1234,
-                        transforms=feature,
-                        graph_representation=graph_repr,
-                        use_stratified=(
-                            False if task == TaskType.BETTI_NUMBERS else True
-                        ),
-                        use_imbalance_weighting=use_imbalance_weights,
-                        learning_rate=lr,
-                        trainer_config=trainer_config,
-                        conf_model=model_config,
-                    )
+                        json_string = config.model_dump_json()
 
-                    json_string = config.model_dump_json()
-
-                    python_dict = json.loads(json_string)
-                    yaml_string = yaml.dump(python_dict)
-                    config_identifier = config.get_identifier()
-                    yaml_file_path = os.path.join(
-                        config_dir,
-                        f"{config_identifier}.yaml",
-                    )
-                    with open(yaml_file_path, "w") as file:
-                        file.write(yaml_string)
+                        python_dict = json.loads(json_string)
+                        yaml_string = yaml.dump(python_dict)
+                        config_identifier = config.get_identifier()
+                        yaml_file_path = os.path.join(
+                            config_dir,
+                            f"{config_identifier}.yaml",
+                        )
+                        with open(yaml_file_path, "w") as file:
+                            file.write(yaml_string)
 # -----------------------------------------------------------------------------
