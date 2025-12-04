@@ -78,24 +78,22 @@ degree_transform_only: bool = args.degree_transform_only
 # DS TYPE ###
 dataset_types = [
     DatasetType.FULL_2D,
-    DatasetType.FULL_3D,
-    DatasetType.NO_NAMELESS_2D,
 ]
 # ###########
 
 # TASKS #####
-tasks_mantra2 = [TaskType.ORIENTABILITY, TaskType.NAME, TaskType.BETTI_NUMBERS]
+tasks_mantra2 = [TaskType.NAME]
 tasks_mantra3 = [TaskType.BETTI_NUMBERS, TaskType.ORIENTABILITY]
 # ###########
 
 # TRANSFORMS
 graph_features_degree = [
-    TransformType.degree_transform,
-    TransformType.degree_transform_onehot,
+    TransformType.degree_choose,
+    TransformType.moment_curve_embedding
 ]
 
 graph_features_random = [
-    TransformType.random_node_features,
+    #TransformType.random_node_features,
 ]
 
 if degree_transform_only and random_transform_only:
@@ -124,7 +122,7 @@ if random_transform_only:
     simplicial_features_3d = [TransformType.random_simplices_features_3d]
 
 graph_representations = [
-    GraphRepresentationType.STANDARD,
+    #GraphRepresentationType.STANDARD,
     GraphRepresentationType.DUAL_GRAPH,
     GraphRepresentationType.ONE_SKELETON,
     GraphRepresentationType.HESSE_DIAGRAM,  # TODO: implement
@@ -137,11 +135,10 @@ graph_representations = [
 # MODELS ####
 graph_models = {
     ModelType.GCN,
-    ModelType.GAT,
-    ModelType.MLP,
-    ModelType.TAG,
-    ModelType.TransfConv,
-    ModelType.DECT,
+    #ModelType.GAT,
+    #ModelType.MLP,
+    #ModelType.TAG,
+    #ModelType.DECT,
 }
 simplicial_models = {
     ModelType.SAN,
@@ -151,7 +148,7 @@ simplicial_models = {
     ModelType.CELL_TRANSF,
     ModelType.CELL_MP,
 }
-models = list(graph_models) + list(simplicial_models)
+models = list(graph_models) # + list(simplicial_models)
 # ###########
 
 # MISC ######
@@ -160,8 +157,10 @@ models = list(graph_models) + list(simplicial_models)
 def get_feature_dim(tr_type: TransformType, model_type: ModelType):
     feature_dim_dict = {
         TransformType.degree_transform: 1,
+        TransformType.degree_choose: 1,
         TransformType.degree_transform_onehot: 10,
         TransformType.random_node_features: 8,
+        TransformType.moment_curve_embedding: 5,
         TransformType.degree_transform_sc_2d: [1, 2, 1],
         TransformType.random_simplices_features_2d: [8, 8, 8],
         TransformType.degree_transform_sc_3d: [1, 2, 2, 1],
@@ -182,12 +181,12 @@ def get_feature_dim(tr_type: TransformType, model_type: ModelType):
 
 out_channels_dict_mantra2_full = {
     TaskType.ORIENTABILITY: 1,
-    TaskType.NAME: 5,
+    TaskType.NAME: 21,
     TaskType.BETTI_NUMBERS: 3,
 }
 out_channels_dict_mantra2_no_nameless = {
     TaskType.ORIENTABILITY: 1,
-    TaskType.NAME: 4,
+    TaskType.NAME: 21,
     TaskType.BETTI_NUMBERS: 3,
 }
 out_channels_dict_mantra3 = {

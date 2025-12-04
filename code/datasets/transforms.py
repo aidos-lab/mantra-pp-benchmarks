@@ -7,8 +7,9 @@ from torch_geometric.transforms import FaceToEdge, OneHotDegree
 from torch_geometric.utils import degree
 from torch_geometric.data import Data
 
-from mantra.representations.dual_graph import DualGraph
-from mantra.representations.one_skeleton import OneSkeleton
+from mantra.representations import DualGraph, OneSkeleton
+from mantra.transforms import MomentCurveEmbedding, CreateLabels
+from mantra.transforms.select_features  import SelectFeatures
 
 
 from datasets.dataset_types import DatasetType
@@ -25,7 +26,9 @@ from models.cells.transformer.positional_encodings.PositionalEncodings import (
     PositionalEncodingsType,
 )
 
-NAME_TO_CLASS = {"Klein bottle": 0, "RP^2": 1, "T^2": 2, "S^2": 3, "": 4}
+NAME_TO_CLASS = {"Klein bottle": 0, "RP^2": 1, "T^2": 2, "S^2": 3, "#^2 RP^2": 4, "#^3 RP^2": 5, "#^4 RP^2": 6, "#^5 RP^2": 7, "#^6 RP^2": 8, "#^7 RP^2": 9, "#^8 RP^2": 10,
+                 "#^3 T^2": 11, "#^9 RP^2": 12, "#^10 RP^2": 13, "#^4 T^2": 14
+                 }
 
 
 class SetNumNodesTransform:
@@ -56,7 +59,7 @@ class BettiToY3:
 class DegreeTransform:
     def __call__(self, data):
         deg = degree(data.edge_index[0], dtype=torch.float)
-        data.x = deg.view(-1, 1)
+        data.node_degree = deg.view(-1, 1)
         return data
 
 
@@ -299,6 +302,14 @@ degree_transform_onehot = [
     OneHotDegree(max_degree=9, cat=False),
 ]
 
+moment_curve_embedding = [
+    SelectFeatures("moment_curve_embedding", "x")
+]
+
+degree_choose = [
+    SelectFeatures("node_degree", "x")
+]
+
 degree_transform = [
     TriangulationToZeroIndexTransform(),
     FaceToEdge(remove_faces=False),
@@ -309,7 +320,7 @@ orientability_transforms = [
     OrientableToClassTransform(),
 ]
 name_transforms = [
-    NameToClassTransform(),
+    CreateLabels("name")
 ]
 
 homeo_feature_transforms_2d = []
@@ -376,6 +387,7 @@ class GraphRepresentationType(Enum):
 
 class TransformType(Enum):
     degree_transform = "degree_transform"
+    degree_choose = "degree_choose"
     degree_transform_onehot = "degree_transform_onehot"
     random_node_features = "random_node_features"
     degree_transform_sc_2d = "degree_transform_sc_2d"
@@ -384,14 +396,17 @@ class TransformType(Enum):
     random_simplices_features_3d = "random_simplices_features_3d"
     homeo_features_2d = "homeo_features_2d"
     homeo_features_3d = "homeo_features_3d"
+    moment_curve_embedding = "moment_curve_embedding"
 
 
 graphbased_transforms: Dict[str, List[TransformType]] = {
     "degree": [
         TransformType.degree_transform,
         TransformType.degree_transform_onehot,
+        TransformType.degree_choose
     ],
     "random": [TransformType.random_node_features],
+    "moment_curve_embedding": [TransformType.moment_curve_embedding] 
 }
 
 simplicial_transforms_2d: Dict[str, List[TransformType]] = {
@@ -423,8 +438,8 @@ def graph_representation_lookup(
     """
     _repr_lookup = {
         GraphRepresentationType.STANDARD: [TriangulationToFaceTransform(), FaceToEdge(remove_faces=False)],
-        GraphRepresentationType.DUAL_GRAPH: [DualGraph()],
-        GraphRepresentationType.ONE_SKELETON: [OneSkeleton()],
+        GraphRepresentationType.DUAL_GRAPH: [DualGraph(), MomentCurveEmbedding(), DegreeTransform()],
+        GraphRepresentationType.ONE_SKELETON: [OneSkeleton(), MomentCurveEmbedding(), DegreeTransform()],
         GraphRepresentationType.HESSE_DIAGRAM: [
             # Todo: implement proper Hesse diagram
         ],
@@ -440,6 +455,7 @@ def transforms_lookup(
 ) -> List[Callable]:
     _transforms_lookup = {
         TransformType.degree_transform: degree_transform,
+        TransformType.degree_choose: degree_choose,
         TransformType.degree_transform_onehot: degree_transform_onehot,
         TransformType.random_node_features: random_node_features,
         TransformType.degree_transform_sc_2d: degree_transform_sc_2d,
@@ -448,6 +464,7 @@ def transforms_lookup(
         TransformType.random_simplices_features_3d: random_simplices_features,
         TransformType.homeo_features_2d: homeo_feature_transforms_2d,
         TransformType.homeo_features_3d: homeo_feature_transforms_3d,
+        TransformType.moment_curve_embedding: moment_curve_embedding
     }
 
     tr = _transforms_lookup[tr_type]
@@ -458,6 +475,8 @@ def transforms_lookup(
         tr_type == TransformType.degree_transform
         or tr_type == TransformType.degree_transform_onehot
         or tr_type == TransformType.random_node_features
+        or tr_type == TransformType.moment_curve_embedding
+        or tr_type == TransformType.degree_choose
     )
 
     # For simplicial transforms, don't prepend anything
@@ -472,7 +491,6 @@ def transforms_lookup(
 
     if is_graph_based_feature_transform:
         graph_repr_transforms = graph_representation_lookup(graph_repr)
-        feature_transforms = tr[1:] if len(tr) > 0 else [] # todo: is this correct?
-        return graph_repr_transforms + feature_transforms
+        return graph_repr_transforms + tr
 
     return tr

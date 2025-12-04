@@ -4,6 +4,8 @@ from pydantic import BaseModel
 from torch import nn
 
 from models.simplicial_complexes.scnn_custom import SCCNNCustom
+from torch_geometric.utils import to_dense_adj, to_undirected
+from torch_geometric import EdgeIndex
 from .readouts.SumReadout import SumReadout
 from ..model_types import ModelType
 
@@ -50,6 +52,7 @@ class SCCNN(nn.Module):
 
     def __init__(self, config: SCCNNConfig):
         super().__init__()
+        self.sc_order = config.sc_order
         self.sccnn_backbone = SCCNNCustom(
             config.in_channels,
             config.hidden_channels_all,
@@ -80,21 +83,35 @@ class SCCNN(nn.Module):
             x_belonging[2],
         )
         x_all = (x_0, x_1, x_2)
-        laplacian_all = (
-            connectivity_matrices["hodge_laplacian_0"],
-            connectivity_matrices["down_laplacian_1"],
-            connectivity_matrices["up_laplacian_1"],
-            connectivity_matrices["down_laplacian_2"],
-            connectivity_matrices["up_laplacian_2"],
-        )
+
+        if self.sc_order > 2:
+            laplacian_all = (
+                connectivity_matrices["hodge_laplacian_0"],
+                connectivity_matrices["down_laplacian_1"],
+                connectivity_matrices["up_laplacian_1"],
+                connectivity_matrices["down_laplacian_2"],
+                connectivity_matrices["up_laplacian_2"],
+            )
+        else:
+            laplacian_all = (
+                connectivity_matrices["hodge_laplacian_0"],
+                connectivity_matrices["down_laplacian_1"],
+                connectivity_matrices["up_laplacian_1"],
+                connectivity_matrices["hodge_laplacian_2"],
+            )
+
         incidence_all = (
             connectivity_matrices["incidence_1"],
             connectivity_matrices["incidence_2"],
         )
 
+        laplacian_all = tuple([EdgeIndex(c).to_sparse() for c in laplacian_all])
+        incidence_all = tuple([EdgeIndex(c).to_sparse() for c in incidence_all])
+
         x_0, x_1, x_2 = self.sccnn_backbone(
             x_all, laplacian_all, incidence_all
         )
+
         out_0 = self.readout_0(x_0, x_bel_0)
         out_1 = self.readout_1(x_1, x_bel_1)
         out_2 = self.readout_2(x_2, x_bel_2)

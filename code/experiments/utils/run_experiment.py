@@ -153,7 +153,7 @@ def get_setup(
         log_every_n_steps=config.trainer_config.log_every_n_steps,
         fast_dev_run=False,
         default_root_dir=data_dir,
-        devices=devices,
+        #devices=devices,
         strategy="ddp_find_unused_parameters_true",
     )
 

@@ -99,9 +99,9 @@ def get_orientability_metrics(ds_type: DatasetType):
 
 def get_name_metrics(ds_type: DatasetType):
     if ds_type == DatasetType.FULL_2D:
-        num_classes = 5
+        num_classes = 21
     elif ds_type == DatasetType.NO_NAMELESS_2D:
-        num_classes = 4
+        num_classes = 21
     elif ds_type == DatasetType.FULL_3D:
         raise ValueError("name task not allowed on 3 manifolds")
     else:

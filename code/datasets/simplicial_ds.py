@@ -2,7 +2,7 @@ import os
 from typing import Literal, Tuple
 
 import torch
-from mantra.datasets import ManifoldTriangulations
+from mantra.datasets.base import ManifoldTriangulations
 from sklearn.model_selection import train_test_split
 from torch_geometric.data import InMemoryDataset
 from torch_geometric.transforms import Compose
@@ -47,7 +47,7 @@ class SimplicialDS(InMemoryDataset):
         use_stratified: bool = True,
         task_type: TaskType = TaskType.ORIENTABILITY,
         mode: Mode = "train",
-        manifold="2",
+        manifold=2,
         version="latest",
         transform=None,
         pre_transform=None,
@@ -92,7 +92,7 @@ class SimplicialDS(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        if self.manifold == "2":
+        if self.manifold == 2:
             f_names = [
                 self._data_filename(task_type, mode)
                 for task_type in TaskType
@@ -114,15 +114,17 @@ class SimplicialDS(InMemoryDataset):
         indices = range(self.raw_simplicial_ds.len())
 
         for task_type in TaskType:
+            if task_type != TaskType.NAME:
+                continue
 
             # no name classification on 3 manifolds
-            if self.manifold == "3" and (task_type == TaskType.NAME):
+            if self.manifold == 3 and (task_type == TaskType.NAME):
                 continue
 
             # apply class transform
             class_transforms_lookup = (
                 class_transforms_lookup_3manifold
-                if self.manifold == "3"
+                if self.manifold == 3
                 else class_transforms_lookup_2manifold
             )
             class_transform = Compose(class_transforms_lookup[task_type])

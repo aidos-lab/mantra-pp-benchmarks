@@ -66,13 +66,13 @@ class SimplicialDataModule(LightningDataModule):
 
     def get_ds(self, mode: str = "train") -> SimplicialDS:
         if self.ds_type == DatasetType.FULL_2D:
-            manifold = "2"
+            manifold = 2
             pre_filter = None
         elif self.ds_type == DatasetType.FULL_3D:
-            manifold = "3"
+            manifold = 3
             pre_filter = None
         elif self.ds_type == DatasetType.NO_NAMELESS_2D:
-            manifold = "2"
+            manifold = 2
             pre_filter = filter_nameless
         else:
             raise ValueError(f"Unknown dataset type {self.ds_type}")
