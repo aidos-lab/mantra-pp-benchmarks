@@ -27,7 +27,7 @@ def run_configs_folder(
     results = ResultCollection()
 
     for file in files:
-        for i in range(5):
+        for i in range(1):
             config_file = os.path.join(config_dir, file)
             config = load_config(config_file)
 

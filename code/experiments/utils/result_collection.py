@@ -51,7 +51,7 @@ class ResultCollection:
 
     def save(self, t_file_prefix: str = "res"):
 
-        for task_type in TaskType:
+        for task_type in [TaskType.NAME]: # todo: debug only
             t_file = f"{t_file_prefix}_{task_type.name.lower()}.csv"
 
             data = []
