@@ -7,7 +7,7 @@ from torch_geometric.transforms import FaceToEdge, OneHotDegree
 from torch_geometric.utils import degree
 from torch_geometric.data import Data
 
-from mantra.representations import DualGraph, OneSkeleton
+from mantra.representations import DualGraph, OneSkeleton, HasseDiagram
 from mantra.transforms import MomentCurveEmbedding, CreateLabels
 from mantra.transforms.select_features  import SelectFeatures
 from mantra.transforms.select_attributes import SelectAttributes
@@ -383,8 +383,8 @@ class GraphRepresentationType(Enum):
     STANDARD = "standard"  # Face-to-edge graph from triangulation
     DUAL_GRAPH = "dual_graph"  # Dual graph
     ONE_SKELETON = "one_skeleton"  # 1-skeleton
-    HESSE_DIAGRAM = "hesse_diagram"  # Hesse diagram
-    AUGMENTED_HESSE = "augmented_hesse"  # Augmented Hesse diagram
+    HASSE_DIAGRAM = "hasse_diagram"  # Hasse diagram
+    AUGMENTED_HASSE = "augmented_hasse"  # Augmented Hasse diagram
 
 class TransformType(Enum):
     degree_transform = "degree_transform"
@@ -441,11 +441,12 @@ def graph_representation_lookup(
         GraphRepresentationType.STANDARD: [TriangulationToFaceTransform(), FaceToEdge(remove_faces=False)],
         GraphRepresentationType.DUAL_GRAPH: [DualGraph(), MomentCurveEmbedding(),  DegreeTransform() ],
         GraphRepresentationType.ONE_SKELETON: [OneSkeleton(), MomentCurveEmbedding(), DegreeTransform()],
-        GraphRepresentationType.HESSE_DIAGRAM: [
-            # Todo: implement proper Hesse diagram
+        GraphRepresentationType.HASSE_DIAGRAM: [HasseDiagram(),
+            MomentCurveEmbedding(),
+            DegreeTransform()
         ],
-        GraphRepresentationType.AUGMENTED_HESSE: [
-            # Todo: implement proper augmented Hesse diagram
+        GraphRepresentationType.AUGMENTED_HASSE: [
+            # Todo: implement proper augmented Hasse diagram
         ],
     }
     return _repr_lookup[repr_type]
