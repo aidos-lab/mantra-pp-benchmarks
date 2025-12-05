@@ -10,6 +10,7 @@ from torch_geometric.data import Data
 from mantra.representations import DualGraph, OneSkeleton
 from mantra.transforms import MomentCurveEmbedding, CreateLabels
 from mantra.transforms.select_features  import SelectFeatures
+from mantra.transforms.select_attributes import SelectAttributes
 
 
 from datasets.dataset_types import DatasetType
@@ -33,7 +34,7 @@ NAME_TO_CLASS = {"Klein bottle": 0, "RP^2": 1, "T^2": 2, "S^2": 3, "#^2 RP^2": 4
 
 class SetNumNodesTransform:
     def __call__(self, data):
-        data.num_nodes = data.n_vertices
+        data.num_nodes = torch.tensor([data.n_vertices]).unsqueeze(0)
         return data
 
 
@@ -438,7 +439,7 @@ def graph_representation_lookup(
     """
     _repr_lookup = {
         GraphRepresentationType.STANDARD: [TriangulationToFaceTransform(), FaceToEdge(remove_faces=False)],
-        GraphRepresentationType.DUAL_GRAPH: [DualGraph(), MomentCurveEmbedding(), DegreeTransform()],
+        GraphRepresentationType.DUAL_GRAPH: [DualGraph(), MomentCurveEmbedding(),  DegreeTransform() ],
         GraphRepresentationType.ONE_SKELETON: [OneSkeleton(), MomentCurveEmbedding(), DegreeTransform()],
         GraphRepresentationType.HESSE_DIAGRAM: [
             # Todo: implement proper Hesse diagram

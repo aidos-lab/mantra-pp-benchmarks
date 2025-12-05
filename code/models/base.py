@@ -56,6 +56,7 @@ class BaseModel(L.LightningModule):
                 "Batch object does not have a known way to compute batch size."
             )
 
+    
         # Generalizing to accomodate for the different signatures.
         x_hat = self(batch)
         # Squeeze x_hat to match the shape of y
