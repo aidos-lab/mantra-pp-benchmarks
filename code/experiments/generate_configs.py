@@ -125,8 +125,8 @@ graph_representations = [
     #GraphRepresentationType.STANDARD,
     GraphRepresentationType.DUAL_GRAPH,
     GraphRepresentationType.ONE_SKELETON,
-    GraphRepresentationType.HESSE_DIAGRAM,  # TODO: implement
-    GraphRepresentationType.AUGMENTED_HESSE,  # TODO: implement
+    GraphRepresentationType.HASSE_DIAGRAM,
+    GraphRepresentationType.AUGMENTED_HASSE,
 ]
 
 
