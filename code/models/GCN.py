@@ -12,8 +12,8 @@ from .model_types import ModelType
 
 class GCNConfig(BaseModel):
     type: ModelType = ModelType.GCN
-    hidden_channels: int = 64
-    num_hidden_layers: int = 3
+    hidden_channels: int = 256
+    num_hidden_layers: int = 5
     num_node_features: int = 1
     out_channels: int = 5
 

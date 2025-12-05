@@ -14,6 +14,7 @@ def get_wandb_logger(
     node_features: str = None,
     run_id: str = None,
     project_id: str = "mantra-dev",
+    **kwargs
 ):
     wandb_logger = WandbLogger(project=project_id, save_dir=save_dir)
     return wandb_logger
@@ -27,6 +28,7 @@ def update_wandb_logger(
     node_features: str = None,
     run_id: str = None,
     project_id: str = "mantra-dev",
+    **kwargs
 ):
     wandb_logger.experiment.config["task"] = task_name.lower()
     wandb_logger.experiment.config["run_id"] = run_id
@@ -34,3 +36,6 @@ def update_wandb_logger(
 
     if model_name is not None:
         wandb_logger.experiment.config["model_name"] = model_name
+
+    for k,v in kwargs:
+        wandb_logger.experiment.config[k]== v

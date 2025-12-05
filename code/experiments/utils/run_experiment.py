@@ -71,6 +71,7 @@ def get_data_module(
             seed=config.seed,
             dataloader_builder=dataloader_lookup_pairwise[config.conf_model.type],
             num_barycentric_subdivisions=number_of_barycentric_subdivisions,
+            debug=True
         )
     return dm
 
@@ -142,6 +143,8 @@ def get_setup(
             node_features=config.transforms.name,
             run_id=run_id,
             project_id=config.logging.wandb_project_id,
+            seed=config.seed,
+            graph_representation=config.graph_representation.name,
         )
     else:
         logger = True
