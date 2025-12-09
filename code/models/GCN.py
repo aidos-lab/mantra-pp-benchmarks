@@ -5,7 +5,7 @@ Implementation for Graph Convolutional Neural Network.
 import torch.nn.functional as F
 from pydantic import BaseModel
 from torch import nn
-from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.nn import GCNConv, global_mean_pool, GCN2Conv
 
 from .model_types import ModelType
 
@@ -16,7 +16,40 @@ class GCNConfig(BaseModel):
     num_hidden_layers: int = 5
     num_node_features: int = 1
     out_channels: int = 5
+    batch_norm: bool = True
+    residuals: bool = True
 
+
+class GCNLayer(nn.Module):
+    def __init__(self, in_dim, out_dim, batch_norm, residual):
+        super().__init__()
+        self.in_channels = in_dim
+        self.out_channels = out_dim
+        self.batch_norm = batch_norm
+        self.residual = residual
+
+        if in_dim != out_dim:
+            self.residual = False
+
+        self.batchnorm_h = nn.BatchNorm1d(out_dim)
+        self.conv = GCNConv(in_dim, out_dim, add_self_loops=False, normalize=True)
+
+    def forward(self, x, edge_index):
+        h_in = x # Saving the residual
+
+        # Actual convolution
+        h = self.conv(x = x, edge_index = edge_index)
+
+        # Batch normalization before activation
+        if self.batch_norm:
+            h = self.batchnorm_h(h)
+
+        h = F.relu(h)
+
+        # Applying residual after activation
+        if self.residual:
+            h = h_in + h
+        return h
 
 class GCN(nn.Module):
     def __init__(self, config: GCNConfig):
@@ -27,7 +60,7 @@ class GCN(nn.Module):
         )
         self.hidden_layers = nn.ModuleList(
             [
-                GCNConv(config.hidden_channels, config.hidden_channels)
+                GCNLayer(config.hidden_channels, config.hidden_channels, config.batch_norm, config.residuals)
                 for _ in range(config.num_hidden_layers)
             ]
         )
@@ -41,6 +74,7 @@ class GCN(nn.Module):
         x = self.conv_input(x, edge_index)
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
+
         # 2. Readout layer
         x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]
         # 3. Apply a final classifier

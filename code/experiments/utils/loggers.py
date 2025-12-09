@@ -37,5 +37,5 @@ def update_wandb_logger(
     if model_name is not None:
         wandb_logger.experiment.config["model_name"] = model_name
 
-    for k,v in kwargs:
-        wandb_logger.experiment.config[k]== v
+    for k,v in kwargs.items():
+        wandb_logger.experiment.config[k] = v

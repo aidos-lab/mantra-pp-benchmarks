@@ -132,7 +132,7 @@ def get_setup(
             accuracies_fn=task_lookup[config.task_type].accuracies,
             loss_fn=task_lookup[config.task_type].loss_fn,
             learning_rate=config.learning_rate,
-            imbalance=imbalance,
+            imbalance=imbalance
         )
 
     if use_logger:
@@ -161,6 +161,12 @@ def get_setup(
     )
 
     if use_logger and trainer.global_rank == 0:
+        model_dict = config.conf_model.model_dump()
+
+        model_config = {
+            key: model_dict[key]
+            for key in model_dict.keys() 
+        }
         update_wandb_logger(
             logger,
             task_name=config.task_type.name,
@@ -168,7 +174,8 @@ def get_setup(
             node_features=config.transforms.name,
             run_id=run_id,
             project_id=config.logging.wandb_project_id,
-            graph_representation=config.graph_representation
+            graph_representation=config.graph_representation.name,
+            **model_config
         )
 
     return dm, lit_model, trainer, logger
