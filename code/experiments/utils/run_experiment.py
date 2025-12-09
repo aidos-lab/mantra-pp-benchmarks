@@ -168,6 +168,7 @@ def get_setup(
             node_features=config.transforms.name,
             run_id=run_id,
             project_id=config.logging.wandb_project_id,
+            graph_representation=config.graph_representation
         )
 
     return dm, lit_model, trainer, logger
