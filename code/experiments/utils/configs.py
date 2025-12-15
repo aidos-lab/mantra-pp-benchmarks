@@ -52,7 +52,7 @@ class ConfigExperimentRun(BaseSettings):
 
     def get_identifier(self):
         graph_repr_str = f"_{self.graph_representation.value}" if self.graph_representation != GraphRepresentationType.STANDARD else ""
-        identifier = f"{self.ds_type.name.lower()}_{self.transforms.name.lower()}{graph_repr_str}_{self.task_type.name.lower()}_{self.conf_model.type.name.lower()}_seed_{self.seed}"
+        identifier = f"{self.ds_type.name.lower()}_{self.transforms.name.lower()}{graph_repr_str}_{self.task_type.name.lower()}_{self.conf_model.type.name.lower()}"
         return identifier
 
     def get_checkpoint_path(self, base_folder: str, run: Optional[int] = 0):

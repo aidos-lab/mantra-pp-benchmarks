@@ -53,6 +53,7 @@ def get_data_module(
 
     if config.task_type != TaskType.HOMEOMORPHIC_DIST:
         dm = SimplicialDataModule(
+            name=f"{str(config.graph_representation)}_{str(config.transforms)}",
             ds_type=config.ds_type,
             data_dir=data_dir,
             transform=dataset_transforms,

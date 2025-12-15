@@ -18,6 +18,7 @@ def print_info(config: ConfigExperimentRun):
 
 def run_configs_folder(
     args_dict: Dict[str, Any],
+    seed: int,
     checkpoint_folder: Optional[str] = None,
     data_dir: str = "./data",
     config_dir: str = "./configs",
@@ -30,6 +31,7 @@ def run_configs_folder(
         for i in range(1):
             config_file = os.path.join(config_dir, file)
             config = load_config(config_file)
+            config.seed = seed
 
             print("[INFO] Using configuration file:", config_file)
             print_info(config)
@@ -76,6 +78,12 @@ if __name__ == "__main__":
         help="'all' for running all configurations in the ./configs folder, or 'single' for running a single model.",
     )
     parser.add_argument(
+        "--preprocess",
+        type=bool,
+        default=False,
+        help="'Preprocessing step only runs one to precompute the dataset",
+    )
+    parser.add_argument(
         "--config",
         type=str,
         default="./config.yaml",
@@ -109,15 +117,24 @@ if __name__ == "__main__":
         help="List of GPU IDs to use.",
         default=[0],
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        required=True,
+        help="Seed to use.",
+    )
 
     args = parser.parse_args()
     args_dict = vars(args)
     data_dir: str = args.data
     devices: List[int] = args.devices
+    seed: int = args.seed
+    preproc: bool = args.preprocess
 
     if args_dict["mode"] == "all":
         run_configs_folder(
             args_dict,
+            seed,
             checkpoint_folder=args_dict["checkpoints"],
             config_dir=args_dict["Configs"],
             data_dir=data_dir,
@@ -128,6 +145,10 @@ if __name__ == "__main__":
     if args_dict["mode"] == "single":
         config = load_config(args_dict["config"])
         config.logging.wandb_project_id = args_dict["wandb"]
+        print("Loading preproc dataset...")
+        if preproc:
+            config.trainer_config.max_epochs=3
+            logging=None
         print_info(config)
         config_path = None
         if args_dict["checkpoints"]:

@@ -247,7 +247,7 @@ class RandomNodeFeatures:
         self.size = size
 
     def __call__(self, data):
-        data.x = torch.normal(0, 1, size=(data.num_nodes, self.size))
+        data.random_node = torch.normal(0, 1, size=(data.num_nodes, self.size))
         return data
 
 
@@ -292,9 +292,7 @@ class Pairwise:
         return data_final
 
 random_node_features = [
-    TriangulationToZeroIndexTransform(),
-    FaceToEdge(remove_faces=False),
-    RandomNodeFeatures(size=8),
+    SelectFeatures("random_node", "x")
 ]
 
 degree_transform_onehot = [
@@ -439,10 +437,21 @@ def graph_representation_lookup(
     """
     _repr_lookup = {
         GraphRepresentationType.STANDARD: [TriangulationToFaceTransform(), FaceToEdge(remove_faces=False)],
-        GraphRepresentationType.DUAL_GRAPH: [DualGraph(), MomentCurveEmbedding(),  DegreeTransform() ],
-        GraphRepresentationType.ONE_SKELETON: [OneSkeleton(), MomentCurveEmbedding(), DegreeTransform()],
+        GraphRepresentationType.DUAL_GRAPH: [
+            DualGraph(),
+            MomentCurveEmbedding(),
+            DegreeTransform(),
+            RandomNodeFeatures(size=8)
+        ],
+        GraphRepresentationType.ONE_SKELETON: [
+            OneSkeleton(),
+            MomentCurveEmbedding(),
+            DegreeTransform(),
+            RandomNodeFeatures(size=8)
+        ],
         GraphRepresentationType.HASSE_DIAGRAM: [HasseDiagram(),
             MomentCurveEmbedding(),
+            RandomNodeFeatures(size=8),
             DegreeTransform()
         ],
         GraphRepresentationType.AUGMENTED_HASSE: [
@@ -493,6 +502,9 @@ def transforms_lookup(
 
     if is_graph_based_feature_transform:
         graph_repr_transforms = graph_representation_lookup(graph_repr)
-        return graph_repr_transforms + tr
+        tr = graph_repr_transforms + tr
+
+    if ds_type in [DatasetType.PAIRWISE_HOMEO_2D, DatasetType.PAIRWISE_HOMEO_3D]:
+        return [Pairwise(tr)]
 
     return tr

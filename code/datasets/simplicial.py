@@ -43,6 +43,7 @@ class SimplicialDataModule(LightningDataModule):
         dataloader_builder: Callable = DataLoaderGeometric,
         ds_type: DatasetType = DatasetType.FULL_2D,
         num_barycentric_subdivisions: int = 0,
+        name = None
     ):
         super().__init__()
         self.ds_type = ds_type
@@ -56,6 +57,7 @@ class SimplicialDataModule(LightningDataModule):
         self.dataloader_builder = dataloader_builder
         self.split = [0.6, 0.2, 0.2]
         self.num_barycentric_subdivisions = num_barycentric_subdivisions
+        self.name=name
 
     def get_ds_root_dir(self) -> str:
         return os.path.join(
@@ -77,6 +79,7 @@ class SimplicialDataModule(LightningDataModule):
         else:
             raise ValueError(f"Unknown dataset type {self.ds_type}")
 
+        # NOTE: This is commented out
         barycentric_subdivision_pre_tr = (
             barycentric_subdivision_transform(
                 self.num_barycentric_subdivisions
@@ -86,6 +89,7 @@ class SimplicialDataModule(LightningDataModule):
         )
 
         return SimplicialDS(
+            name=self.name,
             root=self.get_ds_root_dir(),
             manifold=manifold,
             split=self.split,
@@ -93,8 +97,7 @@ class SimplicialDataModule(LightningDataModule):
             mode=mode,
             use_stratified=self.use_stratified,
             task_type=self.task_type,
-            transform=self.transform,
-            pre_transform=barycentric_subdivision_pre_tr,
+            pre_transform=self.transform,
             pre_filter=pre_filter,
         )
 

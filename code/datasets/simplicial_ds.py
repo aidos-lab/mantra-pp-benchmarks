@@ -52,20 +52,22 @@ class SimplicialDS(InMemoryDataset):
         transform=None,
         pre_transform=None,
         pre_filter=None,
+        name=None
     ):
         self.manifold = manifold
         self.task_type = task_type
         self.split = mode
         self.split_config = SplitConfig(split, seed, use_stratified)
         self.raw_simplicial_ds = ManifoldTriangulations(
-            os.path.join(root, "raw_simplicial"),
-            manifold,
-            version,
-            None,
+            name=name, 
+            root=os.path.join(root, "raw_simplicial"),
+            dimension=manifold,
+            version=version,
+            transform=transform,
             pre_transform=pre_transform,
             pre_filter=pre_filter,
         )
-        super().__init__(root, transform=transform)
+        super().__init__(root)
 
         self.load(self._get_processed_path(task_type, mode))
 
