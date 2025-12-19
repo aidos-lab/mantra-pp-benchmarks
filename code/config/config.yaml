@@ -1,0 +1,13 @@
+defaults:
+  - _self_
+  - logger: wandb
+  - model: gcn
+  - dataset: dataset.yaml
+  - transforms@dataset.transforms.create_label: create_labels
+
+dataset:
+  transform_order:
+    - create_labels
+train: True
+seed: 42
+

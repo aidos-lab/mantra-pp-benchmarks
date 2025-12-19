@@ -81,3 +81,34 @@ class GCN(nn.Module):
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.final_linear(x)
         return x
+
+class GCNHydra(nn.Module):
+    def __init__(self, hidden_channels, out_channels, num_node_features, layers: int, residuals: bool, batch_norm: bool):
+        super().__init__()
+
+        self.conv_input = GCNConv(
+            num_node_features, hidden_channels
+        )
+        self.hidden_layers = nn.ModuleList(
+            [
+                GCNLayer(hidden_channels, hidden_channels, batch_norm, residuals)
+                for _ in range(layers)
+            ]
+        )
+        self.final_linear = nn.Linear(
+            hidden_channels, out_channels
+        )
+
+    def forward(self, batch):
+        x, edge_index, batch = batch.x, batch.edge_index, batch.batch
+        # 1. Obtain node embeddings
+        x = self.conv_input(x, edge_index)
+        for layer in self.hidden_layers:
+            x = layer(x, edge_index)
+
+        # 2. Readout layer
+        x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]
+        # 3. Apply a final classifier
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.final_linear(x)
+        return x
