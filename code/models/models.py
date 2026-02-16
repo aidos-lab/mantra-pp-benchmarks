@@ -12,7 +12,6 @@ from datasets.topox_dataloader import SimplicialTopoXDataloader
 from datasets.cell_dataloader import CellDataloader
 from datasets.jm_dataloader import JMDataLoader
 from models.GCN import GCN, GCNConfig
-from datasets.transformer_dataloader import TransformerDataloader
 from models.GAT import GAT, GATConfig
 from models.MLP import MLP, MLPConfig
 from models.DECT import DECTMLP, DECTConfig
@@ -24,7 +23,6 @@ from models.simplicial_complexes.sccn import SCCN, SCCNConfig
 from models.simplicial_complexes.sccnn import SCCNN, SCCNNConfig
 from models.simplicial_complexes.scn import SCN, SCNConfig
 from models.cells.mp.cin0 import CIN0, CellMPConfig, SparseCIN
-from models.cells.transformer.CellularTransformer import CellularTransformerConfig
 from .model_types import ModelType
 
 model_lookup: Dict[ModelType, nn.Module] = {
@@ -46,7 +44,6 @@ ModelConfig = Union[
     Annotated[MLPConfig, Tag(ModelType.MLP)],
     Annotated[GATConfig, Tag(ModelType.GAT)],
     Annotated[GCNConfig, Tag(ModelType.GCN)],
-    Annotated[CellularTransformerConfig, Tag(ModelType.CELL_TRANSF)],
     Annotated[TAGConfig, Tag(ModelType.TAG)],
     Annotated[SANConfig, Tag(ModelType.SAN)],
     Annotated[SCCNConfig, Tag(ModelType.SCCN)],
@@ -65,7 +62,6 @@ model_cfg_lookup: Dict[ModelType, ModelConfig] = {
     ModelType.SCCN: SCCNConfig,
     ModelType.SCCNN: SCCNNConfig,
     ModelType.SCN: SCNConfig,
-    ModelType.CELL_TRANSF: TransfConvConfig,
     ModelType.CELL_MP: CellMPConfig,
 }
 
@@ -81,7 +77,6 @@ dataloader_lookup: Dict[ModelType, Callable] = {
     ModelType.SCCNN: SimplicialTopoXDataloader,
     ModelType.SCN: SimplicialTopoXDataloader,
     ModelType.CELL_TRANSF: DataLoader,
-    ModelType.CELL_TRANSF: TransformerDataloader,
 }
 
 dataloader_lookup_pairwise: Dict[ModelType, Callable | None] = {
@@ -96,6 +91,5 @@ dataloader_lookup_pairwise: Dict[ModelType, Callable | None] = {
     ModelType.SCCNN: JMDataLoader,
     ModelType.SCN: JMDataLoader,
     ModelType.CELL_MP: JMDataLoader,
-    ModelType.CELL_TRANSF: JMDataLoader,
 }
 

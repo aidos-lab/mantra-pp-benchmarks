@@ -1,0 +1,6 @@
+name: Base
+imbalanced: False
+loss: cross_entropy
+metrics: 
+  - accuracy
+  - f1

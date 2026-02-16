@@ -1,0 +1,2 @@
+__target__: src.metrics.loss.CrossEntropy
+name: CrossEntropy

@@ -6,7 +6,6 @@ train_parameters:
     train: 0.6
     val: 0.2
     test: 0.2
-target: name
 
-transforms: {}
+transform: {}
 transform_order: []

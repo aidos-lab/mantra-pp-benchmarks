@@ -1,7 +1,6 @@
 import numpy as np
 import scipy
 import torch
-from dgl.sparse import SparseMatrix, val_like
 from toponetx import SimplicialComplex, CellComplex
 
 from CellComplexCombinatorics import hodge_laplacian_matrix
@@ -53,8 +52,6 @@ def recursive_barycentric_subdivision(
     return Sd_K
 
 
-def sparse_abs(M: SparseMatrix) -> SparseMatrix:
-    return val_like(M, torch.abs(M.val))
 
 
 def eigenvectors_smallest_k_eigenvalues(L, k):

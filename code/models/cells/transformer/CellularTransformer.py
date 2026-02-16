@@ -5,7 +5,6 @@ import torch
 from jaxtyping import Float, Int
 from pydantic import BaseModel
 from torch import nn
-from dgl.sparse import SparseMatrix, spmatrix
 
 from math_utils import sparse_abs
 from ...model_types import ModelType

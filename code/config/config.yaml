@@ -2,8 +2,10 @@ defaults:
   - _self_
   - logger: wandb
   - model: gcn
-  - dataset: dataset.yaml
-  - transforms@dataset.transforms.create_label: create_labels
+  - dataset: dataset
+  - transform@dataset.transform.create_labels: create_labels
+  - task: betti_numbers
+  - trainer: default
 
 dataset:
   transform_order:

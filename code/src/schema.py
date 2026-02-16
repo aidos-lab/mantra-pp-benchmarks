@@ -4,9 +4,27 @@ from typing import Dict, List, Any
 
 
 @dataclass
+class TrainerMeta:
+    learning_rate: float
+    weight_decay: float
+    max_epoch: int
+    early_stopping: int
+@dataclass
+class MetricMeta:
+    name: str
+
+@dataclass
+class LossMeta:
+    name: str
+@dataclass
+class TaskMeta:
+    name: str
+    loss: LossMeta
+    imbalanced: bool = False
+    metrics: List[MetricMeta] = field(default_factory=list)
+@dataclass
 class TransformMeta:
     _target_: str
-
 
 @dataclass
 class DatasetMeta:
@@ -31,14 +49,16 @@ class ModelMeta:
 
 @dataclass
 class LoggerMeta:
-    name: str = "wandb"
-
+    name: str
+    project: str
 
 @dataclass
 class RootConfig:
     logger: LoggerMeta
     dataset: DatasetMeta
     model: ModelMeta
+    task: TaskMeta
+    trainer: TrainerMeta
 
     train: bool = True
     seed: int = 42
