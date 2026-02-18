@@ -1,9 +1,9 @@
 _target_: models.GCN.GCNHydra
 
-hidden_channels: 256
-layers: 5
+hidden_channels: 64
+layers: 3
 num_node_features: 5 # Get from dataset
-out_channels: 5 # Get from dataset
+out_channels: 1 # Get from dataset
 batch_norm: True
 residuals: True
 

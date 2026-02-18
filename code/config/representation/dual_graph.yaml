@@ -1,0 +1,2 @@
+# @package transform
+_target_: mantra.representations.DualGraph

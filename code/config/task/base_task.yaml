@@ -1,6 +1,4 @@
 name: Base
 imbalanced: False
-loss: cross_entropy
-metrics: 
-  - accuracy
-  - f1
+task_type: classification # classification / regression
+metrics: {}

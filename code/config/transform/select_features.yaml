@@ -1,0 +1,4 @@
+_target_: mantra.transforms.select_features.SelectFeatures
+src: moment_curve_embedding
+dst: x
+representation: graph

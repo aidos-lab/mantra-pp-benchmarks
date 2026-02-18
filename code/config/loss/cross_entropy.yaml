@@ -1,2 +1,2 @@
-__target__: src.metrics.loss.CrossEntropy
-name: CrossEntropy
+# @package task.loss
+_target_: torch.nn.CrossEntropyLoss

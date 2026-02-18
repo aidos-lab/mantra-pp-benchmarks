@@ -1,9 +1,8 @@
 import wandb
 
-def log_metric(name, value, job_type, epoch, step, cfg):
-    with wandb.init(project=cfg.logger.project, job_type=job_type) as run:
+def log_metrics(metrics, epoch, step, run, cfg):
         run.log({
             "epoch": epoch,
             "step": step,
-            name: value,
+            **metrics
         })

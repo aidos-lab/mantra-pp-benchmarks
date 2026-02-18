@@ -1,2 +1,2 @@
-__target__: src.metrics.loss.Contrastive
-name: Contrastive 
+# @package task.loss
+_target_: src.metrics.loss.Contrastive

@@ -10,17 +10,17 @@ from collections import defaultdict
 
 import torch
 from torch_geometric.transforms import BaseTransform, Compose
-from torch_geometric.data import Data
-from torch.utils.data import DataLoader, Subset
 
-from sklearn.model_selection import train_test_split
 
 from mantra.datasets import ManifoldTriangulations
 from mantra.transforms import MomentCurveEmbedding, SelectAttributes, SelectFeatures
 
 from src.schema import RootConfig
 from src.utils.imbalance_handling import sorted_imbalance_weights
-from src.utils.logging import log_metric
+from src.utils.logging import log_metrics
+from src.utils.data_handling import split_dataset
+
+from tqdm import tqdm
 
 cs = ConfigStore().instance()
 cs.store(name="main_conf", node=RootConfig)
@@ -32,19 +32,21 @@ def main(cfg: RootConfig):
     transform_dict = dataset_config.transform
     transform_order = dataset_config.transform_order
 
-    OmegaConf.resolve(cfg)
-    print(OmegaConf.to_yaml(cfg))
 
-    transforms = []
+    transforms = [None for _ in range(len(list(transform_dict.items())))]
     label_transform = None
+    select_transform = None
     for name, transform in transform_dict.items():
         trans = hydra.utils.instantiate(transform)
         if name == 'create_labels':
             label_transform = trans
-        transforms.append(trans)
-        #TODO: Add the ordering here
+            continue
+        if name == 'select_features':
+            select_transform = trans
+        transforms[transform_order.index(name)] = trans
 
     assert label_transform is not None, "Missing the `create_labels` transform"
+    assert select_transform is not None, "Missing the `select_features` transform"
 
     transforms = Compose(transforms)
 
@@ -52,12 +54,28 @@ def main(cfg: RootConfig):
         root=dataset_config.root,
         dimension=dataset_config.dimension,
         version=dataset_config.version,
-        pre_transform=transforms
+        pre_transform=transforms,
+        force_reload=dataset_config.reload,
+        transform=label_transform
     )
+
+
+    for data in dataset:
+        pass
 
     label_to_index = label_transform.label_to_index
 
+
+    # Change the outputs based on classification task
+    if cfg.task.task_type == 'classification':
+        num_classes = len(label_to_index)
+        cfg.model.out_channels = num_classes
+
     model = hydra.utils.instantiate(cfg.model)
+
+
+    OmegaConf.resolve(cfg)
+    print(OmegaConf.to_yaml(cfg))
 
     train_dataloader, val_dataloader, test_dataloader = split_dataset(dataset, cfg)
 
@@ -69,52 +87,51 @@ def main(cfg: RootConfig):
         imbalance = np.array(list(imbalance))
         imbalance = imbalance / np.sum(imbalance)
 
-    if cfg.train:
-        training_loop(train_dataloader, val_dataloader, imbalance, model, cfg)
+    with wandb.init(project=cfg.logger.project) as run:
+        if cfg.train:
+            run_id = training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg)
+
+        test(test_dataloader, model, label_to_index, run, cfg)
+
+def test(test_dataset, model, label_to_index, run, cfg):
+
+    is_classification = cfg.task.task_type == 'classification'
+
+    if not is_classification:
+        raise NotImplementedError("No test for regression yet")
+
+    conf_mat = torch.zeros(cfg.model.out_channels, cfg.model.out_channels) if is_classification else None
+    y_all = []
+    y_hat_all = []
 
     model.eval()
-    test(test_dataloader, model, cfg)
+    for batch in test_dataset:
 
-def split_dataset(dataset, cfg):
-    split_params = cfg.dataset.train_parameters.split
+        y_hat = model(batch).argmax(dim=1)
+        y = batch.y.long()
 
-    train_val_index, test_index = train_test_split(
-        np.arange(len(dataset)),
-        test_size=split_params.test,
-        shuffle=True,
-        stratify=(
-            dataset.y
-            if cfg.use_stratified
-            else None
-        ),
-        random_state=cfg.seed,
+        y_all.append(y)
+        y_hat_all.append(y_hat)
+
+        # for t,p in zip(y.view(-1), y_hat.view(-1)):
+        #     conf_mat[t.long(), p.long()] += 1
+
+
+    y_total = torch.cat(y_all)
+    y_hat_total = torch.cat(y_hat_all)
+
+
+    print(y_hat_total.unique())
+    print(len(y_total.unique()))
+    print(len(label_to_index.values()))
+    run.log(
+        {
+            "conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total, preds=y_hat_total, class_names=label_to_index.values())
+        }
     )
 
-    # train val split
-    train_index, val_index = train_test_split(
-        train_val_index,
-        test_size=split_params.val
-        / (split_params.train + split_params.val),
-        shuffle=True,
-        stratify=(
-            dataset[train_val_index]
-            if cfg.use_stratified
-            else None
-        ),
-        random_state=cfg.seed,
-    )
 
-    train_dataset = Subset(dataset, train_index)
-    val_dataset = Subset(dataset, val_index)
-    test_dataset = Subset(dataset, test_index)
-
-    train_loader = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=cfg.batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=cfg.batch_size, shuffle=False)
-
-    return train_loader, val_loader, test_loader
-
-def train(model, optimizer, train_dataset, loss_fn, cfg):
+def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
     model.train()
     metrics = defaultdict(float)
@@ -122,41 +139,52 @@ def train(model, optimizer, train_dataset, loss_fn, cfg):
     for batch in train_dataset:
         optimizer.zero_grad()
         y_hat = model(batch)
-        y_hat = y_hat.squeeze()
 
-        imbalance = (
-            torch.tensor(
-                imbalance, device=cfg.device, dtype=torch.float32
-            )
-            if imbalance is not None
-            else None
-        )
+        y_hat = y_hat.squeeze()
+        y = batch.y.long()
 
         loss = loss_fn(
             y_hat,
-            batch.y,
-            weight=imbalance,
+            y,
         )
 
-        metrics['loss'] += loss
+        metrics['train/loss'] += loss
 
         for acc in accuracies:
-            metrics['acc'] = acc(y_hat, batch.y, imbalance)
-
+            metrics['train/acc'] = acc(y_hat, y)
 
         loss.backward()
         optimizer.step()
 
+    return metrics
+
+def validate(model, optimizer, val_dataset, loss_fn, epoch, cfg):
+    model.eval()
+    metrics = defaultdict(float)
+
+    for batch in val_dataset:
+
+        y_hat = model(batch).squeeze()
+        y = batch.y.long()
+
+        loss = loss_fn(y_hat, y)
+
+        metrics['val/loss'] += loss
 
     return metrics
 
-def validate():
-    pass
 
-def test():
-    pass
+def init_metrics(cfg):
+    accs = []
+    for name, acc in cfg.task.metrics.items():
+        if 'accuracy' in acc._target_.lower():
+            assert cfg.task.task_type == 'classification', "Cannot assign accuracy for regression tasks"
+            metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels)
+            accs.append(metric)
+    return accs
 
-def training_loop(train_dataloader, val_dataloader, imbalance, model, cfg):
+
+def training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg):
     MAX_EPOCH = cfg.trainer.max_epoch
     optimizer = torch.optim.Adam(
         model.parameters(), lr=cfg.trainer.learning_rate, weight_decay=cfg.trainer.weight_decay
@@ -164,27 +192,36 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, cfg):
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
 
+    # TODO: Should this be like this ?
+
+    imbalance = (
+        torch.tensor(
+            imbalance, device=cfg.trainer.device, dtype=torch.float32
+        )
+        if imbalance is not None
+        else None
+    )
+
     #TODO: Maybe this should change ?
-    loss_fn = hydra.utils.instantiate(cfg.task.loss)
+    if imbalance is not None:
+        loss_fn = hydra.utils.instantiate(cfg.task.loss, weight=imbalance)
+    else:
+        loss_fn = hydra.utils.instantiate(cfg.task.loss)
 
+    accuracies = init_metrics(cfg) 
+        
     # Go over each epoch
-    for epoch in range(MAX_EPOCH):
-        # Train and logging
-        train_metrics = train(model, optimizer, train_dataloader, loss_fn, epoch, cfg)
-        for name, value in train_metrics.items():
-            log_metric(name, value, job_type="train", epoch=epoch, cfg=cfg)
+    for epoch in tqdm(range(MAX_EPOCH)):
 
-        # Validation and loggin
+        # Train
+        train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
+
+        # Validation
         val_metrics = validate(model, optimizer, val_dataloader, loss_fn, epoch, cfg)
-        for name, value in train_metrics.items():
-            log_metric(name, value, job_type="validation", epoch=epoch, cfg=cfg)
 
-        scheduler.step(val_metrics['loss'])
+        log_metrics({**train_metrics, **val_metrics}, epoch=epoch, step=None, run=run, cfg=cfg)
 
-
-
-
-
+        scheduler.step(val_metrics['val/loss'])
 
 def configure_optimizers():
     """

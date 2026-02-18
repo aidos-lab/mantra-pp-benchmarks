@@ -4,7 +4,7 @@ from typing import List, Tuple, Dict
 import numpy as np
 from torch.utils.data import Dataset
 
-from metrics.tasks import TaskType
+from src.metrics.tasks import TaskType
 
 
 def convert_to_list(imb: Counter) -> Tuple[List[float], List[float]]:
@@ -41,7 +41,8 @@ def sorted_imbalance_weights(
 
     E.g. if there are 90 samples of class 0 and 10 samples of class 1, it will return [0.1, 0.9]
     """
-    imbalance = Counter(dataset.y)
+    imbalance = Counter(dataset.y.tolist())
+    print(imbalance)
     imb_keys, imb_values = convert_to_list(imbalance)
 
     imbalance = sort_imbalance(imb_values, imb_keys)

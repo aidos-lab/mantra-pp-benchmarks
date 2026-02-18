@@ -3,12 +3,16 @@ defaults:
   - logger: wandb
   - model: gcn
   - dataset: dataset
+  - representation@dataset.transform.representation: dual_graph
   - transform@dataset.transform.create_labels: create_labels
-  - task: betti_numbers
+  - transform@dataset.transform.select_features: select_features
+  - task: name
   - trainer: default
+  - loss: cross_entropy
 
 dataset:
   transform_order:
+    - dual_graph
     - create_labels
 train: True
 seed: 42

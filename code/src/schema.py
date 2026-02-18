@@ -9,19 +9,27 @@ class TrainerMeta:
     weight_decay: float
     max_epoch: int
     early_stopping: int
+    batch_size: int
+    use_stratified: bool
+
 @dataclass
 class MetricMeta:
-    name: str
+    _target_: str
 
 @dataclass
 class LossMeta:
+    __target__: str
     name: str
+
 @dataclass
 class TaskMeta:
     name: str
     loss: LossMeta
+    target: str
+    task_type: str
     imbalanced: bool = False
     metrics: List[MetricMeta] = field(default_factory=list)
+
 @dataclass
 class TransformMeta:
     _target_: str
@@ -33,8 +41,9 @@ class DatasetMeta:
     dimension: int = 2
     train_parameters: dict = field(default_factory=dict)
     target: str = "name"
+    reload: bool = False
     
-    transforms: Dict[str, Any] = field(default_factory=dict)
+    transform: Dict[str, Any] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
 
 @dataclass
@@ -55,8 +64,8 @@ class LoggerMeta:
 @dataclass
 class RootConfig:
     logger: LoggerMeta
-    dataset: DatasetMeta
     model: ModelMeta
+    dataset: DatasetMeta
     task: TaskMeta
     trainer: TrainerMeta
 
