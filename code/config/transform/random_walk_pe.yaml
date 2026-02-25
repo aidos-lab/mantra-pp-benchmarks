@@ -1,0 +1,5 @@
+_target_: torch_geometric.transforms.AddRandomWalkPE
+
+walk_length: 8
+attr_name: random_walk_pe
+
