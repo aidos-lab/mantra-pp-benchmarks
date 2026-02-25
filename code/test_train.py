@@ -18,12 +18,15 @@ from mantra.transforms import MomentCurveEmbedding, SelectAttributes, SelectFeat
 from src.schema import RootConfig
 from src.utils.imbalance_handling import sorted_imbalance_weights
 from src.utils.logging import log_metrics
-from src.utils.data_handling import split_dataset
+from src.utils.data_handling import split_dataset, filter_low_ocurrence_labels
 
 from tqdm import tqdm
+from torch_geometric.profile import count_parameters
 
 cs = ConfigStore().instance()
 cs.store(name="main_conf", node=RootConfig)
+
+torch._dynamo.config.capture_scalar_outputs = True
 
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg: RootConfig):
@@ -60,9 +63,11 @@ def main(cfg: RootConfig):
     )
 
 
+     
     for data in dataset:
         pass
 
+    dataset = filter_low_ocurrence_labels(dataset)
     label_to_index = label_transform.label_to_index
 
 
@@ -71,12 +76,17 @@ def main(cfg: RootConfig):
         num_classes = len(label_to_index)
         cfg.model.out_channels = num_classes
 
-    model = hydra.utils.instantiate(cfg.model)
-
-
     OmegaConf.resolve(cfg)
     print(OmegaConf.to_yaml(cfg))
 
+    #NOTE: Model initialization
+    model = hydra.utils.instantiate(cfg.model)
+    model = model.to(cfg.trainer.device)
+    model = torch.compile(model, dynamic=True)
+
+    print(f"Model parameters: {count_parameters(model)}")
+
+    #NOTE: Dataset initialization
     train_dataloader, val_dataloader, test_dataloader = split_dataset(dataset, cfg)
 
     imbalance = None
@@ -101,6 +111,7 @@ def test(test_dataset, model, label_to_index, run, cfg):
         raise NotImplementedError("No test for regression yet")
 
     conf_mat = torch.zeros(cfg.model.out_channels, cfg.model.out_channels) if is_classification else None
+    index_to_label = {v: k for k,v in label_to_index.items()}
     y_all = []
     y_hat_all = []
 
@@ -121,12 +132,38 @@ def test(test_dataset, model, label_to_index, run, cfg):
     y_hat_total = torch.cat(y_hat_all)
 
 
-    print(y_hat_total.unique())
-    print(len(y_total.unique()))
-    print(len(label_to_index.values()))
+    def remap_to_consecutive(x):
+        mapping = {}
+        next_id = 0
+
+        remapped = torch.empty_like(x, dtype=torch.long)
+    
+        for i, val in enumerate(x.tolist()):
+            if val not in mapping:
+                mapping[val] = next_id
+                next_id += 1
+            remapped[i] = mapping[val]
+        
+        return remapped, mapping
+
+    y_total, remaping = remap_to_consecutive(y_total)
+    inv_mapping = {v: k for k,v in remaping.items()}
+
+    class_names = ["" for _ in y_total.unique().tolist()]
+
+    # Make a class_names sorted by this ordering
+    for idx, true_idx in inv_mapping.items():
+        class_names[idx] = index_to_label[true_idx]
+
+    # Remap tensor
+    y_hat_total.apply_(lambda x: remaping[x])
+
+    # class_names = [index_to_label[l] for l in y_total.unique().tolist()]
+    # class_names = list(index_to_label.values())
+
     run.log(
         {
-            "conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total, preds=y_hat_total, class_names=label_to_index.values())
+            "conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total.tolist(), preds=y_hat_total.tolist(), class_names=class_names)
         }
     )
 

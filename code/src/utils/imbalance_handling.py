@@ -32,6 +32,12 @@ def sort_imbalance(
     return  [imbalance[i] for i in range(len(keys))]
 
 
+def compute_target_frequency(
+    dataset: Dataset
+) -> Tuple[List[float], List[float]]:
+    imbalance = Counter(dataset.y.tolist())
+    keys, values = convert_to_list(imbalance)
+    return keys, values
 
 def sorted_imbalance_weights(
     dataset: Dataset
@@ -41,9 +47,8 @@ def sorted_imbalance_weights(
 
     E.g. if there are 90 samples of class 0 and 10 samples of class 1, it will return [0.1, 0.9]
     """
-    imbalance = Counter(dataset.y.tolist())
-    print(imbalance)
-    imb_keys, imb_values = convert_to_list(imbalance)
+
+    imb_keys, imb_values = compute_target_frequency(dataset)
 
     imbalance = sort_imbalance(imb_values, imb_keys)
 
