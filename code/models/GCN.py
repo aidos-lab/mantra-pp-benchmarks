@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from pydantic import BaseModel
 from torch import nn
 from torch_geometric.nn import GCNConv, global_mean_pool, GCN2Conv
+from torch_geometric.utils import scatter
 
 from .model_types import ModelType
 
@@ -28,8 +29,7 @@ class GCNLayer(nn.Module):
         self.batch_norm = batch_norm
         self.residual = residual
 
-        if in_dim != out_dim:
-            self.residual = False
+        assert in_dim == out_dim, "Cannot use residuals here"
 
         self.batchnorm_h = nn.BatchNorm1d(out_dim)
         self.conv = GCNConv(in_dim, out_dim, add_self_loops=False, normalize=True)
@@ -41,15 +41,17 @@ class GCNLayer(nn.Module):
         h = self.conv(x = x, edge_index = edge_index)
 
         # Batch normalization before activation
-        if self.batch_norm:
-            h = self.batchnorm_h(h)
+        h = self.batchnorm_h(h)
 
         h = F.relu(h)
 
         # Applying residual after activation
-        if self.residual:
-            h = h_in + h
+        h = h_in + h
+
         return h
+
+def mean_pool(x, batch):
+    return scatter(x, batch, dim=-2, reduce='mean')
 
 class GCN(nn.Module):
     def __init__(self, config: GCNConfig):
@@ -107,7 +109,7 @@ class GCNHydra(nn.Module):
             x = layer(x, edge_index)
 
         # 2. Readout layer
-        x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]
+        x = mean_pool(x, batch)  # [batch_size, hidden_channels]
         # 3. Apply a final classifier
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.final_linear(x)
