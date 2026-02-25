@@ -37,17 +37,19 @@ def main(cfg: RootConfig):
 
 
     transforms = [None for _ in range(len(list(transform_dict.items())))]
+    print(transform_dict)
+
     label_transform = None
     select_transform = None
     for name, transform in transform_dict.items():
         trans = hydra.utils.instantiate(transform)
         if name == 'create_labels':
             label_transform = trans
-            continue
-        if name == 'select_features':
+        elif name == 'select_features':
             select_transform = trans
         transforms[transform_order.index(name)] = trans
 
+    print(transforms)
     assert label_transform is not None, "Missing the `create_labels` transform"
     assert select_transform is not None, "Missing the `select_features` transform"
 
