@@ -106,7 +106,9 @@ def main(cfg: RootConfig):
         imbalance = np.array(list(imbalance))
         imbalance = imbalance / np.sum(imbalance)
 
-    with wandb.init(project=cfg.logger.project) as run:
+    conf_dict = OmegaConf.to_container(cfg, resolve=True)
+
+    with wandb.init(project=cfg.logger.project, config=conf_dict) as run:
         if cfg.train:
             run_id = training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg)
 
@@ -120,6 +122,9 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
     losses = []
     # Go over each batch
     for batch in train_dataset:
+        batch = batch.to(cfg.trainer.device)
+        optimizer.zero_grad()
+
         y_hat = model(batch)
 
         y_hat = y_hat.squeeze()
@@ -131,12 +136,11 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
             y,
         )
 
-        losses.append(loss.item())
+        losses.append(loss.detach().cpu().item())
 
         for acc in accuracies:
             acc(y_hat, y)
 
-        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
@@ -152,12 +156,13 @@ def validate(model, optimizer, val_dataset, loss_fn, epoch, cfg):
     losses = []
 
     for batch in val_dataset:
+        batch = batch.to(cfg.trainer.device)
 
         y_hat = model(batch).squeeze()
         y = batch.y.long()
 
         loss = loss_fn(y_hat, y)
-        losses.append(loss.item())
+        losses.append(loss.detach().cpu().item())
 
     
     metrics['val/loss'] = torch.tensor(losses).mean().item()
@@ -177,6 +182,7 @@ def test(test_dataset, model, label_to_index, run, cfg):
 
     model.eval()
     for batch in test_dataset:
+        batch = batch.to(cfg.trainer.device)
 
         y_hat = model(batch).argmax(dim=1)
         y = batch.y.long()
@@ -192,34 +198,34 @@ def test(test_dataset, model, label_to_index, run, cfg):
     y_hat_total = torch.cat(y_hat_all)
 
 
-    def remap_to_consecutive(x):
-        mapping = {}
-        next_id = 0
-
-        remapped = torch.empty_like(x, dtype=torch.long)
-    
-        for i, val in enumerate(x.tolist()):
-            if val not in mapping:
-                mapping[val] = next_id
-                next_id += 1
-            remapped[i] = mapping[val]
-        
-        return remapped, mapping
-
-    y_total, remaping = remap_to_consecutive(y_total)
-    inv_mapping = {v: k for k,v in remaping.items()}
-
-    class_names = ["" for _ in y_total.unique().tolist()]
-
-    # Make a class_names sorted by this ordering
-    for idx, true_idx in inv_mapping.items():
-        class_names[idx] = index_to_label[true_idx]
-
-    # Remap tensor
-    y_hat_total.apply_(lambda x: remaping[x])
+    # def remap_to_consecutive(x):
+    #     mapping = {}
+    #     next_id = 0
+    #
+    #     remapped = torch.empty_like(x, dtype=torch.long)
+    #
+    #     for i, val in enumerate(x.tolist()):
+    #         if val not in mapping:
+    #             mapping[val] = next_id
+    #             next_id += 1
+    #         remapped[i] = mapping[val]
+    #
+    #     return remapped, mapping
+    #
+    # y_total, remaping = remap_to_consecutive(y_total)
+    # inv_mapping = {v: k for k,v in remaping.items()}
+    #
+    # class_names = ["" for _ in y_total.unique().tolist()]
+    #
+    # # Make a class_names sorted by this ordering
+    # for idx, true_idx in inv_mapping.items():
+    #     class_names[idx] = index_to_label[true_idx]
+    #
+    # # Remap tensor
+    # y_hat_total.apply_(lambda x: remaping[x])
 
     # class_names = [index_to_label[l] for l in y_total.unique().tolist()]
-    # class_names = list(index_to_label.values())
+    class_names = list(index_to_label.values())
 
     run.log(
         {
@@ -255,6 +261,7 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg):
 
     accuracies = init_metrics(cfg)
         
+    model = model.to(cfg.trainer.device)
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):
 

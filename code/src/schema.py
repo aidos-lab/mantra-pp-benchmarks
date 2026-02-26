@@ -11,6 +11,7 @@ class TrainerMeta:
     early_stopping: int
     batch_size: int
     use_stratified: bool
+    device: str
 
 @dataclass
 class MetricMeta:
