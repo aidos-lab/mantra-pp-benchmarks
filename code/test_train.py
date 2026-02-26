@@ -96,6 +96,7 @@ def main(cfg: RootConfig):
 
     print(f"Model parameters: {count_parameters(model)}")
 
+
     #NOTE: Dataset initialization
     train_dataloader, val_dataloader, test_dataloader = split_dataset(dataset, cfg)
 
@@ -110,6 +111,7 @@ def main(cfg: RootConfig):
     conf_dict = OmegaConf.to_container(cfg, resolve=True)
 
     with wandb.init(project=cfg.logger.project, config=conf_dict) as run:
+        run.log({"model_parameters": count_parameters(model)})
         if cfg.train:
             run_id = training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg)
 
