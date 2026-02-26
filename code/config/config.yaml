@@ -1,19 +1,22 @@
 defaults:
   - _self_
   - logger: wandb
-  - model: gcn
+  - model: gcn 
   - dataset: dataset
   - representation@dataset.transform.representation: dual_graph
+  - transform@dataset.transform.embedding: random_walk_pe
   - transform@dataset.transform.create_labels: create_labels
   - transform@dataset.transform.select_features: select_features
-  - task: name
+  - task: name 
   - trainer: default
   - loss: cross_entropy
 
 dataset:
   transform_order:
-    - dual_graph
+    - embedding
+    - representation
     - create_labels
+    - select_features
 train: True
 seed: 42
 
