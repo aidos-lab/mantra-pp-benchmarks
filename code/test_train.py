@@ -28,6 +28,7 @@ cs.store(name="main_conf", node=RootConfig)
 
 torch._dynamo.config.capture_scalar_outputs = True
 
+
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg: RootConfig):
 
@@ -37,7 +38,6 @@ def main(cfg: RootConfig):
 
 
     transforms = [None for _ in range(len(list(transform_dict.items())))]
-    print(transform_dict)
 
     label_transform = None
     select_transform = None
@@ -49,7 +49,6 @@ def main(cfg: RootConfig):
             select_transform = trans
         transforms[transform_order.index(name)] = trans
 
-    print(transforms)
     assert label_transform is not None, "Missing the `create_labels` transform"
     assert select_transform is not None, "Missing the `select_features` transform"
 
@@ -66,11 +65,16 @@ def main(cfg: RootConfig):
 
 
      
+
+    dataset = filter_low_ocurrence_labels(dataset)
+
+    #TODO: Fix this, shouldn't need to do a pass over the dataset to calculate the labels
     for data in dataset:
         pass
 
-    dataset = filter_low_ocurrence_labels(dataset)
     label_to_index = label_transform.label_to_index
+
+    
 
 
     # Change the outputs based on classification task
@@ -81,8 +85,11 @@ def main(cfg: RootConfig):
     OmegaConf.resolve(cfg)
     print(OmegaConf.to_yaml(cfg))
 
+    #TODO: Ugly fix, do something about this
+    in_channels = dataset[0].x.shape[1]
+
     #NOTE: Model initialization
-    model = hydra.utils.instantiate(cfg.model)
+    model = hydra.utils.instantiate(cfg.model, num_node_features=in_channels)
     model = model.to(cfg.trainer.device)
     model = torch.compile(model, dynamic=True)
 
@@ -104,6 +111,57 @@ def main(cfg: RootConfig):
             run_id = training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg)
 
         test(test_dataloader, model, label_to_index, run, cfg)
+
+
+def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
+
+    model.train()
+    metrics = defaultdict(float)
+    losses = []
+    # Go over each batch
+    for batch in train_dataset:
+        y_hat = model(batch)
+
+        y_hat = y_hat.squeeze()
+        y = batch.y
+
+
+        loss = loss_fn(
+            y_hat,
+            y,
+        )
+
+        losses.append(loss.item())
+
+        for acc in accuracies:
+            acc(y_hat, y)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+
+    metrics['train/loss'] = torch.tensor(losses).mean().item()
+    metrics['train/acc'] = accuracies[0].compute()
+
+    return metrics
+
+def validate(model, optimizer, val_dataset, loss_fn, epoch, cfg):
+    model.eval()
+    metrics = defaultdict(float)
+    losses = []
+
+    for batch in val_dataset:
+
+        y_hat = model(batch).squeeze()
+        y = batch.y.long()
+
+        loss = loss_fn(y_hat, y)
+        losses.append(loss.item())
+
+    
+    metrics['val/loss'] = torch.tensor(losses).mean().item()
+    return metrics
 
 def test(test_dataset, model, label_to_index, run, cfg):
 
@@ -170,61 +228,9 @@ def test(test_dataset, model, label_to_index, run, cfg):
     )
 
 
-def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
-
-    model.train()
-    metrics = defaultdict(float)
-    # Go over each batch
-    for batch in train_dataset:
-        optimizer.zero_grad()
-        y_hat = model(batch)
-
-        y_hat = y_hat.squeeze()
-        y = batch.y.long()
-
-        loss = loss_fn(
-            y_hat,
-            y,
-        )
-
-        metrics['train/loss'] += loss
-
-        for acc in accuracies:
-            metrics['train/acc'] = acc(y_hat, y)
-
-        loss.backward()
-        optimizer.step()
-
-    return metrics
-
-def validate(model, optimizer, val_dataset, loss_fn, epoch, cfg):
-    model.eval()
-    metrics = defaultdict(float)
-
-    for batch in val_dataset:
-
-        y_hat = model(batch).squeeze()
-        y = batch.y.long()
-
-        loss = loss_fn(y_hat, y)
-
-        metrics['val/loss'] += loss
-
-    return metrics
-
-
-def init_metrics(cfg):
-    accs = []
-    for name, acc in cfg.task.metrics.items():
-        if 'accuracy' in acc._target_.lower():
-            assert cfg.task.task_type == 'classification', "Cannot assign accuracy for regression tasks"
-            metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels)
-            accs.append(metric)
-    return accs
-
-
 def training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg):
     MAX_EPOCH = cfg.trainer.max_epoch
+
     optimizer = torch.optim.Adam(
         model.parameters(), lr=cfg.trainer.learning_rate, weight_decay=cfg.trainer.weight_decay
     )
@@ -247,93 +253,32 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg):
     else:
         loss_fn = hydra.utils.instantiate(cfg.task.loss)
 
-    accuracies = init_metrics(cfg) 
+    accuracies = init_metrics(cfg)
         
     # Go over each epoch
-    for epoch in tqdm(range(MAX_EPOCH)):
+    for epoch in (pbar := tqdm(range(MAX_EPOCH))):
 
         # Train
         train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
 
         # Validation
-        val_metrics = validate(model, optimizer, val_dataloader, loss_fn, epoch, cfg)
+        with torch.no_grad():
+            val_metrics = validate(model, optimizer, val_dataloader, loss_fn, epoch, cfg)
+
+        pbar.set_description(f"train/loss: {train_metrics['train/loss']:.5f}, val/loss: {val_metrics['val/loss']:.5f}, train/acc: {train_metrics['train/acc']:0.2f}")
 
         log_metrics({**train_metrics, **val_metrics}, epoch=epoch, step=None, run=run, cfg=cfg)
 
         scheduler.step(val_metrics['val/loss'])
 
-def configure_optimizers():
-    """
-    Adapted from: https://github.com/karpathy/minGPT/blob/master/mingpt/model.py
-    This long function is unfortunately doing something very simple and is being very defensive:
-    We are separating out all parameters of the model into two buckets: those that will experience
-    weight decay for regularization and those that won't (biases, and layernorm/embedding weights).
-    We are then returning the PyTorch optimizer object.
-    """
-
-    # separate out all parameters to those that will and won't experience regularizing weight decay
-    decay = set()
-    no_decay = set()
-    whitelist_weight_modules = (torch.nn.Linear, torch_geometric.nn.GCNConv)
-    blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding, torch.nn.BatchNorm1d, )
-    for mn, m in self.named_modules():
-        for pn, p in m.named_parameters():
-            fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
-            # random note: because named_modules and named_parameters are recursive
-            # we will see the same tensors p many many times. but doing it this way
-            # allows us to know which parent module any tensor p belongs to...
-            if pn.endswith('bias'):
-                # all biases will not be decayed
-                no_decay.add(fpn)
-            elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
-                # weights of whitelist modules will be weight decayed
-                decay.add(fpn)
-            elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
-                # weights of blacklist modules will NOT be weight decayed
-                no_decay.add(fpn)
-            elif pn.endswith('layer_scale'):
-                no_decay.add(fpn)
-
-    # validate that we considered every parameter
-    param_dict = {pn: p for pn, p in self.named_parameters()}
-    inter_params = decay & no_decay
-    union_params = decay | no_decay
-    assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params), )
-    assert len(param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
-                                                % (str(param_dict.keys() - union_params), )
-
-    # create the pytorch optimizer object
-    optim_groups = [
-        {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.weight_decay},
-        {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
-    ]
-    optimizer = torch.optim.Adam(optim_groups, lr=self.learning_rate)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=self.factor, patience=self.patience, verbose=True)
-    return  optimizer, scheduler
-
-    def log_accuracies(
-        self, x_hat, y, batch_len, step: Literal["train", "test", "validation"]
-    ):
-        if step == "train":
-            acc_fun = self.training_accuracy
-        elif step == "test":
-            acc_fun = self.test_accuracy
-        elif step == "validation":
-            acc_fun = self.validation_accuracy
-        else:
-            ValueError("Unknown step Literal")
-
-        accuracies = self.accuracies_fn(acc_fun, x_hat, y, step)
-        for accuracy in accuracies:
-            self.log(
-                **accuracy,
-                prog_bar=True,
-                on_step=False,
-                on_epoch=True,
-                batch_size=batch_len,
-                sync_dist=True,
-            )
-
+def init_metrics(cfg):
+    accs = []
+    for name, acc in cfg.task.metrics.items():
+        if 'accuracy' in acc._target_.lower():
+            assert cfg.task.task_type == 'classification', "Cannot assign accuracy for regression tasks"
+            metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels)
+            accs.append(metric)
+    return accs
 
 if __name__ == "__main__":
     main()
