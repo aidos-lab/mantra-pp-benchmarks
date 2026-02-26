@@ -82,6 +82,7 @@ def main(cfg: RootConfig):
         num_classes = len(label_to_index)
         cfg.model.out_channels = num_classes
 
+
     OmegaConf.resolve(cfg)
     print(OmegaConf.to_yaml(cfg))
 
@@ -138,7 +139,7 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
         losses.append(loss.detach().cpu().item())
 
-        for acc in accuracies:
+        for _, acc in accuracies:
             acc(y_hat, y)
 
         loss.backward()
@@ -146,7 +147,9 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
 
     metrics['train/loss'] = torch.tensor(losses).mean().item()
-    metrics['train/acc'] = accuracies[0].compute()
+
+    for name, acc in accuracies:
+        metrics[f'train/{name}'] = acc.compute().item()
 
     return metrics
 
@@ -272,7 +275,14 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg):
         with torch.no_grad():
             val_metrics = validate(model, optimizer, val_dataloader, loss_fn, epoch, cfg)
 
-        pbar.set_description(f"train/loss: {train_metrics['train/loss']:.5f}, val/loss: {val_metrics['val/loss']:.5f}, train/acc: {train_metrics['train/acc']:0.2f}")
+        pbar_str = ""
+        for k,v in {**train_metrics, **val_metrics}.items():
+            if 'loss' in k:
+                pbar_str += f"{k}: {v:.5f},"
+            else:
+                pbar_str += f"{k}: {v:.2f},"
+
+        pbar.set_description(pbar_str)
 
         log_metrics({**train_metrics, **val_metrics}, epoch=epoch, step=None, run=run, cfg=cfg)
 
@@ -284,7 +294,7 @@ def init_metrics(cfg):
         if 'accuracy' in acc._target_.lower():
             assert cfg.task.task_type == 'classification', "Cannot assign accuracy for regression tasks"
             metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels).to(cfg.trainer.device)
-            accs.append(metric)
+            accs.append((name, metric))
     return accs
 
 if __name__ == "__main__":
