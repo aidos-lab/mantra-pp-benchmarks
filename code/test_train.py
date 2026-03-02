@@ -282,7 +282,7 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg):
 
         # Validation
         with torch.no_grad():
-            val_metrics = validate(model, optimizer, val_dataloader, loss_fn, epoch, cfg)
+            val_metrics = validate(model, optimizer, val_dataloader, loss_fn, accuracies, cfg)
 
         pbar_str = ""
         for k,v in {**train_metrics, **val_metrics}.items():
