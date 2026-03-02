@@ -47,6 +47,8 @@ def main(cfg: RootConfig):
             label_transform = trans
         elif name == 'select_features':
             select_transform = trans
+
+        assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
     assert label_transform is not None, "Missing the `create_labels` transform"
