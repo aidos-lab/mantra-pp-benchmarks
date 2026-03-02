@@ -58,6 +58,7 @@ class ModelMeta:
     layers: int = 2
     residuals: bool = True
     batch_norm: bool = True
+    dropout: float = 0.2
 
 @dataclass
 class LoggerMeta:
