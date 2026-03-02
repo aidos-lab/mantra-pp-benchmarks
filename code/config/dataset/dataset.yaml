@@ -9,6 +9,7 @@ train_parameters:
 
 transform: {}
 transform_order: []
+num_features: auto # (auto or number)
 
 reload: False
 use_stratified: True
