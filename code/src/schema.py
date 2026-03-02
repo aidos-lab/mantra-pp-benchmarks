@@ -47,6 +47,8 @@ class DatasetMeta:
     transform: Dict[str, Any] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
 
+    num_features: int | str = 'auto'
+
 @dataclass
 class ModelMeta:
     _target_: str
@@ -61,6 +63,7 @@ class ModelMeta:
 class LoggerMeta:
     name: str
     project: str
+    entity: str
 
 @dataclass
 class RootConfig:
