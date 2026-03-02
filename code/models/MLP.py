@@ -23,9 +23,6 @@ class MLP(nn.Module):
         config: MLPConfig,
     ):
         super().__init__()
-        self.input_layer = nn.Linear(
-            config.num_node_features, config.num_hidden_neurons
-        )
         self.hidden_layers = nn.ModuleList(
             [
                 nn.Linear(config.num_hidden_neurons, config.num_hidden_neurons)
@@ -45,3 +42,58 @@ class MLP(nn.Module):
             x = nn.functional.relu(x)
         x = self.output_layer(x)
         return pool.global_mean_pool(x, batch)
+
+
+class MLPLayer(nn.Module):
+    def __init__(self, input_channels, hidden_channels, batch_norm, dropout, residuals):
+        self.linear = nn.Linear(input_channels, hidden_channels)
+        self.batch_norm = nn.Identity()
+        if batch_norm:
+            self.batch_norm = nn.LayerNorm(hidden_channels)
+
+        self.activation =  nn.ReLU()
+        self.dropout = nn.Identity()
+
+        if dropout is not None:
+            self.dropout = nn.Dropout(dropout)
+
+        self.residuals = residuals
+
+        if input_channels != hidden_channels:
+            self.residuals = False
+
+    def forward(self, x):
+        h = x
+
+        h = self.linear(h)
+        h = self.batch_norm(h)
+        h = self.activation(h)
+        h = self.dropout(h)
+        if self.residuals:
+            h = h + x
+
+        return h
+
+class MLPHydra(nn.Module):
+    def __init__(self, input_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals):
+        super().__init__()
+
+        self.hidden_layers = nn.ModuleList()
+
+        # Hidden layers
+        for _ in n_layers:
+            self.hidden_layers.append(MLPLayer(hidden_channels, hidden_channels, batch_norm=batch_norm, residuals=residuals, dropout=dropout))
+
+        # Input layer
+        self.hidden_layers.insert(0, MLPLayer(input_channels, hidden_channels, batch_norm=batch_norm, residuals=False, dropout=dropout))
+
+        # Readout layer
+        self.readout = MLPLayer(hidden_channels, out_channels, batch_norm=False, residuals=False, dropout=None)
+
+
+
+    def forward(self, x):
+        for layer in self.hidden_layers:
+            x = layer(x)
+        x = self.readout(x)
+        return x

@@ -63,9 +63,6 @@ def main(cfg: RootConfig):
         transform=label_transform
     )
 
-
-     
-
     dataset = filter_low_ocurrence_labels(dataset)
 
     #TODO: Fix this, shouldn't need to do a pass over the dataset to calculate the labels
@@ -73,9 +70,6 @@ def main(cfg: RootConfig):
         pass
 
     label_to_index = label_transform.label_to_index
-
-    
-
 
     # Change the outputs based on classification task
     if cfg.task.task_type == 'classification':
@@ -87,7 +81,7 @@ def main(cfg: RootConfig):
     print(OmegaConf.to_yaml(cfg))
 
     #TODO: Ugly fix, do something about this
-    in_channels = dataset[0].x.shape[1]
+    in_channels = dataset[0].x.shape[1]  if cfg.dataset.num_features == 'auto' else int(cfg.dataset.num_features)
 
     #NOTE: Model initialization
     model = hydra.utils.instantiate(cfg.model, num_node_features=in_channels)
@@ -146,7 +140,6 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
         loss.backward()
         optimizer.step()
-
 
     metrics['train/loss'] = torch.tensor(losses).mean().item()
 
@@ -210,33 +203,6 @@ def test(test_dataset, model, label_to_index, run, cfg):
     y_hat_total = torch.cat(y_hat_all)
 
 
-    # def remap_to_consecutive(x):
-    #     mapping = {}
-    #     next_id = 0
-    #
-    #     remapped = torch.empty_like(x, dtype=torch.long)
-    #
-    #     for i, val in enumerate(x.tolist()):
-    #         if val not in mapping:
-    #             mapping[val] = next_id
-    #             next_id += 1
-    #         remapped[i] = mapping[val]
-    #
-    #     return remapped, mapping
-    #
-    # y_total, remaping = remap_to_consecutive(y_total)
-    # inv_mapping = {v: k for k,v in remaping.items()}
-    #
-    # class_names = ["" for _ in y_total.unique().tolist()]
-    #
-    # # Make a class_names sorted by this ordering
-    # for idx, true_idx in inv_mapping.items():
-    #     class_names[idx] = index_to_label[true_idx]
-    #
-    # # Remap tensor
-    # y_hat_total.apply_(lambda x: remaping[x])
-
-    # class_names = [index_to_label[l] for l in y_total.unique().tolist()]
     class_names = list(index_to_label.values())
 
     run.log(
