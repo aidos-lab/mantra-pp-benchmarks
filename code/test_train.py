@@ -155,7 +155,7 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def validate(model, optimizer, val_dataset, loss_fn, epoch, cfg):
+def validate(model, optimizer, val_dataset, loss_fn, accuracies, cfg):
     model.eval()
     metrics = defaultdict(float)
     losses = []
@@ -169,8 +169,15 @@ def validate(model, optimizer, val_dataset, loss_fn, epoch, cfg):
         loss = loss_fn(y_hat, y)
         losses.append(loss.detach().cpu().item())
 
+        for _, acc in accuracies:
+            acc(y_hat, y)
+
     
     metrics['val/loss'] = torch.tensor(losses).mean().item()
+
+    for name, acc in accuracies:
+        metrics[f"val/{name}"] = acc.compute().item()
+
     return metrics
 
 def test(test_dataset, model, label_to_index, run, cfg):
