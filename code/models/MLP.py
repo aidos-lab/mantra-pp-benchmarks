@@ -5,6 +5,7 @@ Multi-Layer Perceptron implementation.
 import torch.nn as nn
 from pydantic import BaseModel
 from torch_geometric.nn import pool
+from torch_geometric.utils import scatter
 
 from .model_types import ModelType
 
@@ -45,8 +46,9 @@ class MLP(nn.Module):
 
 
 class MLPLayer(nn.Module):
-    def __init__(self, input_channels, hidden_channels, batch_norm, dropout, residuals):
-        self.linear = nn.Linear(input_channels, hidden_channels)
+    def __init__(self, in_channels, hidden_channels, batch_norm, dropout, residuals):
+        super().__init__()
+        self.linear = nn.Linear(in_channels, hidden_channels)
         self.batch_norm = nn.Identity()
         if batch_norm:
             self.batch_norm = nn.LayerNorm(hidden_channels)
@@ -59,7 +61,7 @@ class MLPLayer(nn.Module):
 
         self.residuals = residuals
 
-        if input_channels != hidden_channels:
+        if in_channels != hidden_channels:
             self.residuals = False
 
     def forward(self, x):
@@ -75,25 +77,27 @@ class MLPLayer(nn.Module):
         return h
 
 class MLPHydra(nn.Module):
-    def __init__(self, input_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals):
         super().__init__()
 
         self.hidden_layers = nn.ModuleList()
 
         # Hidden layers
-        for _ in n_layers:
+        for _ in range(n_layers):
             self.hidden_layers.append(MLPLayer(hidden_channels, hidden_channels, batch_norm=batch_norm, residuals=residuals, dropout=dropout))
 
         # Input layer
-        self.hidden_layers.insert(0, MLPLayer(input_channels, hidden_channels, batch_norm=batch_norm, residuals=False, dropout=dropout))
+        self.hidden_layers.insert(0, MLPLayer(in_channels, hidden_channels, batch_norm=batch_norm, residuals=False, dropout=dropout))
 
         # Readout layer
         self.readout = MLPLayer(hidden_channels, out_channels, batch_norm=False, residuals=False, dropout=None)
 
 
 
-    def forward(self, x):
+    def forward(self, batch):
+        x = batch.x
         for layer in self.hidden_layers:
             x = layer(x)
         x = self.readout(x)
+        x = scatter(x, batch.batch, reduce='mean')
         return x

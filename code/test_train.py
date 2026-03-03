@@ -86,9 +86,12 @@ def main(cfg: RootConfig):
     in_channels = dataset[0].x.shape[1]  if cfg.dataset.num_features == 'auto' else int(cfg.dataset.num_features)
 
     #NOTE: Model initialization
-    model = hydra.utils.instantiate(cfg.model, num_node_features=in_channels)
+    model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
     model = model.to(cfg.trainer.device)
-    model = torch.compile(model, dynamic=True)
+
+    # Only compile on GPU
+    if cfg.trainer.device != 'cpu':
+        model = torch.compile(model, dynamic=True)
 
     print(f"Model parameters: {count_parameters(model)}")
 
