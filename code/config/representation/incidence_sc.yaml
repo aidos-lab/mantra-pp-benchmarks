@@ -1,0 +1,5 @@
+# @package transform
+_target_: mantra.representations.simplicial_connectivity.IncidenceSimplicialComplex
+
+signed: false
+index: false
