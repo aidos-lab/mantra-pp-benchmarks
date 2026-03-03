@@ -243,10 +243,16 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg):
         loss_fn = hydra.utils.instantiate(cfg.task.loss)
 
     accuracies = init_metrics(cfg)
-        
+    early_stopping_cnt = cfg.trainer.early_stopping
+    last_val_loss = None
+
     model = model.to(cfg.trainer.device)
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):
+
+        if early_stopping_cnt == 0:
+            print("Early stopping...")
+            break
 
         # Train
         train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
@@ -267,6 +273,12 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, run, cfg):
         log_metrics({**train_metrics, **val_metrics}, epoch=epoch, step=None, run=run, cfg=cfg)
 
         scheduler.step(val_metrics['val/loss'])
+
+        if last_val_loss is None or val_metrics['val/loss'] < last_val_loss:
+            last_val_loss = val_metrics['val/loss']
+            early_stopping_cnt = cfg.trainer.early_stopping
+
+        early_stopping_cnt -= 1
 
 def init_metrics(cfg):
     accs = []
