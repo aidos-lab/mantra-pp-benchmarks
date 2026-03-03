@@ -1,1 +1,13 @@
 _target_: mantra.transforms.EffectiveResistanceStatisticsEmbedding
+
+dimensions_to_compute:
+  - 1
+statistics_to_compute:
+  - mean
+  - std
+  - min
+  - max
+  - median
+  - q25
+  - q75
+
