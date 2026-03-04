@@ -1,0 +1,12 @@
+_target_: models.Graphormer.Graphormer
+
+hidden_channels: 128
+num_hidden_layers: 4
+num_node_features: 5 # Get from dataset
+out_channels: 1 # Get from dataset
+num_heads: 8
+dropout: 0.1
+max_degree: 32
+max_distance: 16
+use_spatial_encoding: true
+spd_undirected: true

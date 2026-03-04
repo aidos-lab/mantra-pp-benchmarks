@@ -1,0 +1,6 @@
+_target_: datasets.transforms.GraphormerSPDPreTransform
+
+max_distance: 16
+undirected: true
+attr_name: spatial_pos
+
