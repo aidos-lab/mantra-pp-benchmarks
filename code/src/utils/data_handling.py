@@ -5,11 +5,12 @@ from sklearn.model_selection import train_test_split
 
 from torch_geometric.data import Data
 from torch.utils.data import Subset
-from torch_geometric.loader import DataLoader
+#from torch_geometric.loader import DataLoader
+from torch.utils.data import DataLoader
 
 from src.utils.imbalance_handling import sorted_imbalance_weights, compute_target_frequency
 
-def split_dataset(dataset, cfg):
+def split_dataset(dataset, cfg, collate_fn=None):
     split_params = cfg.dataset.train_parameters.split
 
     train_val_index, test_index = train_test_split(
@@ -43,9 +44,9 @@ def split_dataset(dataset, cfg):
     val_dataset = Subset(dataset, val_index)
     test_dataset = Subset(dataset, test_index)
 
-    train_loader = DataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_fn)
 
     return train_loader, val_loader, test_loader
 
