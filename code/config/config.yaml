@@ -20,4 +20,5 @@ dataset:
     - select_features
 train: True
 seed: 42
+compile: True
 

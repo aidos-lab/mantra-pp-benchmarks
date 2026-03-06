@@ -102,8 +102,9 @@ def main(cfg: RootConfig):
     model = model.to(cfg.trainer.device)
 
     # Only compile on GPU
-    if cfg.trainer.device != 'cpu':
+    if cfg.trainer.device != 'cpu' and cfg.compile:
         model = torch.compile(model, dynamic=True)
+
 
     print(f"Model parameters: {count_parameters(model)}")
 

@@ -40,10 +40,10 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
         loss.backward()
         optimizer.step()
 
-    metrics['train/loss'] = torch.tensor(losses).mean().item()
+    metrics['train/loss'] = torch.tensor(losses).mean().detach().cpu().item()
 
     for name, acc in accuracies:
-        metrics[f'train/{name}'] = acc.compute().item()
+        metrics[f'train/{name}'] = acc.compute().detach().cpu().item()
 
     return metrics
 
@@ -68,10 +68,10 @@ def validate(model, optimizer, val_dataset, loss_fn, accuracies, cfg):
             acc(y_hat, y)
 
     
-    metrics['val/loss'] = torch.tensor(losses).mean().item()
+    metrics['val/loss'] = torch.tensor(losses).mean().detach().cpu().item()
 
     for name, acc in accuracies:
-        metrics[f"val/{name}"] = acc.compute().item()
+        metrics[f"val/{name}"] = acc.compute().detach().cpu().item()
 
     return metrics
 

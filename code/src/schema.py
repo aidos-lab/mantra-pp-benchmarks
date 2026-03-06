@@ -58,7 +58,7 @@ class ModelMeta:
     hidden_channels: int = 16
     out_channels: int = 2
     num_node_features: int = 2
-    layers: int = 2
+    n_layers: int = 2
     residuals: bool = True
     batch_norm: bool = True
     dropout: float = 0.2
@@ -79,4 +79,5 @@ class RootConfig:
 
     train: bool = True
     seed: int = 42
+    compile: bool = False
 

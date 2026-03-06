@@ -89,13 +89,13 @@ class GCN(nn.Module):
         return x
 
 class GCNHydra(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels,  layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5):
+    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,  n_layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5):
         super().__init__()
 
         self.hidden_layers = nn.ModuleList(
             [
                 GCNLayer(hidden_channels, hidden_channels, batch_norm, residuals, dropout)
-                for _ in range(layers)
+                for _ in range(n_layers)
             ]
         )
         self.hidden_layers.insert(0, GCNLayer(in_channels, hidden_channels, batch_norm, residual=False, dropout=dropout))
