@@ -117,7 +117,17 @@ class Graphormer(nn.Module):
     4. Pooling to graph-level representation (via graph token or mean pooling)
 
     Args:
-        config: GraphormerConfig object with model hyperparameters
+        hidden_channels: Hidden feature size for each layer.
+        num_hidden_layers: Number of transformer layers.
+        num_node_features: Input node feature size.
+        out_channels: Output feature size.
+        num_heads: Number of attention heads.
+        dropout: Dropout probability.
+        max_degree: Max degree for degree embeddings.
+        max_distance: Max shortest-path distance bucket for spatial encoding.
+        use_spatial_encoding: Whether to add spatial attention bias.
+        ffn_expansion_ratio: Expansion ratio for FFN hidden size.
+        spd_undirected: Treat edges as undirected when computing SPD.
 
     Input:
         batch: PyTorch Geometric Batch object with:
@@ -136,47 +146,61 @@ class Graphormer(nn.Module):
         For large graphs, the dense representation can be memory-intensive.
         Consider using sparse attention variants for graphs with >1000 nodes.
     """
-    def __init__(self, config: GraphormerConfig):
+
+    def __init__(
+            self,
+            hidden_channels: int = 128,
+            num_hidden_layers: int = 4,
+            num_node_features: int = 1,
+            out_channels: int = 5,
+            num_heads: int = 8,
+            dropout: float = 0.1,
+            max_degree: int = 32,
+            max_distance: int = 16,
+            use_spatial_encoding: bool = True,
+            ffn_expansion_ratio: int = 4,
+            spd_undirected: bool = True,
+    ):
         super().__init__()
-        if config.hidden_channels % config.num_heads != 0:
+        if hidden_channels % num_heads != 0:
             raise ValueError(
                 "hidden_channels must be divisible by num_heads for Graphormer."
             )
-        self.hidden_dim = config.hidden_channels
-        self.num_heads = config.num_heads
-        self.use_spatial_encoding = config.use_spatial_encoding
-        self.spd_undirected = config.spd_undirected
+        self.hidden_dim = hidden_channels
+        self.num_heads = num_heads
+        self.use_spatial_encoding = use_spatial_encoding
+        self.spd_undirected = spd_undirected
+        self.max_distance = max_distance
 
         self.input_proj = nn.Linear(
-            config.num_node_features, config.hidden_channels
+            num_node_features, hidden_channels
         )
         self.in_degree_emb = nn.Embedding(
-            config.max_degree + 1, config.hidden_channels
+            max_degree + 1, hidden_channels
         )
         self.out_degree_emb = nn.Embedding(
-            config.max_degree + 1, config.hidden_channels
+            max_degree + 1, hidden_channels
         )
-        self.max_distance = config.max_distance
         # Spatial encoding is an attention bias indexed by shortest-path distance.
         # We allocate max_distance+2 buckets: [0..max_distance] plus one bucket for "unreachable/overflow".
         self.spatial_pos_emb = nn.Embedding(
-            config.max_distance + 2, config.num_heads
+            max_distance + 2, num_heads
         )
 
         self.layers = nn.ModuleList(
             [
                 GraphormerLayer(
-                    hidden_dim=config.hidden_channels,
-                    num_heads=config.num_heads,
-                    dropout=config.dropout,
-                    ffn_expansion_ratio=config.ffn_expansion_ratio,
+                    hidden_dim=hidden_channels,
+                    num_heads=num_heads,
+                    dropout=dropout,
+                    ffn_expansion_ratio=ffn_expansion_ratio,
                 )
-                for _ in range(config.num_hidden_layers)
+                for _ in range(num_hidden_layers)
             ]
         )
-        self.dropout = nn.Dropout(config.dropout)
+        self.dropout = nn.Dropout(dropout)
 
-        self.final_linear = nn.Linear(config.hidden_channels, config.out_channels)
+        self.final_linear = nn.Linear(hidden_channels, out_channels)
 
     @staticmethod
     def _compute_spd_single(

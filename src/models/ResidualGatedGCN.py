@@ -61,26 +61,35 @@ class ResidualGatedGCNLayer(nn.Module):
 
 
 class ResidualGatedGCN(nn.Module):
-    def __init__(self, config: ResidualGatedGCNConfig):
+    def __init__(
+        self,
+        hidden_channels: int = 128,
+        num_hidden_layers: int = 5,
+        num_node_features: int = 1,
+        out_channels: int = 5,
+        batch_norm: bool = True,
+        residuals: bool = True,
+        dropout: float = 0.5,
+    ):
         super().__init__()
         self.input_proj = nn.Linear(
-            config.num_node_features, config.hidden_channels
+            num_node_features, hidden_channels
         )
         self.hidden_layers = nn.ModuleList(
             [
                 ResidualGatedGCNLayer(
-                    in_dim=config.hidden_channels,
-                    out_dim=config.hidden_channels,
-                    batch_norm=config.batch_norm,
-                    residual=config.residuals,
+                    in_dim=hidden_channels,
+                    out_dim=hidden_channels,
+                    batch_norm=batch_norm,
+                    residual=residuals,
                 )
-                for _ in range(config.num_hidden_layers)
+                for _ in range(num_hidden_layers)
             ]
         )
         self.final_linear = nn.Linear(
-            config.hidden_channels, config.out_channels
+            hidden_channels, out_channels
         )
-        self.dropout = config.dropout
+        self.dropout = dropout
 
     def forward(self, batch):
         x, edge_index, batch_idx = batch.x, batch.edge_index, batch.batch
