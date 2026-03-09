@@ -344,7 +344,13 @@ class Graphormer(nn.Module):
         spd = spd.masked_fill(node_mask[:, None, :], unreachable)
         return spd
 
-    def forward(self, batch):
+    @dynamo.disable
+    def _prepare_dense_inputs(self, batch):
+        """Prepare dense features and attention bias outside Dynamo tracing.
+
+        This avoids data-dependent symbolic guards from PyG batching ops while
+        keeping transformer layers in the compiled path.
+        """
         x, edge_index, batch_idx = batch.x, batch.edge_index, batch.batch
 
         x = self.input_proj(x)
@@ -359,7 +365,6 @@ class Graphormer(nn.Module):
 
         x_dense, node_mask = to_dense_batch(x, batch_idx)
         batch_size, max_nodes, _ = x_dense.shape
-
         node_mask = ~node_mask
 
         if self.use_spatial_encoding:
@@ -381,6 +386,11 @@ class Graphormer(nn.Module):
             attn_bias = x_dense.new_zeros(
                 (batch_size, self.num_heads, max_nodes, max_nodes)
             )
+
+        return x_dense, node_mask, attn_bias
+
+    def forward(self, batch):
+        x_dense, node_mask, attn_bias = self._prepare_dense_inputs(batch)
 
         x_dense = self.dropout(x_dense)
 
