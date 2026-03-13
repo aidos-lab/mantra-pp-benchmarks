@@ -1,2 +1,3 @@
 # @package transform
 _target_: mantra.representations.HasseDiagram
+feature_propagation: null
