@@ -5,7 +5,8 @@ from sklearn.model_selection import train_test_split
 
 from torch_geometric.data import Data
 from torch.utils.data import Subset
-#from torch_geometric.loader import DataLoader
+
+from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch.utils.data import DataLoader
 
 from src.utils.imbalance_handling import sorted_imbalance_weights, compute_target_frequency
@@ -44,9 +45,14 @@ def split_dataset(dataset, cfg, collate_fn=None):
     val_dataset = Subset(dataset, val_index)
     test_dataset = Subset(dataset, test_index)
 
-    train_loader = DataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_fn)
+    if collate_fn is not None:
+        train_loader = DataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, collate_fn=collate_fn)
+        val_loader = DataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_fn)
+        test_loader = DataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_fn)
+    else:
+        train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True)
+        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False)
+        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False)
 
     return train_loader, val_loader, test_loader
 
