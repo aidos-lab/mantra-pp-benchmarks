@@ -21,4 +21,4 @@ dataset:
 train: True
 seed: 42
 compile: True
-
+checkpoint_path: checkpoints

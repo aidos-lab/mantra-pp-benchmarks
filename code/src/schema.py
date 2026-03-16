@@ -35,9 +35,6 @@ class TaskMeta:
 class TransformMeta:
     _target_: str
 
-
-
-
 @dataclass
 class DatasetMeta:
     root: str
@@ -77,7 +74,10 @@ class RootConfig:
     task: TaskMeta
     trainer: TrainerMeta
 
+    checkpoint_path: str
+
     train: bool = True
     seed: int = 42
     compile: bool = False
+
 

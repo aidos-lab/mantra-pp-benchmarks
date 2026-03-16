@@ -9,6 +9,7 @@ import numpy as np
 from collections import defaultdict
 
 import torch
+import os
 from torch_geometric.transforms import BaseTransform, Compose
 
 
@@ -110,6 +111,10 @@ def main(cfg: RootConfig):
 
     collate_fn = None if is_graph_representation else collate_simplicial
 
+    #NOTE: Create checkpoint directory
+    if not os.path.exists(cfg.checkpoint_path):
+        os.makedirs(cfg.checkpoint_path)
+
     #NOTE: Dataset initialization
     train_dataloader, val_dataloader, test_dataloader = split_dataset(dataset, cfg, collate_fn=collate_fn)
 
@@ -127,7 +132,7 @@ def main(cfg: RootConfig):
         run.log({"model_parameters": count_parameters(model)})
         accuracies = init_metrics(cfg)
         if cfg.train:
-            run_id = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg)
+            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg)
 
         test(model, test_dataloader, accuracies, label_to_index, run, cfg)
 
@@ -162,6 +167,9 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
     early_stopping_cnt = cfg.trainer.early_stopping
     last_val_loss = None
 
+    #NOTE: Make directory for checkpoints
+    os.makedirs(os.path.join(cfg.checkpoint_path, run.name))
+
     model = model.to(cfg.trainer.device)
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):
@@ -195,7 +203,16 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
             last_val_loss = val_metrics['val/loss']
             early_stopping_cnt = cfg.trainer.early_stopping
 
+            # Save weights of the best model
+            torch.save(model.state_dict(), os.path.join(cfg.checkpoint_path, run.name, "best_val.pt"))
+
         early_stopping_cnt -= 1
+
+    # Save model with best validation
+    state_dict = torch.load(os.path.join(cfg.checkpoint_path, run.name, "best_val.pt"), weights_only=True)
+    model.load_state_dict(state_dict)
+    return model
+
 
 if __name__ == "__main__":
     main()
