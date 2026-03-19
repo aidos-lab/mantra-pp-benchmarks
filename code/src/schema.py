@@ -40,6 +40,7 @@ class DatasetMeta:
     root: str
     version: str = "latest"
     dimension: int = 2
+    local_path: str | None = None
     train_parameters: dict = field(default_factory=dict)
     target: str = "name"
     reload: bool = False
