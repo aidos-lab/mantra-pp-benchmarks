@@ -215,3 +215,11 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Else
+wandb/
+data/
+outputs/
+code/outputs/
+code/checkpoints/
+checkpoints/
+
