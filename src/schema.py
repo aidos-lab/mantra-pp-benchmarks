@@ -55,7 +55,7 @@ class ModelMeta:
     _target_: str
     hidden_channels: int = 16
     out_channels: int = 2
-    num_node_features: int = 2
+    in_channels: int = 2
     n_layers: int = 2
     residuals: bool = True
     batch_norm: bool = True
