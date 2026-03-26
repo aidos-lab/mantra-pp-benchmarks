@@ -11,8 +11,8 @@ if str(CODE_DIR) not in sys.path:
     sys.path.insert(0, str(CODE_DIR))
 
 from datasets.graphormer_spd import GraphormerSPDPreTransform
-from models.Graphormer import Graphormer, GraphormerConfig
-from models.ResidualGatedGCN import ResidualGatedGCN, ResidualGatedGCNConfig
+from models.Graphormer import Graphormer
+from models.ResidualGatedGCN import ResidualGatedGCN
 
 
 def make_graph_batch() -> Batch:
@@ -30,16 +30,14 @@ def make_graph_batch() -> Batch:
 class GraphModelIntegrationTests(unittest.TestCase):
     def test_graphormer_forward_returns_graph_level_outputs(self):
         model = Graphormer(
-            GraphormerConfig(
-                hidden_channels=8,
-                num_hidden_layers=2,
-                num_node_features=2,
-                out_channels=3,
-                num_heads=2,
-                dropout=0.0,
-                max_degree=4,
-                max_distance=4,
-            )
+            hidden_channels=8,
+            n_layers=2,
+            in_channels=2,
+            out_channels=3,
+            num_heads=2,
+            dropout=0.0,
+            max_degree=4,
+            max_distance=4,
         )
         model.eval()
 
@@ -63,15 +61,13 @@ class GraphModelIntegrationTests(unittest.TestCase):
 
     def test_graphormer_uses_precomputed_spd_when_available(self):
         model = Graphormer(
-            GraphormerConfig(
-                hidden_channels=8,
-                num_hidden_layers=1,
-                num_node_features=2,
-                out_channels=2,
-                num_heads=2,
-                dropout=0.0,
-                max_distance=4,
-            )
+            hidden_channels=8,
+            n_layers=1,
+            in_channels=2,
+            out_channels=2,
+            num_heads=2,
+            dropout=0.0,
+            max_distance=4,
         )
         model.eval()
 
@@ -92,15 +88,13 @@ class GraphModelIntegrationTests(unittest.TestCase):
 
     def test_graphormer_skips_spd_when_spatial_encoding_is_disabled(self):
         model = Graphormer(
-            GraphormerConfig(
-                hidden_channels=8,
-                num_hidden_layers=1,
-                num_node_features=2,
-                out_channels=2,
-                num_heads=2,
-                dropout=0.0,
-                use_spatial_encoding=False,
-            )
+            hidden_channels=8,
+            n_layers=1,
+            in_channels=2,
+            out_channels=2,
+            num_heads=2,
+            dropout=0.0,
+            use_spatial_encoding=False,
         )
         model.eval()
 
@@ -116,14 +110,12 @@ class GraphModelIntegrationTests(unittest.TestCase):
 
     def test_residual_gated_gcn_uses_configured_dropout(self):
         model = ResidualGatedGCN(
-            ResidualGatedGCNConfig(
-                hidden_channels=8,
-                num_hidden_layers=2,
-                num_node_features=2,
-                out_channels=4,
-                batch_norm=False,
-                dropout=0.25,
-            )
+            hidden_channels=8,
+            n_layers=2,
+            in_channels=2,
+            out_channels=4,
+            batch_norm=False,
+            dropout=0.25,
         )
         model.train()
 
@@ -135,13 +127,11 @@ class GraphModelIntegrationTests(unittest.TestCase):
 
     def test_residual_gated_gcn_forward_handles_edgeless_graphs(self):
         model = ResidualGatedGCN(
-            ResidualGatedGCNConfig(
-                hidden_channels=8,
-                num_hidden_layers=2,
-                num_node_features=2,
-                out_channels=4,
-                batch_norm=False,
-            )
+            hidden_channels=8,
+            n_layers=2,
+            in_channels=2,
+            out_channels=4,
+            batch_norm=False,
         )
         model.eval()
 

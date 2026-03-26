@@ -11,8 +11,8 @@ from torch_geometric.utils import degree, to_dense_batch
 
 class GraphormerConfig(BaseModel):
     hidden_channels: int = 128
-    num_hidden_layers: int = 4
-    num_node_features: int = 1
+    n_layers: int = 4
+    in_channels: int = 1
     out_channels: int = 5
     num_heads: int = 8
     dropout: float = 0.1
@@ -118,8 +118,8 @@ class Graphormer(nn.Module):
 
     Args:
         hidden_channels: Hidden feature size for each layer.
-        num_hidden_layers: Number of transformer layers.
-        num_node_features: Input node feature size.
+        n_layers: Number of transformer layers.
+        in_channels: Input node feature size.
         out_channels: Output feature size.
         num_heads: Number of attention heads.
         dropout: Dropout probability.
@@ -131,7 +131,7 @@ class Graphormer(nn.Module):
 
     Input:
         batch: PyTorch Geometric Batch object with:
-            - x: Node features [num_nodes, num_node_features]
+            - x: Node features [num_nodes, in_channels]
             - edge_index: Edge connectivity [2, num_edges]
             - batch: Batch assignment [num_nodes]
 
@@ -150,8 +150,8 @@ class Graphormer(nn.Module):
     def __init__(
             self,
             hidden_channels: int = 128,
-            num_hidden_layers: int = 4,
-            num_node_features: int = 1,
+            n_layers: int = 4,
+            in_channels: int = 1,
             out_channels: int = 5,
             num_heads: int = 8,
             dropout: float = 0.1,
@@ -173,7 +173,7 @@ class Graphormer(nn.Module):
         self.max_distance = max_distance
 
         self.input_proj = nn.Linear(
-            num_node_features, hidden_channels
+            in_channels, hidden_channels
         )
         self.in_degree_emb = nn.Embedding(
             max_degree + 1, hidden_channels
@@ -195,7 +195,7 @@ class Graphormer(nn.Module):
                     dropout=dropout,
                     ffn_expansion_ratio=ffn_expansion_ratio,
                 )
-                for _ in range(num_hidden_layers)
+                for _ in range(n_layers)
             ]
         )
         self.dropout = nn.Dropout(dropout)

@@ -13,8 +13,8 @@ from .model_types import ModelType
 
 class ResidualGatedGCNConfig(BaseModel):
     hidden_channels: int = 128
-    num_hidden_layers: int = 5
-    num_node_features: int = 1
+    n_layers: int = 5
+    in_channels: int = 1
     out_channels: int = 5
     batch_norm: bool = True
     residuals: bool = True
@@ -64,8 +64,8 @@ class ResidualGatedGCN(nn.Module):
     def __init__(
         self,
         hidden_channels: int = 128,
-        num_hidden_layers: int = 5,
-        num_node_features: int = 1,
+        n_layers: int = 5,
+        in_channels: int = 1,
         out_channels: int = 5,
         batch_norm: bool = True,
         residuals: bool = True,
@@ -73,7 +73,7 @@ class ResidualGatedGCN(nn.Module):
     ):
         super().__init__()
         self.input_proj = nn.Linear(
-            num_node_features, hidden_channels
+            in_channels, hidden_channels
         )
         self.hidden_layers = nn.ModuleList(
             [
@@ -83,7 +83,7 @@ class ResidualGatedGCN(nn.Module):
                     batch_norm=batch_norm,
                     residual=residuals,
                 )
-                for _ in range(num_hidden_layers)
+                for _ in range(n_layers)
             ]
         )
         self.final_linear = nn.Linear(
