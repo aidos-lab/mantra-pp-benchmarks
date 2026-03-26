@@ -1,0 +1,3 @@
+_target_: mantra.transforms.attribute_transform.NodeRandomTransform
+
+dim: 8
