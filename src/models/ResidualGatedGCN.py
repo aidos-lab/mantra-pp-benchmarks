@@ -9,6 +9,7 @@ from torch import nn
 from torch_geometric.nn import global_mean_pool
 
 from .model_types import ModelType
+from torch_geometric.utils import scatter
 
 
 class ResidualGatedGCNConfig(BaseModel):
@@ -49,7 +50,7 @@ class ResidualGatedGCNLayer(nn.Module):
         messages = gates * self.msg_lin(src_feat)
 
         aggregated = x.new_zeros((x.size(0), messages.size(1)))
-        aggregated.index_add_(0, dst, messages)
+        aggregated.scatter_add(0, dst.unsqueeze(-1).expand_as(messages), messages)
 
         out = self.self_lin(x) + aggregated
         if self.batch_norm:
@@ -59,6 +60,9 @@ class ResidualGatedGCNLayer(nn.Module):
             out = out + h_in
         return out
 
+
+def mean_pool(x, batch):
+    return scatter(x, batch, dim=-2, reduce='mean')
 
 class ResidualGatedGCN(nn.Module):
     def __init__(
@@ -96,7 +100,7 @@ class ResidualGatedGCN(nn.Module):
         x = self.input_proj(x)
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
-        x = global_mean_pool(x, batch_idx)
+        x = mean_pool(x, batch_idx)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.final_linear(x)
         return x
