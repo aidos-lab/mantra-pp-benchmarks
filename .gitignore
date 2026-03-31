@@ -226,4 +226,7 @@ uv.lock
 .python-versoin
 freeze.txt
 *.ipynb
-
+code/outputs/*
+code/wandb/*
+code/data/*
+code/configs/*
