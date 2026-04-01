@@ -1,4 +1,4 @@
-_target_: models.MLP.MLPHydra
+_target_: src.models.MLP.MLP
 
 n_layers: 3
 hidden_channels: 64

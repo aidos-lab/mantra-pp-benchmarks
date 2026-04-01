@@ -1,4 +1,4 @@
-_target_: models.GCN.GCNHydra
+_target_: src.models.GCN.GCN
 
 hidden_channels: 64
 n_layers: 3
