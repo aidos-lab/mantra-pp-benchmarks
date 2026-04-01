@@ -1,0 +1,16 @@
+root: "./data"
+version: latest
+dimension: 2
+local_path: null
+train_parameters:
+  split:
+    train: 0.6
+    val: 0.2
+    test: 0.2
+
+transform: {}
+transform_order: []
+num_features: auto # (auto or number)
+
+reload: False
+use_stratified: True

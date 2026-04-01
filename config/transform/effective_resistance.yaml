@@ -1,0 +1,6 @@
+_target_: mantra.transforms.EffectiveResistance
+
+
+statistics:
+  - min
+  - max

@@ -1,0 +1,6 @@
+learning_rate: 0.01
+weight_decay: 0.0
+max_epoch: 2
+batch_size: 256
+early_stopping: 10
+device: cpu

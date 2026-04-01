@@ -1,0 +1,4 @@
+_target_: mantra.representations.simplicial_connectivity.HodgeLaplacianSimplicialComplex
+
+signed: false
+index: false

@@ -1,0 +1,4 @@
+name: Base
+imbalanced: False
+task_type: classification # classification / regression
+metrics: {}

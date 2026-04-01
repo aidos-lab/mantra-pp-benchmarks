@@ -1,0 +1,4 @@
+_target_: mantra.representations.simplicial_connectivity.UpLaplacianSimplicialComplex
+
+signed: false
+index: false
