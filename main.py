@@ -63,7 +63,6 @@ def main(cfg: RootConfig):
         root=dataset_config.root,
         dimension=dataset_config.dimension,
         version=dataset_config.version,
-        #local_path=dataset_config.local_path,
         pre_transform=transforms,
         force_reload=dataset_config.reload,
         transform=label_transform
@@ -86,7 +85,6 @@ def main(cfg: RootConfig):
     OmegaConf.resolve(cfg)
     print(OmegaConf.to_yaml(cfg))
 
-    print(dataset[0])
 
     #TODO: Ugly fix, do something about this
 

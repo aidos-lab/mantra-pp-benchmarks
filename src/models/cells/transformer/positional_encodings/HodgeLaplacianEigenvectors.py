@@ -3,7 +3,7 @@ import torch
 from jaxtyping import Float
 from toponetx import CellComplex, SimplicialComplex
 
-from math_utils import (
+from src.math_utils import (
     compute_hodge_laplacian_matrix,
     normalize_laplacian,
     eigenvectors_smallest_k_eigenvalues,

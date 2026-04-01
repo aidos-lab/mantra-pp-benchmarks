@@ -6,7 +6,7 @@ from jaxtyping import Float, Int
 from pydantic import BaseModel
 from torch import nn
 
-from math_utils import sparse_abs
+from src.math_utils import sparse_abs
 from ...model_types import ModelType
 from code.src.models.cells.transformer.DataTypes import (
     NeighborhoodMatrixType,

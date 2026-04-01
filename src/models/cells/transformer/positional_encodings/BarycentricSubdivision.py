@@ -7,7 +7,7 @@ import torch
 from jaxtyping import Float
 from toponetx.classes import SimplicialComplex, CellComplex
 
-from math_utils import eigenvectors_smallest_k_eigenvalues
+from src.math_utils import eigenvectors_smallest_k_eigenvalues
 from code.src.models.cells.transformer.positional_encodings.BasePositionalEncodings import (
     BasePositionalEncodings,
 )

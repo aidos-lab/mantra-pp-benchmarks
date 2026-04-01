@@ -219,7 +219,11 @@ __marimo__/
 wandb/
 data/
 outputs/
-code/outputs/
-code/checkpoints/
 checkpoints/
+*.bash
+*.csv
+uv.lock
+.python-versoin
+freeze.txt
+*.ipynb
 
