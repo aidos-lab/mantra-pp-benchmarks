@@ -202,61 +202,20 @@ class Graphormer(nn.Module):
 
         self.final_linear = nn.Linear(hidden_channels, out_channels)
 
-    @staticmethod
-    def _compute_spd_single(
-        edge_index: torch.Tensor,
-        num_nodes: int,
-        max_dist: int,
-        device: torch.device,
-        undirected: bool,
-    ) -> torch.Tensor:
-        """Compute clipped shortest-path distances for one graph.
-
-        Returns a [num_nodes, num_nodes] LongTensor with values in:
-          - 0..max_dist for reachable pairs
-          - max_dist+1 for unreachable or > max_dist
-        """
-        # Build adjacency list on CPU for fast Python BFS; move result back to device.
-        # edge_index is expected to be [2, E] with nodes in [0, num_nodes).
-        ei = edge_index.detach().to("cpu")
-        adj = [[] for _ in range(num_nodes)]
-        if ei.numel() > 0:
-            src = ei[0].tolist()
-            dst = ei[1].tolist()
-            for u, v in zip(src, dst):
-                if 0 <= u < num_nodes and 0 <= v < num_nodes:
-                    adj[u].append(v)
-                    if undirected:
-                        adj[v].append(u)
-
-        unreachable = max_dist + 1
-        dist = torch.full((num_nodes, num_nodes), unreachable, dtype=torch.long)
-
-        from collections import deque
-
-        for s in range(num_nodes):
-            dist[s, s] = 0
-            q = deque([s])
-            while q:
-                u = q.popleft()
-                du = int(dist[s, u].item())
-                if du >= max_dist:
-                    continue
-                for v in adj[u]:
-                    if dist[s, v] == unreachable:
-                        dist[s, v] = du + 1
-                        q.append(v)
-
-        return dist.to(device)
-
-    def _pad_spd_from_precomputed(
+    def _unpack_flat_spd(
         self,
-        spatial_pos,
+        spatial_pos: torch.Tensor,
+        spatial_pos_n: torch.Tensor,
         batch_size: int,
         max_nodes: int,
-        device: torch.device,
         node_mask: torch.Tensor,
     ) -> torch.Tensor:
+        """Reconstruct padded (B, max_nodes, max_nodes) SPD from flattened 1D tensor.
+
+        spatial_pos: 1D LongTensor — concatenated flattened n_i*n_i matrices.
+        spatial_pos_n: 1D LongTensor of shape (B,) — node count per graph.
+        """
+        device = spatial_pos.device
         unreachable = self.max_distance + 1
         spd = torch.full(
             (batch_size, max_nodes, max_nodes),
@@ -265,20 +224,12 @@ class Graphormer(nn.Module):
             device=device,
         )
 
-        if isinstance(spatial_pos, torch.Tensor):
-            spd_tensor = spatial_pos.to(device=device, dtype=torch.long)
-            if spd_tensor.dim() == 2:
-                spd_tensor = spd_tensor.unsqueeze(0)
-            spd[:, : spd_tensor.size(1), : spd_tensor.size(2)] = spd_tensor
-        else:
-            for idx, spd_item in enumerate(spatial_pos):
-                if idx >= batch_size:
-                    break
-                spd_tensor = torch.as_tensor(spd_item, dtype=torch.long, device=device)
-                if spd_tensor.dim() < 2:
-                    continue
-                n = spd_tensor.size(0)
-                spd[idx, :n, :n] = spd_tensor
+        sizes_sq = (spatial_pos_n * spatial_pos_n).tolist()
+        splits = torch.split(spatial_pos, sizes_sq)
+        ns = spatial_pos_n.tolist()
+        for idx, (flat, n) in enumerate(zip(splits, ns)):
+            if n > 0:
+                spd[idx, :n, :n] = flat.view(n, n)
 
         spd = spd.clamp(max=unreachable)
         spd = spd.masked_fill(node_mask[:, :, None], unreachable)
@@ -286,71 +237,8 @@ class Graphormer(nn.Module):
         return spd
 
     @dynamo.disable
-    def _compute_spd_batch(
-        self,
-        edge_index: torch.Tensor,
-        batch_idx: torch.Tensor,
-        batch_size: int,
-        max_nodes: int,
-        node_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        """Compute [B, max_nodes, max_nodes] SPD matrices aligned with to_dense_batch order.
-
-        node_mask is [B, max_nodes] with True for padding positions.
-        """
-        device = batch_idx.device
-        unreachable = self.max_distance + 1
-        spd = torch.full(
-            (batch_size, max_nodes, max_nodes),
-            unreachable,
-            dtype=torch.long,
-            device=device,
-        )
-
-        # For each graph, extract its nodes, remap to local indices, compute SPD, then place into spd.
-        for g in range(batch_size):
-            node_ids = (batch_idx == g).nonzero(as_tuple=False).view(-1)
-            n = int(node_ids.numel())
-            if n == 0:
-                continue
-
-            # Map global node id -> local index
-            mapping = {int(node_ids[i].item()): i for i in range(n)}
-
-            # Select edges fully inside this graph and remap
-            if edge_index.numel() == 0:
-                ei_local = torch.empty((2, 0), dtype=torch.long, device=device)
-            else:
-                src = edge_index[0]
-                dst = edge_index[1]
-                mask = (batch_idx[src] == g) & (batch_idx[dst] == g)
-                src_g = src[mask].tolist()
-                dst_g = dst[mask].tolist()
-                if len(src_g) == 0:
-                    ei_local = torch.empty((2, 0), dtype=torch.long, device=device)
-                else:
-                    src_l = [mapping[int(u)] for u in src_g]
-                    dst_l = [mapping[int(v)] for v in dst_g]
-                    ei_local = torch.tensor([src_l, dst_l], dtype=torch.long, device=device)
-
-            dist_g = self._compute_spd_single(
-                ei_local, n, self.max_distance, device, self.spd_undirected
-            )
-
-            spd[g, :n, :n] = dist_g
-
-        # Make sure padded rows/cols are set to unreachable
-        spd = spd.masked_fill(node_mask[:, :, None], unreachable)
-        spd = spd.masked_fill(node_mask[:, None, :], unreachable)
-        return spd
-
-    @dynamo.disable
     def _prepare_dense_inputs(self, batch):
-        """Prepare dense features and attention bias outside Dynamo tracing.
-
-        This avoids data-dependent symbolic guards from PyG batching ops while
-        keeping transformer layers in the compiled path.
-        """
+        """Prepare dense features and attention bias outside Dynamo tracing."""
         x, edge_index, batch_idx = batch.x, batch.edge_index, batch.batch
 
         x = self.input_proj(x)
@@ -368,19 +256,18 @@ class Graphormer(nn.Module):
         node_mask = ~node_mask
 
         if self.use_spatial_encoding:
-            if hasattr(batch, "spatial_pos") and batch.spatial_pos is not None:
-                spd = self._pad_spd_from_precomputed(
-                    batch.spatial_pos, batch_size, max_nodes, x_dense.device, node_mask
+            if not hasattr(batch, "spatial_pos") or not hasattr(batch, "spatial_pos_n"):
+                raise ValueError(
+                    "use_spatial_encoding=True but batch is missing 'spatial_pos' / 'spatial_pos_n'. "
+                    "Add GraphormerSPDPreTransform to your dataset pre_transform."
                 )
-            else:
-                spd = self._compute_spd_batch(
-                    edge_index=edge_index,
-                    batch_idx=batch_idx,
-                    batch_size=batch_size,
-                    max_nodes=max_nodes,
-                    node_mask=node_mask,
-                )
-            # spatial_pos_emb returns [B, N, N, H]; permute to [B, H, N, N]
+            spd = self._unpack_flat_spd(
+                batch.spatial_pos,
+                batch.spatial_pos_n,
+                batch_size,
+                max_nodes,
+                node_mask,
+            )
             attn_bias = self.spatial_pos_emb(spd).permute(0, 3, 1, 2).contiguous()
         else:
             attn_bias = x_dense.new_zeros(
