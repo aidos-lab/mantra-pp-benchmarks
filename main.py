@@ -1,4 +1,3 @@
-
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
@@ -63,6 +62,7 @@ def main(cfg: RootConfig):
         root=dataset_config.root,
         dimension=dataset_config.dimension,
         version=dataset_config.version,
+        local_path=dataset_config.local_path,
         pre_transform=transforms,
         force_reload=dataset_config.reload,
         transform=label_transform
@@ -83,8 +83,6 @@ def main(cfg: RootConfig):
 
 
     OmegaConf.resolve(cfg)
-    print(OmegaConf.to_yaml(cfg))
-
 
     #TODO: Ugly fix, do something about this
 
@@ -166,8 +164,8 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
     early_stopping_cnt = cfg.trainer.early_stopping
     last_val_loss = None
 
-    #NOTE: Make directory for checkpoints
-    os.makedirs(os.path.join(cfg.checkpoint_path, run.name))
+    checkpoint_dir = os.path.join(cfg.checkpoint_path, run.name)
+    os.makedirs(checkpoint_dir)
 
     model = model.to(cfg.trainer.device)
     # Go over each epoch
@@ -202,13 +200,15 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
             last_val_loss = val_metrics['val/loss']
             early_stopping_cnt = cfg.trainer.early_stopping
 
-            # Save weights of the best model
-            torch.save(model.state_dict(), os.path.join(cfg.checkpoint_path, run.name, "best_val.pt"))
+            # Save weights and config of the best model
+            torch.save(model.state_dict(), os.path.join(checkpoint_dir, "best_val.pt"))
+            with open(os.path.join(checkpoint_dir, "config.yaml"), "w") as f:
+                f.write(OmegaConf.to_yaml(cfg))
 
         early_stopping_cnt -= 1
 
     # Save model with best validation
-    state_dict = torch.load(os.path.join(cfg.checkpoint_path, run.name, "best_val.pt"), weights_only=True)
+    state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
     model.load_state_dict(state_dict)
     return model
 
