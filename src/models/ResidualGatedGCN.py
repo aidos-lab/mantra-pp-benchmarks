@@ -50,7 +50,7 @@ class ResidualGatedGCNLayer(nn.Module):
         messages = gates * self.msg_lin(src_feat)
 
         aggregated = x.new_zeros((x.size(0), messages.size(1)))
-        aggregated.scatter_add(0, dst.unsqueeze(-1).expand_as(messages), messages)
+        aggregated.scatter_add_(0, dst.unsqueeze(-1).expand_as(messages), messages)
 
         out = self.self_lin(x) + aggregated
         if self.batch_norm:
