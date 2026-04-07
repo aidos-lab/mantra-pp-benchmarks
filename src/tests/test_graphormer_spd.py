@@ -1,15 +1,9 @@
-import sys
 import unittest
-from pathlib import Path
 
 import torch
 from torch_geometric.data import Data
 
-CODE_DIR = Path(__file__).resolve().parents[1]
-if str(CODE_DIR) not in sys.path:
-    sys.path.insert(0, str(CODE_DIR))
-
-from datasets.graphormer_spd import GraphormerSPDPreTransform
+from src.utils.graphormer_spd import GraphormerSPDPreTransform
 
 
 def _make_data(edge_index, num_nodes=None, x=None):

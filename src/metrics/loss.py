@@ -11,12 +11,13 @@ class LossType(Enum):
 
 class BaseLoss(nn.Module):
     def __init__(self, task_type: LossType):
+        super().__init__()
         self.task_type = task_type
 
     def turn_to_probs(self, y_hat):
         if self.task_type == LossType.BINARY:
             return nn.functional.sigmoid(y_hat)
-        elif self.task_type == Loss.MUTLTICLASS:
+        elif self.task_type == LossType.MULTICLASS:
             return nn.functional.log_softmax(y_hat)
         return y_hat
 
