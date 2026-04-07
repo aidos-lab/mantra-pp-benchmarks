@@ -8,10 +8,10 @@ from jaxtyping import Float
 from toponetx.classes import SimplicialComplex, CellComplex
 
 from src.math_utils import eigenvectors_smallest_k_eigenvalues
-from code.src.models.cells.transformer.positional_encodings.BasePositionalEncodings import (
+from src.models.cells.transformer.positional_encodings.BasePositionalEncodings import (
     BasePositionalEncodings,
 )
-from code.src.models.cells.transformer.positional_encodings.RandomWalks import (
+from src.models.cells.transformer.positional_encodings.RandomWalks import (
     generate_pe_from_transition_matrix,
 )
 
@@ -26,9 +26,9 @@ def barycentric_subdivision_positional_encoding(
     )
     n = H.shape[0]
     if not padding and n <= length_pos_enc:
-        assert (
+        raise ValueError(
             "the number of eigenvectors k must be smaller than the number of "
-            + f"simplices or cells in the complex n, {length_pos_enc} and {n} detected."
+            f"simplices or cells in the complex n, {length_pos_enc} and {n} detected."
         )
     ev = eigenvectors_smallest_k_eigenvalues(H, length_pos_enc)
     if isinstance(t_complex, CellComplex):
