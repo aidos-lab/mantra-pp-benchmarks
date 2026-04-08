@@ -59,6 +59,7 @@ def main(cfg: RootConfig):
     transforms = Compose(transforms)
 
     dataset = ManifoldTriangulations(
+        balanced=False,
         root=dataset_config.root,
         dimension=dataset_config.dimension,
         version=dataset_config.version,
