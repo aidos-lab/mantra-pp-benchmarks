@@ -58,8 +58,9 @@ def main(cfg: RootConfig):
 
     transforms = Compose(transforms)
 
+    assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
     dataset = ManifoldTriangulations(
-        balanced=False,
+        balanced=dataset_config.balanced,
         root=dataset_config.root,
         dimension=dataset_config.dimension,
         version=dataset_config.version,
