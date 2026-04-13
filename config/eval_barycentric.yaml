@@ -1,0 +1,10 @@
+# @package _global_
+checkpoint_dir: ???
+data_path: ???
+dimension: 2
+max_subdivisions: 1
+device: cpu
+output: null
+max_nodes: null
+min_nodes: null
+seed: 42

@@ -69,6 +69,18 @@ class LoggerMeta:
     entity: str
 
 @dataclass
+class EvalBarycentricConfig:
+    checkpoint_dir: str
+    data_path: str
+    dimension: int = 2
+    max_subdivisions: int = 1
+    device: str = "cpu"
+    output: str | None = None
+    max_nodes: int | None = None
+    min_nodes: int | None = None
+    seed: int = 42
+
+@dataclass
 class RootConfig:
     logger: LoggerMeta
     model: ModelMeta
