@@ -1,358 +1,313 @@
-"""Simplicial Attention Network (SAN) Layer."""
-from typing import Literal
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Feb  4 20:00:00 2022
+
+@author: Lorenzo Giusti
+"""
 
 import torch
-from torch.nn.parameter import Parameter
-from torch_geometric.nn import GCNConv
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.nn.models import MLP
+from torch_geometric.utils import softmax as sparse_softmax
+from src.models.utils import SumReadout
 
 
-class SANConv(torch.nn.Module):
-    r"""Simplicial Attention Network (SAN) Convolution from [1]_.
-
-    Parameters
-    ----------
-    in_channels : int
-        Number of input channels.
-    out_channels : int
-        Number of output channels.
-    n_filters : int
-        Number of simplicial filters.
-    initialization : Literal["xavier_uniform", "xavier_normal"], default="xavier_uniform"
-        Weight initialization method.
-
-    References
-    ----------
-    .. [1] Giusti, Battiloro, Di Lorenzo, Sardellitti and Barbarossa.
-        Simplicial attention neural networks (2022).
-        https://arxiv.org/abs/2203.07485.
-    .. [2] Papillon, Sanborn, Hajij, Miolane.
-        Equations of topological neural networks (2023).
-        https://github.com/awesome-tnns/awesome-tnns/
+class SALayer(nn.Module):
     """
+    SALayer is a simplicial attention layer for signals on simplicial complexes.
+    It processes the attention mechanism on upper (solenoidal) and lower (irrotational) neighbourhoods,
+    as well as the harmonic component of an edge signal, providing a generalization of graph attention
+    networks to higher-order domains.
+    """
+    def __init__(self, F_in, F_out,  kappa, p_dropout, alpha_leaky_relu, act_fn):
+        """
+        Initialize the SALayer.
+        Args:
+            F_in (int): Number of features of the input signal.
+            F_out (int): Number of features of the output component.
+            L (tuple): Tuple containing matrices defining the simplicial complex structure.
+            kappa (int): Maximum order of neighborhood to consider in attention computation.
+            p_dropout (float): Dropout rate.
+            alpha_leaky_relu (float): Negative slope coefficient for LeakyReLU.
+        """
+        super(SALayer, self).__init__()
 
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        n_filters,
-        initialization: Literal["xavier_uniform", "xavier_normal"] = "xavier_uniform",
-    ) -> None:
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.n_filters = n_filters
-        self.initialization = initialization
+        self.K = kappa
+        self.F_in = F_in
+        self.F_out = F_out
+        # Initialize the transformation matrices for the three types of components: 
+        # Irr, Sol, and Har.
+        self.Wirr = nn.Parameter(torch.empty(size=(self.K, F_in, F_out)))
+        self.Wsol = nn.Parameter(torch.empty(size=(self.K, F_in, F_out)))
+        self.Whar = nn.Parameter(torch.empty(size=(F_in, F_out)))
+        # Initialize the attention matrices.
+        self.att_irr = nn.Parameter(torch.empty(size=(2*F_out*self.K, 1)))
+        self.att_sol = nn.Parameter(torch.empty(size=(2*F_out*self.K, 1)))
 
-        self.weight = Parameter(
-            torch.Tensor(self.n_filters, self.in_channels, self.out_channels)
-        )
-
-        self.att_weight = Parameter(
-            torch.Tensor(
-                2 * self.out_channels * self.n_filters,
-            )
-        )
+        self.dropout = p_dropout
+        self.leakyrelu = nn.LeakyReLU(alpha_leaky_relu)
+        self.act_fn = act_fn
 
         self.reset_parameters()
 
-    def attention(self, x_source, x_target=None):
-        x_source_per_message = x_source[self.source_index_j]
-        x_target_per_message = (
-            x_source[self.target_index_i]
-            if x_target is None
-            else x_target[self.target_index_i]
-        )
-
-        x_source_target_per_message = torch.cat(
-            [x_source_per_message, x_target_per_message], dim=1
-        )
-
-        return torch.nn.functional.elu(
-            torch.matmul(x_source_target_per_message, self.att_weight)
-        )
-
-    def forward(self, x_source, neighborhood):
-        r"""Forward pass.
-
-        This implements message passing:
-        - from source cells with input features `x_source`,
-        - via `neighborhood` defining where messages can pass,
-        - to target cells, which are the same source cells.
-
-        In practice, this will update the features on the target cells [2]_.
-
-        .. math::
-            \begin{align*}
-            &🟥 \quad m_{y \rightarrow \{z\} \rightarrow x}^{u,(1 \rightarrow 2 \rightarrow 1)}  = ((L_{\uparrow,1} \odot \operatorname{att}(h_z^{t,(2)}, h_y^{t,(1)}))^u)\_{xy} \cdot h_y^{t,(1)} \cdot \Theta^{t,u}\\
-            &🟥 \quad m_{y \rightarrow \{z\} \rightarrow x}^{d,(1 \rightarrow 0 \rightarrow 1)}  = ((L_{\downarrow,1} \odot \operatorname{att}(h_z^{t,(0)}, h_y^{t,(1)}))^d)\_{xy} \cdot h_y^{t,(1)} \cdot \Theta^{t,d}\\
-            &🟥 \quad m^{p,(1 \rightarrow 1)}\_{y \rightarrow x} = ((1-wH_1)^p)\_{xy} \cdot h_y^{t,(1)} \cdot \Theta^{t,p}\\
-            &🟧 \quad m_{x}^{u,(1 \rightarrow 2 \rightarrow 1)}  = \sum_{y \in \mathcal{L}\_\uparrow(x)} m_{y \rightarrow \{z\} \rightarrow x}^{u,(1 \rightarrow 2 \rightarrow 1)}\\
-            &🟧 \quad m_{x}^{d,(1 \rightarrow 0 \rightarrow 1)}  = \sum_{y \in \mathcal{L}\downarrow(X)} m_{y \rightarrow \{z\} \rightarrow x}^{d,(1 \rightarrow 0 \rightarrow 1)}\\
-            &🟧 \quad m^{p,(1 \rightarrow 1)}\_{x}  = m^{p,(1 \rightarrow 1)}\_{x \rightarrow x}\\
-            &🟩 \quad m_x^{(1)}  = \sum_{p=1}^P m_x^{p,(1 \rightarrow 1)} + \sum_{u=1}^{U} m_{x}^{u,(1 \rightarrow 2 \rightarrow 1)} + \sum_{d=1}^{D} m_{x}^{d,(1 \rightarrow 0 \rightarrow 1)}\\
-            &🟦 \quad h_x^{t+1, (1)} = \sigma(m_x^{(1)})
-            \end{align*}
-
-        Parameters
-        ----------
-        x_source : Tensor, shape = (..., n_source_cells, in_channels)
-            Input features on source cells.
-            Assumes that all source cells have the same rank r.
-        neighborhood : torch.sparse, shape = (n_target_cells, n_source_cells)
-            Neighborhood matrix.
-
-        Returns
-        -------
-        torch.Tensor, shape = (..., n_target_cells, out_channels)
-            Output features on target cells.
-            Assumes that all target cells have the same rank s.
+    def reset_parameters(self):
+        """Reinitialize learnable parameters."""
+        gain = nn.init.calculate_gain('relu')
+        nn.init.xavier_uniform_(self.Wirr.data, gain=gain)
+        nn.init.xavier_uniform_(self.Wsol.data, gain=gain)
+        nn.init.xavier_uniform_(self.Whar.data, gain=gain)
+        nn.init.xavier_uniform_(self.att_irr.data, gain=gain)
+        nn.init.xavier_uniform_(self.att_sol.data, gain=gain)
+        
+    def forward(self, x, down_laplacian, up_laplacian, P):
         """
-        x_message = torch.matmul(x_source, self.weight)
-        # Reshape required to re-use the attention function of parent Conv class
-        # -> [num_nodes, out_channels * n_filters]
-        x_message_reshaped = x_message.permute(1, 0, 2).reshape(
-            -1, self.out_channels * self.n_filters
-        )
+        Perform the forward computation of the layer.
+        Args:
+            x (torch.Tensor): Input signal with shape (num_nodes, F_in).
+        Returns:
+            torch.Tensor: Output signal with shape (num_nodes, F_out).
+        """
+        # Ld, Lu , P = self.L
 
-        # SAN always requires attention
-        # In SAN, neighborhood is defined by lower/upper laplacians; we only use them as masks
-        # to keep only the relevant attention coeffs
-        neighborhood = neighborhood.coalesce()
-        self.target_index_i, self.source_index_j = neighborhood.indices()
-        attention_values = self.attention(x_message_reshaped)
-        att_laplacian = torch.sparse_coo_tensor(
-            indices=neighborhood.indices(),
-            values=attention_values,
-            size=neighborhood.shape,
-        )
+        E = x.shape[0]
+        # Compute the Irrotational, Solenoidal and Harmonic component transformations.
+        # (ExE) x (ExF_in) x (F_inxF_out) -> (ExF_out)
+        x_irr = torch.cat([torch.spmm(x, self.Wirr[k]) for k in range(self.K)], dim=1)
+        # (ExE) x (ExF_in) x (F_inxF_out) -> (ExF_out)
+        x_sol = torch.cat([torch.spmm(x, self.Wsol[k]) for k in range(self.K)], dim=1)
+        # (ExE) x (ExF_in) x (F_inxF_out) -> (ExF_out)
+        x_har = torch.spmm(torch.spmm(P, x),  self.Whar)
 
-        # Attention coeffs are normalized using softmax
-        att_laplacian = torch.sparse.softmax(att_laplacian, dim=1).to_dense()
-        # We need to compute the power of the attention laplacian according up to order p
-        att_laplacian_power = [att_laplacian]
-        for _ in range(1, self.n_filters):
-            att_laplacian_power.append(
-                torch.matmul(att_laplacian_power[-1], att_laplacian)
-            )
-        att_laplacian_power = torch.stack(att_laplacian_power)
+        # Compute attention coefficients. # Broadcast add: (Ex1) + (1xE) -> (ExE)
+        
+        d_idx = down_laplacian.coalesce().indices()   # (2, nnz_d)
+        u_idx = up_laplacian.coalesce().indices()     # (2, nnz_u)
 
-        # When computing the final message on targets, we multiply the message by each power
-        # of the attention laplacian and sum the results
-        return torch.matmul(att_laplacian_power, x_message).sum(dim=0)
+        row_d, col_d = d_idx[0], d_idx[1]
+        row_u, col_u = u_idx[0], u_idx[1]
+        
+        # --- Split attention vectors ---
+        a_l_irr = self.att_irr[:self.F_out * self.K]   # (F_out*K, 1)
+        a_r_irr = self.att_irr[self.F_out * self.K:]
+        a_l_sol = self.att_sol[:self.F_out * self.K]
+        a_r_sol = self.att_sol[self.F_out * self.K:]
+
+        # --- Compute attention scores only on non-zero entries ---
+        # Instead of outer product (E×E), we index only the nnz pairs
+        # x_irr[row_d]: (nnz_d, F_out*K), result: (nnz_d, 1) -> (nnz_d,)
+        e_irr = self.leakyrelu(
+            (x_irr[row_d] @ a_l_irr) + (x_irr[col_d] @ a_r_irr)
+        ).squeeze(-1)  # (nnz_d,)
+
+        e_sol = self.leakyrelu(
+            (x_sol[row_u] @ a_l_sol) + (x_sol[col_u] @ a_r_sol)
+        ).squeeze(-1)  # (nnz_u,)
+
+        # --- Sparse softmax: normalises per-row over neighbours only ---
+        # pyg's softmax takes (values, row_indices, num_nodes)
+        alpha_irr = sparse_softmax(e_irr, row_d, num_nodes=E)  # (nnz_d,)
+        alpha_sol = sparse_softmax(e_sol, row_u, num_nodes=E)  # (nnz_u,)
+
+        alpha_irr = F.dropout(alpha_irr, self.dropout, training=self.training)
+        alpha_sol = F.dropout(alpha_sol, self.dropout, training=self.training)
+
+        # --- Rebuild sparse attention matrices for aggregation ---
+        alpha_irr_sp = torch.sparse_coo_tensor(d_idx, alpha_irr, (E, E))
+        alpha_sol_sp = torch.sparse_coo_tensor(u_idx, alpha_sol, (E, E))
+
+        # Exclude self-loops by setting diagonal entries to a large negative value.
+        # zero_vec = -9e15*torch.ones_like(E_irr)
+        # E_irr = torch.where(down_laplacian != 0, E_irr, zero_vec)
+        # E_sol = torch.where(up_laplacian != 0, E_sol, zero_vec)
+
+        z_i = torch.spmm(alpha_irr_sp, torch.clone(torch.spmm(x,  self.Wirr[0])))
+        z_s = torch.spmm(alpha_sol_sp, torch.clone(torch.spmm(x,  self.Wsol[0])))
+
+        alpha_irr_k = alpha_irr_sp
+        alpha_sol_k = alpha_sol_sp
+        for k in range(1, self.K):
+            alpha_irr_k = torch.spmm(alpha_irr_k, down_laplacian)
+            alpha_sol_k = torch.spmm(alpha_sol_k, up_laplacian)
+            z_i += torch.spmm(torch.spmm(alpha_irr_k, x), self.Wirr[k])
+            z_s += torch.spmm(torch.spmm(alpha_sol_k,  x), self.Wsol[k])
+
+        out = (z_i + z_s + x_har)
+
+        if self.act_fn is None:
+            return out
+
+        return self.act_fn(out)
+
+
+class SCLayer(nn.Module):
+
+    def __init__(self, F_in, F_out, kappa, p_dropout, alpha_leaky_relu, act_fn):
+        """
+        F_in: Numer of features of the input signal
+        F_out: Numer of features of the output *component*
+        """
+        super(SCLayer, self).__init__()
+        self.K = kappa
+        self.F_in = F_in
+        self.F_out = F_out
+        self.Wirr = nn.Parameter(torch.empty(size=(self.K, F_in, F_out)))
+        self.Wsol = nn.Parameter(torch.empty(size=(self.K, F_in, F_out)))
+        self.Whar = nn.Parameter(torch.empty(size=(F_in, F_out)))
+
+
+        self.dropout = p_dropout  # 0.0#0.6
+        self.leakyrelu = nn.LeakyReLU(alpha_leaky_relu)
+
+        self.act_fn = act_fn
+        self.reset_parameters()
+
+        print("Created SCLayer")
 
     def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.weight, gain=1.414)
-        torch.nn.init.xavier_uniform_(self.att_weight.view(-1, 1), gain=1.414)
+        """Reinitialize learnable parameters."""
+        gain = nn.init.calculate_gain('relu')
+        nn.init.xavier_uniform_(self.Wirr.data, gain=gain)
+        nn.init.xavier_uniform_(self.Wsol.data, gain=gain)
+        nn.init.xavier_uniform_(self.Whar.data, gain=gain)
 
-class SANLayer(torch.nn.Module):
-    r"""Implementation of the Simplicial Attention Network (SAN) Layer proposed in [1]_.
+    def forward(self, x, down_laplacian, up_laplacian, P):
+        # This is what we need
+        # Ld, Lu , P = self.L
 
-    Parameters
-    ----------
-    in_channels : int
-        Number of input channels.
-    out_channels : int
-        Number of output channels.
-    n_filters : int, default = 2
-        Approximation order.
 
-    Notes
-    -----
-    Architecture proposed for r-simplex (r>0) classification on simplicial complices.
+        x_har = torch.spmm(P,  torch.spmm(x @ self.Whar))
+        
+        alpha_irr_k = down_laplacian # torch.clone(down_laplacian).requires_grad_(False)
+        alpha_sol_k = up_laplacian # torch.clone(up_laplacian).requires_grad_(False)
+
+
+        tmp_Wirr = torch.spmm(x, self.Wirr[0])
+        tmp_Wsol = torch.spmm(x, self.Wsol[0])
+
+        z_i = torch.spmm(alpha_irr_k, tmp_Wirr)
+        z_s = torch.spmm(alpha_sol_k,  tmp_Wsol)
+
+        for k in range(1, self.K):
+            alpha_irr_k = torch.spmm(alpha_irr_k, down_laplacian) # alpha_irr
+            alpha_sol_k = torch.spmm(alpha_sol_k, up_laplacian) #alpha_sol
+            z_i += torch.spmm(alpha_irr_k, torch.spmm(x, self.Wirr[k]))
+            # (ExE) x (ExF_out) -> (ExF_out)
+            z_s += torch.spmm(alpha_sol_k, torch.spmm(x, self.Wsol[k]))
+
+        out = F.dropout((z_i + z_s + x_har), self.dropout)  # (ExE) -> (ExE)
+        if self.act_fn is None:
+            return out
+        return self.act_fn(out)
+
+
+class SAN(nn.Module):
     """
 
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        n_filters: int = 2,
-    ) -> None:
-        super().__init__()
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.n_filters = n_filters
-
-        #  Convolutions
-        # Down convolutions, one for each filter order p
-        self.conv_down = SANConv(in_channels, out_channels, n_filters)
-
-        # Up convolutions, one for each filter order p
-        self.conv_up = SANConv(in_channels, out_channels, n_filters)
-
-        # Harmonic convolution
-        self.conv_harmonic = GCNConv(in_channels, out_channels, add_self_loop=sFalse, normalize=False)
-
-    def reset_parameters(self) -> None:
-        r"""Reset learnable parameters."""
-        self.conv_down.reset_parameters()
-        self.conv_up.reset_parameters()
-        self.conv_harmonic.reset_parameters()
-
-    def forward(self, x, laplacian_up, laplacian_down, projection_mat):
-        r"""Forward pass of the SAN Layer.
-
-        .. math::
-            \mathcal N = \{\mathcal N_1, \mathcal N_2,...,\mathcal N_{2p+1}\}
-                = \{A_{\uparrow, r}, A_{\downarrow, r}, A_{\uparrow, r}^2, A_{\downarrow, r}^2,...,A_{\uparrow, r}^p, A_{\downarrow, r}^p, Q_r\},
-
-        .. math::
-            \begin{align*}
-            &🟥\quad m_{(y \rightarrow x),k}^{(r)}
-                = \alpha_k(h_x^t,h_y^t) = a_k(h_x^{t}, h_y^{t}) \cdot \psi_k^t(h_x^{t})\quad \forall \mathcal N_k \in \mathcal{N}\\
-            &🟧\quad m_{x,k}^{(r)}
-                = \bigoplus_{y \in \mathcal{N}_k(x)}  m^{(r)}_{(y \rightarrow x),k}\\
-            &🟩\quad m_{x}^{(r)}
-                = \bigotimes_{\mathcal{N}_k\in\mathcal N}m_{x,k}^{(r)}\\
-            &🟦\quad h_x^{t+1,(r)}
-                = \phi^{t}(h_x^t, m_{x}^{(r)})
-            \end{align*}
-
-        Parameters
-        ----------
-        x : torch.Tensor, shape = (..., n_cells, in_channels)
-            Input tensor.
-        laplacian_up : torch.Tensor
-        laplacian_down : torch.Tensor
-            The up- and down-laplacians of the simplicial complex.
-        projection_mat : torch.Tensor
-            The projection matrix used.
-
-        Returns
-        -------
-        torch.Tensor, shape = (..., n_cells, out_channels)
-            Output tensor.
-        """
-        # Compute the down and up convolutions
-        z_down = self.conv_down(x, laplacian_down)
-        z_up = self.conv_up(x, laplacian_up)
-        # For the harmonic convolution, we use the precomputed projection matrix P as the neighborhood
-        # with no attention
-        z_har = torch.nn.functional.relu(self.conv_harmonic(projection_mat, x))
-
-        # final output
-        return z_down + z_up + z_har
-
-class SAN(torch.nn.Module):
-    """Simplicial Attention Network (SAN) implementation for binary edge classification.
-
-    Parameters
-    ----------
-    in_channels : int
-        Dimension of input features.
-    hidden_channels : int
-        Dimension of hidden features.
-    out_channels : int
-        Dimension of output features.
-    n_filters : int, default = 2
-        Approximation order for simplicial filters.
-    order_harmonic : int, default = 5
-        Approximation order for harmonic convolution.
-    epsilon_harmonic : float, default = 1e-1
-        Epsilon value for harmonic convolution.
-    n_layers : int, default = 2
-        Number of message passing layers.
+    @author: Lorenzo Giusti
     """
-
-    def __init__(
-        self,
-        in_channels,
-        hidden_channels,
-        out_channels=None,
-        n_filters=2,
-        order_harmonic=5,
-        epsilon_harmonic=1e-1,
-        n_layers=2,
-    ):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, alpha_leaky_relu=0.01, kappa=2, dropout=0.0, epsilon=4, attention=False):
         super().__init__()
 
-        self.in_channels = in_channels
+        assert n_layers > 2, "Needs at least 3 layers in `n_layers`"
+        self.n_layers = n_layers
+        self.input_channels = in_channels
         self.hidden_channels = hidden_channels
-        self.out_channels = (
-            out_channels if out_channels is not None else hidden_channels
-        )
-        self.n_filters = n_filters
-        self.order_harmonic = order_harmonic
-        self.epsilon_harmonic = epsilon_harmonic
+        self.out_channels = out_channels
+        self.attention = attention
+        self.epsilon = epsilon
+        self.act = torch.nn.functional.relu #NOTE: Can be changed
 
-        if n_layers == 1:
-            self.layers = [
-                SANLayer(
-                    in_channels=self.in_channels,
-                    out_channels=self.out_channels,
-                    n_filters=self.n_filters,
-                )
-            ]
-        else:
-            self.layers = [
-                SANLayer(
-                    in_channels=self.in_channels,
-                    out_channels=self.hidden_channels,
-                    n_filters=self.n_filters,
-                )
-            ]
-            for _ in range(n_layers - 2):
-                self.layers.append(
-                    SANLayer(
-                        in_channels=self.hidden_channels,
-                        out_channels=self.hidden_channels,
-                        n_filters=self.n_filters,
+
+        if self.attention:
+            self.layers = nn.ModuleList(
+                [
+                    SALayer(
+                        F_in = hidden_channels,
+                        F_out = hidden_channels,
+                        kappa=kappa,
+                        p_dropout=dropout,
+                        alpha_leaky_relu=alpha_leaky_relu,
+                        act_fn=self.act
                     )
-                )
-            self.layers.append(
-                SANLayer(
-                    in_channels=self.hidden_channels,
-                    out_channels=self.out_channels,
-                    n_filters=self.n_filters,
+                    for _ in range(n_layers - 2)
+                ]
+            )
+            self.layers.insert(0,
+                SALayer(
+                    F_in = in_channels,
+                    F_out = hidden_channels,
+                    kappa=kappa,
+                    p_dropout=dropout,
+                    alpha_leaky_relu=alpha_leaky_relu,
+                    act_fn=self.act
                 )
             )
-        self.layers = torch.nn.ModuleList(self.layers)
-
-    def compute_projection_matrix(self, laplacian):
-        """Compute the projection matrix.
-
-        The matrix is used to calculate the harmonic component in SAN layers.
-
-        Parameters
-        ----------
-        laplacian : torch.Tensor, shape = (n_edges, n_edges)
-            Hodge laplacian of rank 1.
-
-        Returns
-        -------
-        torch.Tensor, shape = (n_edges, n_edges)
-            Projection matrix.
-        """
-        eye = torch.eye(laplacian.shape[0]).to(laplacian.device)
-        projection_mat = eye - self.epsilon_harmonic * laplacian
-        return torch.linalg.matrix_power(projection_mat, self.order_harmonic)
+            self.layers.append(
+                SALayer(
+                    F_in = hidden_channels,
+                    F_out = hidden_channels,
+                    kappa=kappa,
+                    p_dropout=dropout,
+                    alpha_leaky_relu=alpha_leaky_relu,
+                    act_fn=None
+                )
+            )
+        else:
+            self.layers = nn.ModuleList(
+                [
+                    SCLayer(
+                        F_in = hidden_channels,
+                        F_out = hidden_channels,
+                        kappa=kappa,
+                        p_dropout=dropout,
+                        alpha_leaky_relu=alpha_leaky_relu,
+                        act_fn=self.act
+                    )
+                    for _ in range(n_layers - 2)
+                ]
+            )
+            self.layers.insert(0,
+                SCLayer(
+                    F_in = in_channels,
+                    F_out = hidden_channels,
+                    kappa=kappa,
+                    p_dropout=dropout,
+                    alpha_leaky_relu=alpha_leaky_relu,
+                    act_fn=self.act
+                )
+            )
+            self.layers.append(
+                SCLayer(
+                    F_in = hidden_channels,
+                    F_out = hidden_channels,
+                    kappa=kappa,
+                    p_dropout=dropout,
+                    alpha_leaky_relu=alpha_leaky_relu,
+                    act_fn=None
+                )
+            )
+        self.linear = nn.Linear(hidden_channels, hidden_channels)
+        self.readout = SumReadout(hidden_channels, out_channels)
 
     def forward(self, batch):
-        """Forward computation.
+        x = batch['x_1']
+        up_laplacian = batch['up_laplacian_1'] #TODO: Take absolute value after calculating the Hodget
+        down_laplacian = batch['down_laplacian_1']
 
-        Parameters
-        ----------
-        x : torch.Tensor, shape = (n_nodes, channels_in)
-            Node features.
-        laplacian_up : torch.Tensor, shape = (n_edges, n_edges)
-            Upper laplacian of rank 1.
-        laplacian_down : torch.Tensor, shape = (n_edges, n_edges)
-            Down laplacian of rank 1.
+        hodge_laplacian = up_laplacian + down_laplacian
+        E = up_laplacian.shape[0]
 
-        Returns
-        -------
-        torch.Tensor, shape = (n_edges, out_channels)
-            Final hidden representations of edges.
-        """
-        x = batch.x
-        laplacian_up = batch['laplacian_up']
-        laplacian_down = batch['laplacian_down']
+        # Projection matrix
+        P = (torch.eye(E, device=up_laplacian.device) - self.epsilon * hodge_laplacian)
 
-        # Compute the projection matrix for the harmonic component
-        laplacian = laplacian_up + laplacian_down
-        projection_mat = self.compute_projection_matrix(laplacian)
+        #TODO: Perform normalization on P
 
-        # Forward computation
         for layer in self.layers:
-            x = layer(x, laplacian_up, laplacian_down, projection_mat)
-        return x
+            x = layer(x, down_laplacian, up_laplacian, P)
+
+        x = self.linear(x)
+
+        out = self.readout(x, batch.batch_1)
+
+        return out
