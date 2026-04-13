@@ -89,7 +89,8 @@ def main(cfg: RootConfig):
 
     is_graph_representation =  cfg.dataset.transform.select_features.representation == 'graph'
 
-    if is_graph_representation:
+    # TODO Fix, this is only for the case of SCCNN
+    if is_graph_representation or "SCCNN" not in cfg.model._target_:
         in_channels = dataset[0].x.shape[1]  if cfg.dataset.num_features == 'auto' else int(cfg.dataset.num_features)
     else:
         feature_keys = [feat_key for feat_key in dataset[0].keys() if feat_key.split('_')[0] == "x" ]
