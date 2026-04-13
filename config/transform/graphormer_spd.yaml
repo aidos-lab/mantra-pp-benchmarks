@@ -1,4 +1,4 @@
-_target_: datasets.graphormer_spd.GraphormerSPDPreTransform
+_target_: src.utils.graphormer_spd.GraphormerSPDPreTransform
 
 max_distance: 16
 undirected: true
