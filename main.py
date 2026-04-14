@@ -1,19 +1,18 @@
 import wandb
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 
 import hydra
 from hydra.core.config_store import ConfigStore
 
 import numpy as np
-from collections import defaultdict
 
 import torch
 import os
-from torch_geometric.transforms import BaseTransform, Compose
+from torch_geometric.transforms import Compose
 
 
 from mantra.datasets import ManifoldTriangulations
-from mantra.transforms import MomentCurveEmbedding, SelectAttributes, SelectFeatures
+from mantra.representations.internal.simplex_trie import SimplexNode, SimplexTrie
 
 from src.schema import RootConfig
 from src.utils.imbalance_handling import sorted_imbalance_weights
@@ -24,6 +23,8 @@ from src.utils.train_utils import train, validate, test, init_metrics
 
 from tqdm import tqdm
 from torch_geometric.profile import count_parameters
+
+#torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
 
 cs = ConfigStore().instance()
 cs.store(name="main_conf", node=RootConfig)
@@ -91,7 +92,10 @@ def main(cfg: RootConfig):
 
     # TODO Fix, this is only for the case of SCCNN
     if is_graph_representation or "SCCNN" not in cfg.model._target_:
-        in_channels = dataset[0].x.shape[1]  if cfg.dataset.num_features == 'auto' else int(cfg.dataset.num_features)
+        if cfg.dataset.num_features != 'auto':
+            in_channels = int(cfg.dataset.num_features)
+        else: #NOTE: Handles the case for SAN
+            in_channels = dataset[0]['x_1'].shape[1] if hasattr(dataset[0], 'x_1') else dataset[0].x.shape[1]
     else:
         feature_keys = [feat_key for feat_key in dataset[0].keys() if feat_key.split('_')[0] == "x" ]
         in_channels = [dataset[0][feat_key].shape[1] for feat_key in feature_keys] if cfg.dataset.num_features == 'auto' else [int(cfg.dataset.num_features)] * len(list(dataset[0].x.keys()))
