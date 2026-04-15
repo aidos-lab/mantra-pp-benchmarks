@@ -7,35 +7,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import List
 from torch_sparse import SparseTensor
+from torch_scatter import scatter_add
 from torch_geometric.nn import MLP
-import torch_sparse
 
+from src.models.conv_down import Conv, PropagateSignalDown
 
-class Conv(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.in_channels = in_channels 
-        self.out_channels = out_channels
-
-        self.weight = nn.Parameter(torch.Tensor(self.in_channels, self.out_channels))
-        
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        gain = nn.init.calculate_gain('relu')
-        torch.nn.init.xavier_uniform_(
-            self.weight, gain=gain
-        )
-
-    def forward(self, x_source, neighborhood: SparseTensor):
-        m, n = neighborhood.sparse_sizes()
-        row, col, val = neighborhood.coo()
-        index = torch.stack([row, col], dim=0)
-
-        x_message = torch_sparse.spmm(index, val, m, n, x_source)
-        x_message_on_target = neighborhood @ x_message
-
-        return x_message_on_target
 
 class CWNLayer(nn.Module):
     r"""Layer of a CW Network (CWN).
@@ -418,11 +394,12 @@ class CWN(torch.nn.Module):
             )
             for _ in range(n_layers)
         )
-        self.readout = MLP(in_channels=sum(hidden_channels), num_layers=2, hidden_channels=sum(hidden_channels), out_channels=kwargs['out_channels'])
+        self.readout = PropagateSignalDown(max_dimension=3, hidden_channel=hidden_channels[0])
+        self.graph_readout = MLP(in_channels=hidden_channels[0], hidden_channels=hidden_channels[0], out_channels=kwargs['out_channels'], num_layers=2)
 
     def _reconstruct(self, batch, name):
         idx = batch[f"{name}_idx"]
-        val = batch[f"{name}_val"]
+        val = batch[f"{name}_val"].detach()
         if 'incidence' in name:
             r_to = int(name.split('_')[-1])
             r_from = r_to - 1
@@ -431,6 +408,7 @@ class CWN(torch.nn.Module):
 
         n_rows = batch[f"x_{r_from}"].size(0)
         n_cols = batch[f"x_{r_to}"].size(0)
+
         return SparseTensor(
             row=idx[0], col=idx[1], value=val,
             sparse_sizes=(n_rows, n_cols)
@@ -476,7 +454,7 @@ class CWN(torch.nn.Module):
         x_2 = F.elu(self.proj_2(x_2))
 
         adjacency_1 = self._reconstruct(batch, "adjacency_1")
-        incidence_1 = self._reconstruct(batch, "incidence_1").t()
+        incidence_1 = self._reconstruct(batch, "incidence_1")
         incidence_2 = self._reconstruct(batch, "incidence_2")
 
         for layer in self.layers:
@@ -486,16 +464,23 @@ class CWN(torch.nn.Module):
                 x_2,
                 adjacency_1,
                 incidence_2,
-                incidence_1,
+                incidence_1.t(),
             )
 
 
-        print(x_0.shape)
-        print(x_1.shape)
-        print(x_2.shape)
 
-        X = torch.cat([x_0, x_1, x_2], dim=-1)
-        # TODO: Do down convolution this bs doesn't work
-        out = self.readout(X)
+        model_out = {
+            'x_0': x_0,
+            'x_1': x_1,
+            'x_2': x_2,
+        }
+        incidence_map = {
+            'incidence_1': incidence_1,
+            'incidence_2': incidence_2
+        }
+        out = self.readout(model_out, incidence_map)
+        out = self.graph_readout(out['x_0'])
         
+        out = scatter_add(out, batch['batch_0'], dim=-2)
+
         return out 
