@@ -6,27 +6,73 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "hydra-core>=1.3.2",
-    "mantra-dataset>=0.0.16",
     "numpy>=2.4.2",
     "omegaconf>=2.3.0",
     "scikit-learn>=1.8.0",
-    "torch==2.8.0",
-    "torch-geometric>=2.7.0",
     "torchmetrics>=1.8.2",
     "wandb>=0.25.0",
 ]
 
-[tool.uv.sources]
-torch = {index = "pytorch-cu128"}
 
-[tool.uv.extra-build-dependencies]
-torch-scatter = ["torch"]
-torch-sparse = ["torch"]
-pyg-lib = ["torch"]
+[project.optional-dependencies]
+cpu = [
+    "mantra-dataset[cpu]",
+    "torch==2.9.0+cpu",
+    "torch-geometric",
+    "pyg-lib==0.6.0+pt29cpu",
+    "torch-sparse==0.6.18+pt29cpu",
+    "torch-scatter==2.1.2+pt29cpu",
+]
+cu130 = [
+    "mantra-dataset[cu130]",
+    "torch==2.9.0+cu130",
+    "torch-geometric",
+    "pyg-lib==0.6.0+pt29cu130",
+    "torch-sparse==0.6.18+pt29cu130",
+    "torch-scatter==2.1.2+pt29cu130",
+]
 
-
+[tool.uv]
+environments = ["platform_system == 'Linux'"]
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cu130" },
+    ],
+]
 
 [[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-all"
+url = "https://download.pytorch.org/whl/"
 explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cuda" 
+url = "https://data.pyg.org/whl/torch-2.9.0+cu130.html"
+explicit = true
+format = "flat"
+
+[[tool.uv.index]]
+name = "pyg-cpu" 
+url = "https://data.pyg.org/whl/torch-2.9.0+cpu.html"
+explicit = true
+format = "flat"
+
+[tool.uv.sources]
+mantra-dataset = { path = "../mantra" , editable=true}
+torch = [
+    { index = "pytorch-all"},
+]
+pyg-lib = [
+    { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Linux'"},
+    { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"}
+]
+torch-sparse = [
+    { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Linux'"},
+    { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"}
+]
+
+torch-scatter = [
+    { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Linux'"},
+    { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"}
+]

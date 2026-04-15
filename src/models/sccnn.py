@@ -4,24 +4,11 @@ from pydantic import BaseModel
 from torch import nn
 import torch
 
-from torch_geometric import EdgeIndex
+from torch_sparse import SparseTensor
 
 from torch_geometric.utils import coalesce, scatter, to_dense_adj
+from src.models.utils import SumReadout
 
-class SumReadout(nn.Module):
-    def __init__(self, in_features, out_features):
-        super(SumReadout, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.projection_needed = in_features != out_features
-        if self.projection_needed:
-            self.linear = nn.Linear(in_features, out_features)
-
-    def forward(self, x, signal_belongings):
-        if self.projection_needed:
-            x = self.linear(x)
-        x = scatter(x, signal_belongings, dim=-2, reduce='sum')
-        return x
 
 class SCCNNLayer(nn.Module):
     r"""Layer of a Simplicial Complex Convolutional Neural Network.
@@ -153,7 +140,7 @@ class SCCNNLayer(nn.Module):
         torch.Tensor
             Normalized feature tensor.
         """
-        neighborhood_size = torch.sum(conv_operator.to_dense(), dim=1)
+        neighborhood_size = conv_operator.sum(dim=1)
         neighborhood_size_inv = 1 / neighborhood_size
         neighborhood_size_inv[~(torch.isfinite(neighborhood_size_inv))] = 0
 
@@ -184,15 +171,15 @@ class SCCNNLayer(nn.Module):
         )
 
         if self.aggr_norm:
-            X[:, :, 0] = torch.mm(conv_operator, x)
+            X[:, :, 0] = conv_operator @ x
             X[:, :, 0] = self.aggr_norm_func(conv_operator, X[:, :, 0])
             for k in range(1, conv_order):
-                X[:, :, k] = torch.mm(conv_operator, X[:, :, k - 1])
+                X[:, :, k] = conv_operator @ X[:, :, k - 1]
                 X[:, :, k] = self.aggr_norm_func(conv_operator, X[:, :, k])
         else:
-            X[:, :, 0] = torch.mm(conv_operator, x)
+            X[:, :, 0] = conv_operator @ x
             for k in range(1, conv_order):
-                X[:, :, k] = torch.mm(conv_operator, X[:, :, k - 1])
+                X[:, :, k] = conv_operator @ X[:, :, k - 1]
         return X
 
     def forward(self, x_all, laplacian_all, incidence_all):
@@ -225,7 +212,13 @@ class SCCNNLayer(nn.Module):
                 laplacian_up_1,
                 laplacian_down_2,
             ) = laplacian_all
-            laplacian_up_2 = torch.zeros_like(laplacian_down_2, device=laplacian_down_2.device)
+            device = laplacian_down_2.device()
+            laplacian_up_2 =  SparseTensor(
+                row=torch.empty(0, dtype=torch.long, device=device),
+                col=torch.empty(0, dtype=torch.long, device=device),
+                value=torch.empty(0, device=device),
+                sparse_sizes=laplacian_down_2.sparse_sizes()
+            )
         elif self.sc_order > 2:
             (
                 laplacian_0,
@@ -261,7 +254,7 @@ class SCCNNLayer(nn.Module):
         # x_1_to_0 = self.chebyshev_conv(laplacian_0, self.conv_order, x_1_to_0)
         # x_1_to_0 = torch.cat((x_1_to_0_identity, x_1_to_0), 2)
 
-        x_1_to_0_upper = torch.mm(b1, x_1)
+        x_1_to_0_upper = b1 @ x_1
         x_1_to_0_laplacian = self.chebyshev_conv(
             laplacian_0, self.conv_order, x_1_to_0_upper
         )
@@ -284,7 +277,7 @@ class SCCNNLayer(nn.Module):
         # x_1_to_1 = torch.cat((x_identity_1, x_1_down, x_1_up), 2)
 
         x_1_down = self.chebyshev_conv(laplacian_down_1, self.conv_order, x_1)
-        x_1_up = self.chebyshev_conv(laplacian_down_1, self.conv_order, x_1)
+        x_1_up = self.chebyshev_conv(laplacian_up_1, self.conv_order, x_1)
         x_1_to_1 = torch.cat((x_1.unsqueeze(2), x_1_down, x_1_up), 2)
 
         # -------------------
@@ -295,7 +288,7 @@ class SCCNNLayer(nn.Module):
         # x_0_to_1 = torch.cat((x_0_to_1_identity, x_0_to_1), 2)
 
         # Lower projection
-        x_0_1_lower = torch.mm(b1.T, x_0)
+        x_0_1_lower = b1.t() @ x_0
 
         # Calculate lowwer chebyshev_conv
         x_0_1_down = self.chebyshev_conv(
@@ -318,7 +311,7 @@ class SCCNNLayer(nn.Module):
         # x_2_to_1 = self.chebyshev_conv(laplacian_up_1, self.conv_order, x_2_to_1)
         # x_2_to_1 = torch.cat((x_2_to_1_identity, x_2_to_1), 2)
 
-        x_2_1_upper = torch.mm(b2, x_2)
+        x_2_1_upper = b2 @ x_2
 
         # Calculate lowwer chebyshev_conv (Note: In case of signed incidence should be always zero)
         x_2_1_down = self.chebyshev_conv(
@@ -364,17 +357,17 @@ class SCCNNLayer(nn.Module):
         #     x_1_to_2 = self.chebyshev_conv(laplacian_down_2, self.conv_order, x_1_to_2)
         # x_1_to_2 = torch.cat((x_1_to_2_identity, x_1_to_2), 2)
 
-        x_1_2_lower = torch.mm(b2.T, x_1)
+        x_1_2_lower = b2.t() @ x_1
 
         x_1_2_down = self.chebyshev_conv(
             laplacian_down_2, self.conv_order, x_1_2_lower
         )
-        x_1_2_down = self.chebyshev_conv(
+        x_1_2_up = self.chebyshev_conv(
             laplacian_up_2, self.conv_order, x_1_2_lower
         )
 
         x_1_to_2 = torch.cat(
-            [x_1_2_lower.unsqueeze(2), x_1_2_down, x_1_2_down], dim=2
+            [x_1_2_lower.unsqueeze(2), x_1_2_down, x_1_2_up], dim=2
         )
 
         # That is my code, but to execute this part we need to have simplices order of k+1 in this case order of 3
@@ -539,14 +532,30 @@ class SCCNN(nn.Module):
             hidden_channels[2], out_channels
         )
 
+    def _reconstruct(self, batch, name):
+        idx = batch[f"{name}_idx"]
+        val = batch[f"{name}_val"]
+        if 'incidence' in name:
+            r_to = int(name.split('_')[-1])
+            r_from = r_to - 1
+        else:
+            r_from = r_to = int(name.split('_')[-1])
+
+        n_rows = batch[f"x_{r_from}"].size(0)
+        n_cols = batch[f"x_{r_to}"].size(0)
+        return SparseTensor(
+            row=idx[0], col=idx[1], value=val,
+            sparse_sizes=(n_rows, n_cols)
+        )
+
     def forward(self, batch):
         x = {
             int(x_key.split('_')[-1]): batch[x_key]
-            for x_key in batch.keys() if x_key.split('_')[0] == 'x'
+            for x_key in batch.keys() if isinstance(x_key, str) and x_key.split('_')[0] == 'x' and x_key.split('_')[1].isdigit()
         }
         batches = {
             int(x_key.split('_')[-1]): batch[x_key]
-            for x_key in batch.keys() if x_key.split('_')[0] == 'batch'
+            for x_key in batch.keys() if isinstance(x_key, str) and x_key.split('_')[0] == 'batch' and x_key.split('_')[1].isdigit()
         }
 
         x_0, x_1, x_2 = x[0], x[1], x[2]
@@ -563,34 +572,26 @@ class SCCNN(nn.Module):
         x_all = (x_0, x_1, x_2)
 
         if self.sc_order > 2:
-            laplacian_all = (
-                batch["hodge_laplacian_0"],
-                batch["down_laplacian_1"],
-                batch["up_laplacian_1"],
-                batch["down_laplacian_2"],
-                batch["up_laplacian_2"],
-            )
+            laplacian_names = [
+                "hodge_laplacian_0",
+                "down_laplacian_1",
+                "up_laplacian_1",
+                "down_laplacian_2",
+                "up_laplacian_2",
+            ]
         else:
-            laplacian_all = (
-                batch["hodge_laplacian_0"],
-                batch["down_laplacian_1"],
-                batch["up_laplacian_1"],
-                batch["hodge_laplacian_2"],
-            )
-
-        incidence_all = (
-            batch["incidence_1"],
-            batch["incidence_2"],
+            laplacian_names = [
+                "hodge_laplacian_0",
+                "down_laplacian_1",
+                "up_laplacian_1",
+                "down_laplacian_2",
+            ]
+        laplacian_all = tuple(
+            self._reconstruct(batch, name) for name in laplacian_names
         )
-
-        def _coalesced_edge_index(mat):
-            if mat.is_sparse:
-                mat = mat.coalesce()
-            return EdgeIndex(mat).to_sparse()
-
-        laplacian_all = tuple([_coalesced_edge_index(c) for c in laplacian_all])
-        incidence_all = tuple([_coalesced_edge_index(c) for c in incidence_all])
-
+        incidence_all = tuple(
+            self._reconstruct(batch, name) for name in ['incidence_1', 'incidence_2'] 
+        )
 
         x_0, x_1, x_2 = self.sccnn_backbone(
             x_all, laplacian_all, incidence_all
@@ -603,4 +604,3 @@ class SCCNN(nn.Module):
 
 
         return out_0 + out_1 + out_2
-
