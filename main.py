@@ -55,6 +55,8 @@ def main(cfg: RootConfig):
     transform_dict = dataset_config.transform
     transform_order = dataset_config.transform_order
 
+    assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
+
     # Only set for CPU
     if not is_gpu(cfg):
         torch.set_num_threads(os.cpu_count())
@@ -88,7 +90,7 @@ def main(cfg: RootConfig):
     transforms = Compose(transforms)
 
     dataset = ManifoldTriangulations(
-        balanced=False,
+        balanced=dataset_config.balanced,
         root=dataset_config.root,
         dimension=dataset_config.dimension,
         version=dataset_config.version,
