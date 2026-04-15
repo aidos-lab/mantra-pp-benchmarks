@@ -7,6 +7,10 @@ from collections import defaultdict
 from src.utils.logging import log_metrics
 from src.schema import RootConfig
 
+
+def use_amp(cfg):
+    return cfg.trainer.device != "cpu" and torch.cuda.is_available()
+
 def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
     """ Run the training 
 
@@ -16,15 +20,20 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
     model.train()
     metrics = defaultdict(float)
     losses = []
+    amp_enabled = use_amp(cfg)
+
     # Go over each batch
     for batch in train_dataset:
-        batch = batch.to(cfg.trainer.device)
-        optimizer.zero_grad()
+        batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
+        optimizer.zero_grad(set_to_none=True)
+        
+        with torch.amp.autocast(
+            device_type='cuda', dtype=torch.bfloat16, enabled=amp_enabled
+        ):
 
-        y_hat = model(batch)
 
-        y_hat = y_hat.squeeze()
-        y = batch.y
+            y_hat = model(batch)
+            y = batch.y
 
 
         loss = loss_fn(
@@ -32,43 +41,48 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
             y,
         )
 
-        losses.append(loss.detach().cpu().item())
+        losses.append(loss.detach())
 
         for _, acc in accuracies:
-            acc(y_hat, y)
+            acc(y_hat.detach(), y)
 
         loss.backward()
         optimizer.step()
 
-    metrics['train/loss'] = torch.tensor(losses).mean().detach().cpu().item()
+    metrics['train/loss'] = torch.stack(losses).mean().item()
 
     for name, acc in accuracies:
         metrics[f'train/{name}'] = acc.compute().detach().cpu().item()
 
     return metrics
 
-def validate(model, optimizer, val_dataset, loss_fn, accuracies, cfg):
+def validate(model,  val_dataset, loss_fn, accuracies, cfg):
     """ Run the validation evaluation
 
     """
     model.eval()
-    metrics = defaultdict(float)
-    losses = []
+    amp_enabled = use_amp(cfg)
 
-    for batch in val_dataset:
-        batch = batch.to(cfg.trainer.device)
+    with torch.no_grad():
+        metrics = defaultdict(float)
+        losses = []
+        for batch in val_dataset:
+            batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-        y_hat = model(batch).squeeze()
-        y = batch.y.long()
+            with torch.amp.autocast(
+                device_type='cuda', dtype=torch.bfloat16, enabled=amp_enabled
+            ):
+                y_hat = model(batch)
+                y = batch.y
 
-        loss = loss_fn(y_hat, y)
-        losses.append(loss.detach().cpu().item())
+            loss = loss_fn(y_hat, y)
 
-        for _, acc in accuracies:
-            acc(y_hat, y)
+            for _, acc in accuracies:
+                acc(y_hat.detach(), y)
 
-    
-    metrics['val/loss'] = torch.tensor(losses).mean().detach().cpu().item()
+            losses.append(loss.detach())
+        
+        metrics['val/loss'] = torch.stack(losses).mean().item()
 
     for name, acc in accuracies:
         metrics[f"val/{name}"] = acc.compute().detach().cpu().item()
@@ -77,8 +91,6 @@ def validate(model, optimizer, val_dataset, loss_fn, accuracies, cfg):
 
 def test(model, test_dataset, accuracies, label_to_index, run, cfg):
     """ Run the test evaluation
-
-
     """
 
     is_classification = cfg.task.task_type == 'classification'
@@ -86,34 +98,34 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg):
     if not is_classification:
         raise NotImplementedError("No test for regression yet")
 
-    conf_mat = torch.zeros(cfg.model.out_channels, cfg.model.out_channels) if is_classification else None
-    index_to_label = {v: k for k,v in label_to_index.items()}
-    y_all = []
-    y_hat_all = []
-    metrics = dict()
+    with torch.no_grad():
+        index_to_label = {v: k for k,v in label_to_index.items()}
+        y_all = []
+        y_hat_all = []
+        metrics = dict()
 
-    model.eval()
-    for batch in test_dataset:
-        batch = batch.to(cfg.trainer.device)
+        model.eval()
+        for batch in test_dataset:
+            batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-        y_hat = model(batch).argmax(dim=1)
-        y = batch.y.long()
+            y_hat = model(batch).argmax(dim=1)
+            y = batch.y.long()
 
-        for _, acc in accuracies:
-            acc(y_hat, y)
+            for _, acc in accuracies:
+                acc(y_hat, y)
 
-        y_all.append(y)
-        y_hat_all.append(y_hat)
+            y_all.append(y)
+            y_hat_all.append(y_hat)
 
-        # for t,p in zip(y.view(-1), y_hat.view(-1)):
-        #     conf_mat[t.long(), p.long()] += 1
+            # for t,p in zip(y.view(-1), y_hat.view(-1)):
+            #     conf_mat[t.long(), p.long()] += 1
 
 
-    y_total = torch.cat(y_all)
-    y_hat_total = torch.cat(y_hat_all)
+        y_total = torch.cat(y_all)
+        y_hat_total = torch.cat(y_hat_all)
 
-    for name, acc in accuracies:
-        metrics[f"test/{name}"] = acc.compute().item()
+        for name, acc in accuracies:
+            metrics[f"test/{name}"] = acc.compute().item()
 
     log_metrics(metrics, epoch=cfg.trainer.max_epoch, step=None, run=run, cfg=cfg)
 
@@ -121,7 +133,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg):
 
     run.log(
         {
-            "conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total.tolist(), preds=y_hat_total.tolist(), class_names=class_names)
+            "conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total.cpu().tolist(), preds=y_hat_total.cpu().tolist(), class_names=class_names)
         }
     )
 
