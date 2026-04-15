@@ -119,7 +119,7 @@ def main(cfg: RootConfig):
     is_graph_representation =  cfg.dataset.transform.select_features.representation == 'graph'
 
     # TODO Fix, this is only for the case of SCCNN
-    if is_graph_representation or "SCCNN" not in cfg.model._target_:
+    if is_graph_representation or ("SCCNN" not in cfg.model._target_ and 'CWN' not in cfg.model._target_):
         if cfg.dataset.num_features != 'auto':
             in_channels = int(cfg.dataset.num_features)
         else: #NOTE: Handles the case for SAN
