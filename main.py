@@ -137,7 +137,7 @@ def main(cfg: RootConfig):
 
     # Only compile on GPU
     if is_blackwell_gpu(cfg) and cfg.compile:
-        model = torch.compile(model, dynamic=True, mode="max-autotune")
+        model = torch.compile(model, dynamic=True)
 
 
     print(f"Model parameters: {count_parameters(model)}")
