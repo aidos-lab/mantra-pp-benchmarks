@@ -26,8 +26,24 @@ from torch_geometric.profile import count_parameters
 
 #torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
 
+
 cs = ConfigStore().instance()
 cs.store(name="main_conf", node=RootConfig)
+
+def is_blackwell_gpu(cfg):
+    if cfg.trainer.device == 'cpu':
+        return False
+    if not torch.cuda.is_available():
+        return False
+    cap = torch.cuda.get_device_capability()
+    return cap[0] >= 10
+
+def is_gpu(cfg):
+    if cfg.trainer.device == 'cpu':
+        return False
+    if not torch.cuda.is_available():
+        return False
+    return True
 
 torch._dynamo.config.capture_scalar_outputs = True
 
@@ -38,6 +54,18 @@ def main(cfg: RootConfig):
     dataset_config = cfg.dataset
     transform_dict = dataset_config.transform
     transform_order = dataset_config.transform_order
+
+    # Only set for CPU
+    if not is_gpu(cfg):
+        torch.set_num_threads(os.cpu_count())
+
+    # Set config GPU
+    if is_gpu(cfg):
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = True
+    if is_blackwell_gpu(cfg):
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 
 
     transforms = [None for _ in range(len(list(transform_dict.items())))]
@@ -106,8 +134,8 @@ def main(cfg: RootConfig):
     model = model.to(cfg.trainer.device)
 
     # Only compile on GPU
-    if cfg.trainer.device != 'cpu' and cfg.compile:
-        model = torch.compile(model, dynamic=True)
+    if is_blackwell_gpu(cfg) and cfg.compile:
+        model = torch.compile(model, dynamic=True, mode="max-autotune")
 
 
     print(f"Model parameters: {count_parameters(model)}")
@@ -119,7 +147,7 @@ def main(cfg: RootConfig):
         os.makedirs(cfg.checkpoint_path)
 
     #NOTE: Dataset initialization
-    train_dataloader, val_dataloader, test_dataloader = split_dataset(dataset, cfg, collate_fn=collate_fn)
+    train_dataloader, val_dataloader, test_dataloader = split_dataset(dataset, cfg, pin_memory= (cfg.trainer.device != 'cpu'), collate_fn=collate_fn)
 
     imbalance = None
     if cfg.task.imbalanced:
@@ -145,9 +173,16 @@ def main(cfg: RootConfig):
 def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg):
     MAX_EPOCH = cfg.trainer.max_epoch
 
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=cfg.trainer.learning_rate, weight_decay=cfg.trainer.weight_decay
-    )
+    if is_blackwell_gpu(cfg):
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=float(cfg.trainer.learning_rate), weight_decay=cfg.trainer.weight_decay,
+            fused=True
+        )
+    else:
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=torch.tensor(cfg.trainer.learning_rate), weight_decay=cfg.trainer.weight_decay,
+        )
+
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
 
@@ -173,7 +208,6 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
     checkpoint_dir = os.path.join(cfg.checkpoint_path, run.name)
     os.makedirs(checkpoint_dir)
 
-    model = model.to(cfg.trainer.device)
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):
 
@@ -185,8 +219,7 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
         train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
 
         # Validation
-        with torch.no_grad():
-            val_metrics = validate(model, optimizer, val_dataloader, loss_fn, accuracies, cfg)
+        val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg)
 
         # Construct the progress bar
         pbar_str = ""
