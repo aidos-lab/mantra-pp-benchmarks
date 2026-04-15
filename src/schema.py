@@ -44,7 +44,8 @@ class DatasetMeta:
     train_parameters: dict = field(default_factory=dict)
     target: str = "name"
     reload: bool = False
-    
+    balanced: bool = False
+
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
 

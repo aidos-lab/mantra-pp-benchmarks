@@ -2,6 +2,7 @@ root: "./data"
 version: latest
 dimension: 2
 local_path: null
+balanced: False
 train_parameters:
   split:
     train: 0.6
