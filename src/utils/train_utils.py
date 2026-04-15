@@ -19,6 +19,7 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
     metrics = defaultdict(float)
     losses = []
 
+
     # Go over each batch
     for batch in train_dataset:
         batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
@@ -44,6 +45,7 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
     for name, acc in accuracies:
         metrics[f'train/{name}'] = acc.compute().detach().cpu().item()
+        acc.reset()
 
     return metrics
 
@@ -52,6 +54,8 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
     """
     model.eval()
+    for _, acc in accuracies:
+        acc.reset()
 
     with torch.no_grad():
         metrics = defaultdict(float)
@@ -73,6 +77,7 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
     for name, acc in accuracies:
         metrics[f"val/{name}"] = acc.compute().detach().cpu().item()
+        acc.reset()
 
     return metrics
 
@@ -84,6 +89,9 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg):
 
     if not is_classification:
         raise NotImplementedError("No test for regression yet")
+
+    for _, acc in accuracies:
+        acc.reset()
 
     with torch.no_grad():
         index_to_label = {v: k for k,v in label_to_index.items()}
@@ -113,6 +121,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg):
 
         for name, acc in accuracies:
             metrics[f"test/{name}"] = acc.compute().item()
+            acc.reset()
 
     log_metrics(metrics, epoch=cfg.trainer.max_epoch, step=None, run=run, cfg=cfg)
 
