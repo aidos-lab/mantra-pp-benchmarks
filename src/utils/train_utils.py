@@ -8,8 +8,6 @@ from src.utils.logging import log_metrics
 from src.schema import RootConfig
 
 
-def use_amp(cfg):
-    return cfg.trainer.device != "cpu" and torch.cuda.is_available()
 
 def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
     """ Run the training 
@@ -20,21 +18,14 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
     model.train()
     metrics = defaultdict(float)
     losses = []
-    amp_enabled = use_amp(cfg)
 
     # Go over each batch
     for batch in train_dataset:
         batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
         optimizer.zero_grad(set_to_none=True)
-        
-        with torch.amp.autocast(
-            device_type='cuda', dtype=torch.bfloat16, enabled=amp_enabled
-        ):
 
-
-            y_hat = model(batch)
-            y = batch.y
-
+        y_hat = model(batch)
+        y = batch.y
 
         loss = loss_fn(
             y_hat,
@@ -61,7 +52,6 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
     """
     model.eval()
-    amp_enabled = use_amp(cfg)
 
     with torch.no_grad():
         metrics = defaultdict(float)
@@ -69,11 +59,8 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
         for batch in val_dataset:
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-            with torch.amp.autocast(
-                device_type='cuda', dtype=torch.bfloat16, enabled=amp_enabled
-            ):
-                y_hat = model(batch)
-                y = batch.y
+            y_hat = model(batch)
+            y = batch.y
 
             loss = loss_fn(y_hat, y)
 
