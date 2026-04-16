@@ -162,8 +162,6 @@ class SCLayer(nn.Module):
         self.act_fn = act_fn
         self.reset_parameters()
 
-        print("Created SCLayer")
-
     def reset_parameters(self):
         """Reinitialize learnable parameters."""
         gain = nn.init.calculate_gain('relu')
@@ -176,7 +174,7 @@ class SCLayer(nn.Module):
         # Ld, Lu , P = self.L
 
 
-        x_har = torch.spmm(P,  torch.spmm(x @ self.Whar))
+        x_har = torch.spmm(P, x) @ self.Whar
         
         alpha_irr_k = down_laplacian # torch.clone(down_laplacian).requires_grad_(False)
         alpha_sol_k = up_laplacian # torch.clone(up_laplacian).requires_grad_(False)
@@ -206,7 +204,7 @@ class SAN(nn.Module):
 
     @author: Lorenzo Giusti
     """
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, alpha_leaky_relu=0.01, kappa=2, dropout=0.0, epsilon=4, attention=False):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, alpha_leaky_relu=0.01, kappa=2, dropout=0.0, epsilon=0.1, k_proj=10, attention=False):
         super().__init__()
 
         assert n_layers > 2, "Needs at least 3 layers in `n_layers`"
@@ -216,6 +214,7 @@ class SAN(nn.Module):
         self.out_channels = out_channels
         self.attention = attention
         self.epsilon = epsilon
+        self.k_proj = k_proj
         self.act = torch.nn.functional.relu #NOTE: Can be changed
 
 
@@ -290,24 +289,76 @@ class SAN(nn.Module):
         self.linear = nn.Linear(hidden_channels, hidden_channels)
         self.readout = SumReadout(hidden_channels, out_channels)
 
+    def _reconstruct_coo(self, batch, name):
+        """Rebuild a torch.sparse_coo_tensor from batched _idx/_val keys."""
+        idx = batch[f"{name}_idx"]
+        val = batch[f"{name}_val"]
+        if 'incidence' in name:
+            r_to = int(name.split('_')[-1])
+            r_from = r_to - 1
+        else:
+            r_from = r_to = int(name.split('_')[-1])
+        n_rows = batch[f"x_{r_from}"].size(0)
+        n_cols = batch[f"x_{r_to}"].size(0)
+        return torch.sparse_coo_tensor(idx, val, (n_rows, n_cols)).coalesce()
+
+    def _single_graph_projector(self, L_g):
+        """P_g ≈ (I - ε·L_norm)^(2^k) for one graph's Hodge Laplacian."""
+        n = L_g.size(0)
+        lam = torch.linalg.eigvalsh(L_g)[-1].item()
+        L_norm = L_g * (2.0 / lam) if lam > 0 else L_g
+        P = torch.eye(n, device=L_g.device) - self.epsilon * L_norm
+        for _ in range(self.k_proj):
+            P = P @ P
+        return P
+
+    def _harmonic_projector(self, hodge_laplacian, batch_1):
+        """Per-graph harmonic projectors assembled as block-diagonal sparse."""
+        E = batch_1.size(0)
+        device = batch_1.device
+        num_graphs = batch_1.max().item() + 1
+
+        _, counts = batch_1.unique_consecutive(return_counts=True)
+        offsets = torch.zeros(num_graphs + 1, dtype=torch.long, device=device)
+        offsets[1:] = counts.cumsum(0)
+
+        L_dense = hodge_laplacian.to_dense() if hodge_laplacian.is_sparse else hodge_laplacian
+        all_rows, all_cols, all_vals = [], [], []
+
+        for g in range(num_graphs):
+            start, end = offsets[g].item(), offsets[g + 1].item()
+            if start == end:
+                continue
+            P_g = self._single_graph_projector(L_dense[start:end, start:end])
+            r, c = torch.where(P_g.abs() > 1e-8)
+            all_rows.append(r + start)
+            all_cols.append(c + start)
+            all_vals.append(P_g[r, c])
+
+        if not all_rows:
+            return torch.sparse_coo_tensor(
+                torch.zeros(2, 0, dtype=torch.long, device=device),
+                torch.zeros(0, device=device), (E, E),
+            )
+        P_idx = torch.stack([torch.cat(all_rows), torch.cat(all_cols)])
+        return torch.sparse_coo_tensor(P_idx, torch.cat(all_vals), (E, E)).coalesce()
+
     def forward(self, batch):
         x = batch['x_1']
-        up_laplacian = batch['up_laplacian_1'] #TODO: Take absolute value after calculating the Hodget
-        down_laplacian = batch['down_laplacian_1']
+        batch_1 = batch['batch_1']
+
+        up_laplacian = self._reconstruct_coo(batch, "up_laplacian_1")
+        down_laplacian = self._reconstruct_coo(batch, "down_laplacian_1")
 
         hodge_laplacian = up_laplacian + down_laplacian
-        E = up_laplacian.shape[0]
 
-        # Projection matrix
-        P = (torch.eye(E, device=up_laplacian.device) - self.epsilon * hodge_laplacian)
-
-        #TODO: Perform normalization on P
+        P = self._harmonic_projector(hodge_laplacian, batch_1)
 
         for layer in self.layers:
             x = layer(x, down_laplacian, up_laplacian, P)
 
         x = self.linear(x)
 
-        out = self.readout(x, batch.batch_1)
+        out = self.readout(x, batch_1)
 
         return out
