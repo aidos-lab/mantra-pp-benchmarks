@@ -18,7 +18,7 @@ class BaseLoss(nn.Module):
         if self.task_type == LossType.BINARY:
             return nn.functional.sigmoid(y_hat)
         elif self.task_type == LossType.MULTICLASS:
-            return nn.functional.log_softmax(y_hat)
+            return nn.functional.log_softmax(y_hat, dim=-1)
         return y_hat
 
 

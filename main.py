@@ -182,7 +182,7 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
         )
     else:
         optimizer = torch.optim.Adam(
-            model.parameters(), lr=torch.tensor(cfg.trainer.learning_rate), weight_decay=cfg.trainer.weight_decay,
+            model.parameters(), lr=float(cfg.trainer.learning_rate), weight_decay=cfg.trainer.weight_decay,
         )
 
 
