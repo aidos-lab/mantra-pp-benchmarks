@@ -68,6 +68,8 @@ def main(cfg: RootConfig):
     if is_blackwell_gpu(cfg):
         torch.backends.cuda.matmul.fp32_precision = 'tf32'
         torch.backends.cudnn.conv.fp32_precision = 'tf32'
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 
 
     transforms = [None for _ in range(len(list(transform_dict.items())))]
