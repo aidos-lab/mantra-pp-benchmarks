@@ -8,7 +8,7 @@ Created on Fri Feb  4 20:00:00 2022
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_sparse import SparseTensor
+from torch_sparse import SparseTensor, spmm
 from torch_geometric.utils import softmax as sparse_softmax
 from src.models.utils import SumReadout
 
@@ -79,20 +79,19 @@ class SALayer(nn.Module):
         alpha_irr = F.dropout(alpha_irr, self.dropout, training=self.training)
         alpha_sol = F.dropout(alpha_sol, self.dropout, training=self.training)
 
-        # Rebuild sparse attention matrices
-        alpha_irr_sp = SparseTensor(row=d_row, col=d_col, value=alpha_irr, sparse_sizes=(E, E))
-        alpha_sol_sp = SparseTensor(row=u_row, col=u_col, value=alpha_sol, sparse_sizes=(E, E))
+        # Sum_{k=0}^{K-1} alpha^{k+1} @ (x @ W[k]) via Horner's scheme with
+        # explicit torch_sparse.spmm — grad-safe on the attention values
+        # (SparseTensor @ SparseTensor would silently drop them).
+        d_index = torch.stack([d_row, d_col], dim=0)
+        u_index = torch.stack([u_row, u_col], dim=0)
 
-        z_i = alpha_irr_sp @ (x @ self.Wirr[0])
-        z_s = alpha_sol_sp @ (x @ self.Wsol[0])
-
-        alpha_irr_k = alpha_irr_sp
-        alpha_sol_k = alpha_sol_sp
-        for k in range(1, self.K):
-            alpha_irr_k = alpha_irr_k @ down_laplacian
-            alpha_sol_k = alpha_sol_k @ up_laplacian
-            z_i += alpha_irr_k @ (x @ self.Wirr[k])
-            z_s += alpha_sol_k @ (x @ self.Wsol[k])
+        acc_irr = x @ self.Wirr[self.K - 1]
+        acc_sol = x @ self.Wsol[self.K - 1]
+        for k in range(self.K - 2, -1, -1):
+            acc_irr = spmm(d_index, alpha_irr, E, E, acc_irr) + x @ self.Wirr[k]
+            acc_sol = spmm(u_index, alpha_sol, E, E, acc_sol) + x @ self.Wsol[k]
+        z_i = spmm(d_index, alpha_irr, E, E, acc_irr)
+        z_s = spmm(u_index, alpha_sol, E, E, acc_sol)
 
         out = (z_i + z_s + x_har)
 
@@ -128,20 +127,22 @@ class SCLayer(nn.Module):
     def forward(self, x, down_laplacian, up_laplacian, P):
         x_har = (P @ x) @ self.Whar
 
-        alpha_irr_k = down_laplacian
-        alpha_sol_k = up_laplacian
+        # Sum_{k=0}^{K-1} L^{k+1} @ (x @ W[k]) via Horner's scheme with explicit
+        # torch_sparse.spmm. Laplacian values here are fixed, so the gradient
+        # issue doesn't bite, but we keep the same pattern as SALayer.
+        d_row, d_col, d_val = down_laplacian.coo()
+        u_row, u_col, u_val = up_laplacian.coo()
+        E = x.shape[0]
+        d_index = torch.stack([d_row, d_col], dim=0)
+        u_index = torch.stack([u_row, u_col], dim=0)
 
-        tmp_Wirr = x @ self.Wirr[0]
-        tmp_Wsol = x @ self.Wsol[0]
-
-        z_i = alpha_irr_k @ tmp_Wirr
-        z_s = alpha_sol_k @ tmp_Wsol
-
-        for k in range(1, self.K):
-            alpha_irr_k = alpha_irr_k @ down_laplacian
-            alpha_sol_k = alpha_sol_k @ up_laplacian
-            z_i += alpha_irr_k @ (x @ self.Wirr[k])
-            z_s += alpha_sol_k @ (x @ self.Wsol[k])
+        acc_irr = x @ self.Wirr[self.K - 1]
+        acc_sol = x @ self.Wsol[self.K - 1]
+        for k in range(self.K - 2, -1, -1):
+            acc_irr = spmm(d_index, d_val, E, E, acc_irr) + x @ self.Wirr[k]
+            acc_sol = spmm(u_index, u_val, E, E, acc_sol) + x @ self.Wsol[k]
+        z_i = spmm(d_index, d_val, E, E, acc_irr)
+        z_s = spmm(u_index, u_val, E, E, acc_sol)
 
         out = F.dropout((z_i + z_s + x_har), self.dropout)
         if self.act_fn is None:

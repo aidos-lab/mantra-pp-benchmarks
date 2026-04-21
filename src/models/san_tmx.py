@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
-from torch_sparse import SparseTensor
+from torch_sparse import SparseTensor, spmm
 from torch_geometric.utils import softmax as sparse_softmax
 
 from src.models.utils import SumReadout
@@ -90,16 +90,15 @@ class SANConv(nn.Module):
         # Sparse softmax over each row
         alpha = sparse_softmax(e, row, num_nodes=n)
 
-        # Build attention-weighted neighborhood as SparseTensor
-        att_lap = SparseTensor(row=row, col=col, value=alpha, sparse_sizes=(n, n))
-
-        # Compute sum_{k=0}^{K-1} att_lap^{k+1} @ x @ W_k
-        out = att_lap @ x_message[0]
-        att_lap_k = att_lap
-        for k in range(1, self.n_filters):
-            att_lap_k = att_lap_k @ att_lap
-            out = out + att_lap_k @ x_message[k]
-
+        # Mirrors TopoModelX: out = sum_{k=0..K-1} att_lap^{k+1} @ x_message[k].
+        # Each power is applied via repeated sparse-dense spmm
+        index = torch.stack([row, col], dim=0)
+        out = torch.zeros_like(x_message[0])
+        for k in range(self.n_filters):
+            v = x_message[k]
+            for _ in range(k + 1):
+                v = spmm(index, alpha, n, n, v)
+            out = out + v
         return out
 
 

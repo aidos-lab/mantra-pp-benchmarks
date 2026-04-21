@@ -791,8 +791,8 @@ class TestSANValues:
         batch = self._make_san_batch()
         batch_1 = batch['batch_1']
 
-        up_laplacian = model._reconstruct_coo(batch, "up_laplacian_1")
-        down_laplacian = model._reconstruct_coo(batch, "down_laplacian_1")
+        up_laplacian = model._reconstruct(batch, "up_laplacian_1")
+        down_laplacian = model._reconstruct(batch, "down_laplacian_1")
         hodge_laplacian = up_laplacian + down_laplacian
 
         P = model._harmonic_projector(hodge_laplacian, batch_1)
