@@ -69,6 +69,30 @@ class LoggerMeta:
     entity: str
 
 @dataclass
+class GenerateBarycentricConfig:
+    input: str
+    output_dir: str
+    prefix: str
+    n_levels: int = 4
+    min_vertices: int = 16
+    label_source: str = "name"
+    min_class_count: int = 100
+
+
+@dataclass
+class EvalBarycentricConfig:
+    checkpoint_dir: str
+    bary_dataset_root: str
+    bary_local_path: str
+    bary_level: int = 1
+    # Must match the `dataset.balanced` that precompute_barycentric.py was
+    # invoked with when the cache was built.
+    bary_balanced: bool = False
+    device: str = "cpu"
+    output: str | None = None
+    seed: int = 42
+
+@dataclass
 class RootConfig:
     logger: LoggerMeta
     model: ModelMeta
