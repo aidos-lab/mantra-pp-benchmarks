@@ -45,8 +45,19 @@ cs = ConfigStore.instance()
 cs.store(name="precompute_barycentric_conf", node=RootConfig)
 
 
+def _is_gpu(cfg):
+    if cfg.trainer.device == "cpu":
+        return False
+    return torch.cuda.is_available()
+
+
 @hydra.main(version_base=None, config_path="../config", config_name="config")
 def main(cfg: RootConfig):
+    if not _is_gpu(cfg):
+        n_threads = os.cpu_count() or 1
+        torch.set_num_threads(n_threads)
+        print(f"[INFO] CPU mode: torch.set_num_threads({n_threads})")
+
     transform_dict = cfg.dataset.transform
     transform_order = cfg.dataset.transform_order
 
