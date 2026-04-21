@@ -142,7 +142,7 @@ class SANTMX(nn.Module):
     epsilon : float
         Harmonic projector parameter.
     k_proj : int
-        Number of squaring iterations for the harmonic projector.
+        Exponent for the harmonic projector: P = (I - ε·L)^k_proj.
     """
 
     def __init__(
@@ -153,7 +153,7 @@ class SANTMX(nn.Module):
         n_layers,
         kappa=2,
         epsilon=0.1,
-        k_proj=10,
+        k_proj=5,
         # Unused but kept for config compatibility with original SAN
         alpha_leaky_relu=0.01,
         dropout=0.0,
@@ -190,15 +190,12 @@ class SANTMX(nn.Module):
             sparse_sizes=(n_rows, n_cols)
         )
 
-    def _single_graph_projector(self, L_g):
-        """P_g ≈ (I - ε·L_norm)^(2^k) for one graph's Hodge Laplacian."""
+    def _compute_projection_matrix(self, L_g):
+        """P_g = (I - ε·L)^k — matches TopoModelX SAN.compute_projection_matrix."""
         n = L_g.size(0)
-        lam = torch.linalg.eigvalsh(L_g)[-1].item()
-        L_norm = L_g * (2.0 / lam) if lam > 0 else L_g
-        P = torch.eye(n, device=L_g.device) - self.epsilon * L_norm
-        for _ in range(self.k_proj):
-            P = P @ P
-        return P
+        eye = torch.eye(n, device=L_g.device)
+        proj = eye - self.epsilon * L_g
+        return torch.linalg.matrix_power(proj, self.k_proj)
 
     def _harmonic_projector(self, hodge_laplacian, batch_1):
         """Per-graph harmonic projectors assembled as block-diagonal SparseTensor."""
@@ -218,7 +215,7 @@ class SANTMX(nn.Module):
                 continue
 
             L_block = hodge_laplacian[start:end, start:end].to_dense()
-            P_g = self._single_graph_projector(L_block)
+            P_g = self._compute_projection_matrix(L_block)
 
             r, c = torch.where(P_g.abs() > 1e-8)
             all_rows.append(r + start)

@@ -5,4 +5,4 @@ out_channels: 1 # Get from task
 n_layers: 3
 kappa: 2
 epsilon: 0.1
-k_proj: 10
+k_proj: 5
