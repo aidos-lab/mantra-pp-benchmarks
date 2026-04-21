@@ -3,7 +3,7 @@
 Simplicial Attention Network (SAN) — implementation inspired by TopoModelX.
 
 Uses torch_sparse.SparseTensor throughout and precomputes the harmonic
-projector once per batch in the forward pass (not per layer).
+projector once per batch in the forward pass.
 
 Reference
 ---------
@@ -20,6 +20,7 @@ from torch_sparse import SparseTensor
 from torch_geometric.utils import softmax as sparse_softmax
 
 from src.models.utils import SumReadout
+from src.models.conv_down import Conv
 
 
 class SANConv(nn.Module):
@@ -84,7 +85,7 @@ class SANConv(nn.Module):
 
         # Concatenate source and target features, project with att_weight
         e = torch.cat([x_flat[row], x_flat[col]], dim=-1) @ self.att_weight
-        e = F.leaky_relu(e, negative_slope=0.2)
+        e = F.elu(e)
 
         # Sparse softmax over each row
         alpha = sparse_softmax(e, row, num_nodes=n)
@@ -102,27 +103,8 @@ class SANConv(nn.Module):
         return out
 
 
-class HarmonicConv(nn.Module):
-    """Simple linear convolution through the harmonic projector (no attention).
-
-    Computes: out = P @ x @ W
-    """
-
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.weight = Parameter(torch.empty(in_channels, out_channels))
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        gain = nn.init.calculate_gain('relu')
-        nn.init.xavier_uniform_(self.weight, gain=gain)
-
-    def forward(self, x, P):
-        return (P @ x) @ self.weight
-
-
 class SANTMXLayer(nn.Module):
-    """Single SAN layer with separate down, up, and harmonic convolutions.
+    """Single SAN layer with separate down and up convolutions.
 
     Parameters
     ----------
@@ -136,13 +118,13 @@ class SANTMXLayer(nn.Module):
         super().__init__()
         self.conv_down = SANConv(in_channels, out_channels, n_filters)
         self.conv_up = SANConv(in_channels, out_channels, n_filters)
-        self.conv_harmonic = HarmonicConv(in_channels, out_channels)
+        self.conv_harmonic = Conv(in_channels, out_channels)
 
     def forward(self, x, laplacian_down, laplacian_up, P):
         z_down = self.conv_down(x, laplacian_down)
         z_up = self.conv_up(x, laplacian_up)
         z_har = self.conv_harmonic(x, P)
-        return z_down + z_up + z_har
+        return F.relu(z_down + z_up + z_har)
 
 
 class SANTMX(nn.Module):
@@ -266,7 +248,7 @@ class SANTMX(nn.Module):
         P = self._harmonic_projector(hodge_laplacian, batch_1)
 
         for layer in self.layers:
-            x = F.relu(layer(x, down_laplacian, up_laplacian, P))
+            x = layer(x, down_laplacian, up_laplacian, P)
 
         x = self.linear(x)
         out = self.readout(x, batch_1)

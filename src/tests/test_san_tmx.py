@@ -1,11 +1,11 @@
-"""Tests for src/models/san_tmx.py — SANTMX, SANTMXLayer, SANConv, HarmonicConv."""
+"""Tests for src/models/san_tmx.py — SANTMX, SANTMXLayer, SANConv."""
 
 import pytest
 import torch
 from torch_sparse import SparseTensor
 from torch_geometric.data import Data
 
-from src.models.san_tmx import SANConv, HarmonicConv, SANTMXLayer, SANTMX
+from src.models.san_tmx import SANConv, SANTMXLayer, SANTMX
 from src.utils.data_loading import collate_simplicial
 
 
@@ -139,51 +139,6 @@ class TestSANConv:
         nb = _make_sparse_tensor(4)
         out = conv(x, nb)
         assert out.shape == (4, 7)
-
-
-# ---------------------------------------------------------------------------
-# HarmonicConv
-# ---------------------------------------------------------------------------
-
-class TestHarmonicConv:
-    def test_output_shape(self):
-        conv = HarmonicConv(8, 16)
-        conv.eval()
-        x = torch.randn(10, 8)
-        P = _make_sparse_tensor(10)
-        out = conv(x, P)
-        assert out.shape == (10, 16)
-
-    def test_output_is_finite(self):
-        conv = HarmonicConv(4, 4)
-        conv.eval()
-        x = torch.randn(5, 4)
-        P = _make_sparse_tensor(5)
-        out = conv(x, P)
-        assert torch.isfinite(out).all()
-
-    def test_gradients_flow(self):
-        conv = HarmonicConv(4, 8)
-        x = torch.randn(5, 4, requires_grad=True)
-        P = _make_sparse_tensor(5)
-        out = conv(x, P)
-        loss = out.sum()
-        loss.backward()
-        assert x.grad is not None
-        assert conv.weight.grad is not None
-
-    def test_identity_projector(self):
-        """With P=I, HarmonicConv should be equivalent to a linear layer."""
-        conv = HarmonicConv(4, 4)
-        conv.eval()
-        x = torch.randn(3, 4)
-        I_sparse = SparseTensor(
-            row=torch.arange(3), col=torch.arange(3),
-            value=torch.ones(3), sparse_sizes=(3, 3)
-        )
-        out = conv(x, I_sparse)
-        expected = x @ conv.weight
-        assert torch.allclose(out, expected, atol=1e-5)
 
 
 # ---------------------------------------------------------------------------
