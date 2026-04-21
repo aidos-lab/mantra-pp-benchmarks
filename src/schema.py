@@ -10,7 +10,6 @@ class TrainerMeta:
     max_epoch: int
     early_stopping: int
     batch_size: int
-    use_stratified: bool
     device: str
 
 @dataclass
@@ -19,8 +18,7 @@ class MetricMeta:
 
 @dataclass
 class LossMeta:
-    __target__: str
-    name: str
+    _target_: str = ""
 
 @dataclass
 class TaskMeta:
@@ -45,6 +43,7 @@ class DatasetMeta:
     target: str = "name"
     reload: bool = False
     balanced: bool = False
+    use_stratified: bool = True
 
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)

@@ -103,7 +103,7 @@ class TestSplitDataset:
         labels = [0] * 100 + [1] * 100
         ds = FakeDataset(labels)
         cfg = _make_cfg(use_stratified=False)
-        train_loader, val_loader, test_loader = split_dataset(ds, cfg)
+        train_loader, val_loader, test_loader = split_dataset(ds, cfg, pin_memory=False)
 
         train_count = sum(len(batch.y) for batch in train_loader)
         val_count = sum(len(batch.y) for batch in val_loader)
@@ -122,8 +122,8 @@ class TestSplitDataset:
         cfg1 = _make_cfg(seed=42, use_stratified=False)
         cfg2 = _make_cfg(seed=42, use_stratified=False)
 
-        _, _, test1 = split_dataset(ds, cfg1)
-        _, _, test2 = split_dataset(ds, cfg2)
+        _, _, test1 = split_dataset(ds, cfg1, pin_memory=False)
+        _, _, test2 = split_dataset(ds, cfg2, pin_memory=False)
 
         y1 = torch.cat([b.y for b in test1])
         y2 = torch.cat([b.y for b in test2])
@@ -136,8 +136,8 @@ class TestSplitDataset:
         cfg1 = _make_cfg(seed=42, use_stratified=False)
         cfg2 = _make_cfg(seed=99, use_stratified=False)
 
-        _, _, test1 = split_dataset(ds, cfg1)
-        _, _, test2 = split_dataset(ds, cfg2)
+        _, _, test1 = split_dataset(ds, cfg1, pin_memory=False)
+        _, _, test2 = split_dataset(ds, cfg2, pin_memory=False)
 
         y1 = set(torch.cat([b.y for b in test1]).tolist())
         y2 = set(torch.cat([b.y for b in test2]).tolist())

@@ -5,6 +5,7 @@ out_channels: 1 # Get from task
 n_layers: 3
 alpha_leaky_relu: 0.01
 kappa: 2
-epsilon: 4
+epsilon: 0.1
+k_proj: 10
 dropout: 0.0
 attention: True

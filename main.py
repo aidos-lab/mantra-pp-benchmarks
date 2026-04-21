@@ -66,6 +66,8 @@ def main(cfg: RootConfig):
         torch.backends.cudnn.benchmark = True
         torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = True
     if is_blackwell_gpu(cfg):
+        torch.backends.cuda.matmul.fp32_precision = 'tf32'
+        torch.backends.cudnn.conv.fp32_precision = 'tf32'
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
@@ -182,7 +184,7 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
         )
     else:
         optimizer = torch.optim.Adam(
-            model.parameters(), lr=torch.tensor(cfg.trainer.learning_rate), weight_decay=cfg.trainer.weight_decay,
+            model.parameters(), lr=float(cfg.trainer.learning_rate), weight_decay=cfg.trainer.weight_decay,
         )
 
 
