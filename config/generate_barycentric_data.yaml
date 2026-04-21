@@ -1,0 +1,21 @@
+# @package _global_
+# Generate barycentric subdivisions of a raw Mantra triangulation JSON.
+# Writes one JSON per subdivision level to ``${output_dir}/${prefix}_bary_<level>.json``.
+# Entries with fewer than ``min_vertices`` after subdivision are dropped from
+# the output but kept in the intermediate running list.
+#
+# Example:
+#   python src/generate_barycentric_data.py \
+#     input=data/mantra/2D/raw/2_manifolds.json \
+#     output_dir=/tmp/mantra_bary \
+#     prefix=2_manifolds \
+#     n_levels=4 \
+#     min_vertices=16
+
+input: ???
+output_dir: ???
+prefix: ???
+n_levels: 4
+min_vertices: 16
+label_source: name
+min_class_count: 100

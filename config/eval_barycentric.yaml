@@ -1,10 +1,21 @@
 # @package _global_
+# Evaluate a trained checkpoint on a precomputed barycentric-subdivision cache.
+#
+# Example (multirun over subdivision levels, reading the caches produced by
+# scripts/precompute_cwn_barycentric.sh):
+#
+#   python src/evaluate_barycentric.py --multirun \
+#     checkpoint_dir=checkpoints/robust-mountain-517 \
+#     bary_level=1,2,3,4 \
+#     bary_dataset_root='/tmp/bary${bary_level}_2d_mantra_random_features_cwn' \
+#     bary_local_path='/tmp/mantra_bary/2_manifolds_bary_${bary_level}.json'
+
 checkpoint_dir: ???
-data_path: ???
-dimension: 2
-max_subdivisions: 1
+bary_level: 1
+bary_dataset_root: ???
+bary_local_path: ???
+bary_balanced: False
+
 device: cpu
 output: null
-max_nodes: null
-min_nodes: null
 seed: 42
