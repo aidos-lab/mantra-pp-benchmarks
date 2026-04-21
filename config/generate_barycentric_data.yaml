@@ -15,7 +15,7 @@
 input: ???
 output_dir: ???
 prefix: ???
-n_levels: 4
+n_levels: 2
 min_vertices: 16
 label_source: name
 min_class_count: 100
