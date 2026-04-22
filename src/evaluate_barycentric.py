@@ -249,6 +249,13 @@ def main(eval_cfg: EvalBarycentricConfig):
         weights_only=True,
         map_location=eval_cfg.device,
     )
+    # Checkpoints saved from a torch.compile()-wrapped model carry an
+    # `_orig_mod.` prefix on every key; strip it so load_state_dict matches
+    # the uncompiled module we instantiate here.
+    state_dict = {
+        (k[len("_orig_mod."):] if k.startswith("_orig_mod.") else k): v
+        for k, v in state_dict.items()
+    }
 
     model = hydra.utils.instantiate(train_cfg.model, in_channels=in_channels)
     model.load_state_dict(state_dict)
