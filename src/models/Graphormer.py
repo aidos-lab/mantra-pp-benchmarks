@@ -212,6 +212,8 @@ class Graphormer(nn.Module):
     ) -> torch.Tensor:
         """Reconstruct padded (B, max_nodes, max_nodes) SPD from flattened 1D tensor.
 
+        Legacy fallback for datasets cached with spatial_pos / spatial_pos_n.
+
         spatial_pos: 1D LongTensor — concatenated flattened n_i*n_i matrices.
         spatial_pos_n: 1D LongTensor of shape (B,) — node count per graph.
         """
@@ -236,6 +238,52 @@ class Graphormer(nn.Module):
         spd = spd.masked_fill(node_mask[:, None, :], unreachable)
         return spd
 
+    def _unpack_sparse_spd(
+        self,
+        spd_edge_index: torch.Tensor,
+        spd_edge_attr: torch.Tensor,
+        batch_idx: torch.Tensor,
+        ptr: torch.Tensor,
+        batch_size: int,
+        max_nodes: int,
+        node_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Reconstruct padded (B, max_nodes, max_nodes) SPD from COO tensors.
+
+        spd_edge_index: LongTensor[2, E] with global (batch-offset) node indices.
+        spd_edge_attr:  LongTensor[E] with distances d ∈ [1, max_distance].
+        batch_idx: LongTensor[ΣN] graph index per node (batch.batch).
+        ptr: LongTensor[B+1] cumulative node counts (batch.ptr).
+        """
+        device = spd_edge_index.device
+        unreachable = self.max_distance + 1
+        spd = torch.full(
+            (batch_size, max_nodes, max_nodes),
+            unreachable,
+            dtype=torch.long,
+            device=device,
+        )
+
+        if spd_edge_index.numel() > 0:
+            src = spd_edge_index[0]
+            dst = spd_edge_index[1]
+            b = batch_idx[src]
+            local_src = src - ptr[b]
+            local_dst = dst - ptr[b]
+            spd[b, local_src, local_dst] = spd_edge_attr
+
+        valid = ~node_mask
+        diag_idx = torch.arange(max_nodes, device=device)
+        spd[:, diag_idx, diag_idx] = torch.where(
+            valid,
+            torch.zeros_like(valid, dtype=torch.long),
+            torch.full_like(valid, unreachable, dtype=torch.long),
+        )
+
+        spd = spd.masked_fill(node_mask[:, :, None], unreachable)
+        spd = spd.masked_fill(node_mask[:, None, :], unreachable)
+        return spd
+
     @dynamo.disable
     def _prepare_dense_inputs(self, batch):
         """Prepare dense features and attention bias outside Dynamo tracing."""
@@ -256,18 +304,31 @@ class Graphormer(nn.Module):
         node_mask = ~node_mask
 
         if self.use_spatial_encoding:
-            if not hasattr(batch, "spatial_pos") or not hasattr(batch, "spatial_pos_n"):
-                raise ValueError(
-                    "use_spatial_encoding=True but batch is missing 'spatial_pos' / 'spatial_pos_n'. "
-                    "Add GraphormerSPDPreTransform to your dataset pre_transform."
+            if hasattr(batch, "spd_edge_index") and hasattr(batch, "spd_edge_attr"):
+                spd = self._unpack_sparse_spd(
+                    batch.spd_edge_index,
+                    batch.spd_edge_attr,
+                    batch.batch,
+                    batch.ptr,
+                    batch_size,
+                    max_nodes,
+                    node_mask,
                 )
-            spd = self._unpack_flat_spd(
-                batch.spatial_pos,
-                batch.spatial_pos_n,
-                batch_size,
-                max_nodes,
-                node_mask,
-            )
+            elif hasattr(batch, "spatial_pos") and hasattr(batch, "spatial_pos_n"):
+                spd = self._unpack_flat_spd(
+                    batch.spatial_pos,
+                    batch.spatial_pos_n,
+                    batch_size,
+                    max_nodes,
+                    node_mask,
+                )
+            else:
+                raise ValueError(
+                    "use_spatial_encoding=True but batch is missing SPD attributes. "
+                    "Add GraphormerSPDPreTransform to your dataset pre_transform "
+                    "(new caches use spd_edge_index/spd_edge_attr; legacy caches "
+                    "use spatial_pos/spatial_pos_n)."
+                )
             attn_bias = self.spatial_pos_emb(spd).permute(0, 3, 1, 2).contiguous()
         else:
             attn_bias = x_dense.new_zeros(

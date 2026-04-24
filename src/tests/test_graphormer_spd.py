@@ -16,6 +16,20 @@ def _make_data(edge_index, num_nodes=None, x=None):
     return data
 
 
+def _dense_spd(data, max_distance, prefix="spd"):
+    """Reconstruct an (n, n) distance matrix from sparse SPD attributes."""
+    n = data.num_nodes
+    unreachable = max_distance + 1
+    dist = torch.full((n, n), unreachable, dtype=torch.long)
+    if n > 0:
+        dist.fill_diagonal_(0)
+    ei = getattr(data, f"{prefix}_edge_index")
+    ea = getattr(data, f"{prefix}_edge_attr")
+    if ei.numel():
+        dist[ei[0], ei[1]] = ea
+    return dist
+
+
 class TestGraphormerSPDPreTransform(unittest.TestCase):
 
     # -- basic correctness --
@@ -28,7 +42,7 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=16, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=4))
 
-        dist = data.spatial_pos.view(4, 4)
+        dist = _dense_spd(data, 16)
         self.assertEqual(dist[0, 0].item(), 0)
         self.assertEqual(dist[0, 1].item(), 1)
         self.assertEqual(dist[0, 2].item(), 2)
@@ -41,7 +55,7 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=16, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=2))
 
-        dist = data.spatial_pos.view(2, 2)
+        dist = _dense_spd(data, 16)
         self.assertEqual(dist[0, 0].item(), 0)
         self.assertEqual(dist[1, 1].item(), 0)
 
@@ -57,7 +71,7 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=16, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=4))
 
-        dist = data.spatial_pos.view(4, 4)
+        dist = _dense_spd(data, 16)
         for i in range(4):
             for j in range(4):
                 expected = 0 if i == j else 1
@@ -73,7 +87,7 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=2, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=4))
 
-        dist = data.spatial_pos.view(4, 4)
+        dist = _dense_spd(data, 2)
         unreachable = 3  # max_distance + 1
         self.assertEqual(dist[0, 3].item(), unreachable)
         self.assertEqual(dist[0, 2].item(), 2)  # exactly at cutoff
@@ -88,7 +102,7 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=16, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=4))
 
-        dist = data.spatial_pos.view(4, 4)
+        dist = _dense_spd(data, 16)
         unreachable = 17
         self.assertEqual(dist[0, 1].item(), 1)
         self.assertEqual(dist[0, 2].item(), unreachable)
@@ -100,7 +114,7 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=16, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=3))
 
-        dist = data.spatial_pos.view(3, 3)
+        dist = _dense_spd(data, 16)
         unreachable = 17
         self.assertEqual(dist[0, 2].item(), unreachable)
         self.assertEqual(dist[2, 2].item(), 0)  # self-distance still 0
@@ -113,7 +127,7 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=16, undirected=False)
         data = transform(_make_data(edge_index, num_nodes=3))
 
-        dist = data.spatial_pos.view(3, 3)
+        dist = _dense_spd(data, 16)
         unreachable = 17
         self.assertEqual(dist[0, 2].item(), 2)
         self.assertEqual(dist[2, 0].item(), unreachable)
@@ -126,7 +140,7 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=3))
 
-        dist = data.spatial_pos.view(3, 3)
+        dist = _dense_spd(data, 4)
         unreachable = 5
         for i in range(3):
             for j in range(3):
@@ -138,28 +152,33 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=0))
 
-        self.assertEqual(data.spatial_pos.numel(), 0)
-        self.assertEqual(data.spatial_pos_n.item(), 0)
+        self.assertEqual(tuple(data.spd_edge_index.shape), (2, 0))
+        self.assertEqual(data.spd_edge_attr.numel(), 0)
 
     def test_single_node_no_edges(self):
         edge_index = torch.empty((2, 0), dtype=torch.long)
         transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=1))
 
-        dist = data.spatial_pos.view(1, 1)
+        dist = _dense_spd(data, 4)
         self.assertEqual(dist[0, 0].item(), 0)
 
     # -- output format --
 
-    def test_output_is_flat_with_correct_size(self):
+    def test_output_is_coo_with_correct_shape(self):
         edge_index = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
         transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=3))
 
-        self.assertEqual(data.spatial_pos.dim(), 1)
-        self.assertEqual(data.spatial_pos.shape[0], 9)  # 3*3
-        self.assertEqual(data.spatial_pos_n.item(), 3)
-        self.assertEqual(data.spatial_pos.dtype, torch.long)
+        # Only the pair 0<->1 is reachable (node 2 is isolated).
+        # Expected: 2 ordered pairs (0,1) and (1,0), both at d=1.
+        self.assertEqual(data.spd_edge_index.dim(), 2)
+        self.assertEqual(data.spd_edge_index.shape[0], 2)
+        self.assertEqual(data.spd_edge_index.shape[1], 2)
+        self.assertEqual(data.spd_edge_attr.shape[0], 2)
+        self.assertEqual(data.spd_edge_index.dtype, torch.long)
+        self.assertEqual(data.spd_edge_attr.dtype, torch.long)
+        self.assertTrue(torch.equal(data.spd_edge_attr, torch.tensor([1, 1])))
 
     def test_num_nodes_inferred_from_x(self):
         """When num_nodes is not set, infer from x."""
@@ -172,14 +191,16 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
         data = transform(data)
 
-        self.assertEqual(data.spatial_pos.view(3, 3)[0, 1].item(), 1)
+        self.assertEqual(_dense_spd(data, 4)[0, 1].item(), 1)
 
-    def test_custom_attr_name(self):
+    def test_custom_attr_prefix(self):
         edge_index = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
-        transform = GraphormerSPDPreTransform(max_distance=4, attr_name="my_spd")
+        transform = GraphormerSPDPreTransform(max_distance=4, attr_prefix="my_spd")
         data = transform(_make_data(edge_index, num_nodes=2))
 
-        self.assertTrue(hasattr(data, "my_spd"))
+        self.assertTrue(hasattr(data, "my_spd_edge_index"))
+        self.assertTrue(hasattr(data, "my_spd_edge_attr"))
+        self.assertFalse(hasattr(data, "spd_edge_index"))
         self.assertFalse(hasattr(data, "spatial_pos"))
 
     def test_no_edge_index_returns_data_unchanged(self):
@@ -188,6 +209,8 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=4)
         result = transform(data)
 
+        self.assertFalse(hasattr(result, "spd_edge_index"))
+        self.assertFalse(hasattr(result, "spd_edge_attr"))
         self.assertFalse(hasattr(result, "spatial_pos"))
 
 
