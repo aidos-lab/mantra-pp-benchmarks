@@ -1,6 +1,7 @@
 import torch
 import networkx as nx
 from torch_geometric.data import Data
+from torch_geometric.transforms import BaseTransform
 from torch_geometric.utils import to_networkx
 from torch_sparse import SparseTensor
 
@@ -24,8 +25,9 @@ class SPDData(Data):
         return super().__cat_dim__(key, value, *args, **kwargs)
 
 
-class GraphormerSPDPreTransform:
+class GraphormerSPDPreTransform(BaseTransform):
     def __init__(self, max_distance: int = 16, undirected: bool = True, attr_name: str = "spd"):
+        super().__init__()
         if max_distance <= 0:
             raise ValueError(f"max_distance must be positive, got {max_distance}")
         self.max_distance = max_distance
@@ -63,7 +65,7 @@ class GraphormerSPDPreTransform:
             torch.tensor(vals, dtype=torch.long),
         )
 
-    def __call__(self, data):
+    def forward(self, data):
         if not hasattr(data, "edge_index") or data.edge_index is None:
             return data
 
