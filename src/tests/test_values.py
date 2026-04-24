@@ -66,17 +66,16 @@ def _make_batch(*graphs):
     return Batch.from_data_list(list(graphs))
 
 
-def _dense_spd(data, max_distance, prefix="spd"):
-    """Reconstruct an (n, n) distance matrix from sparse SPD attributes."""
+def _dense_spd(data, max_distance, attr="spd"):
+    """Reconstruct an (n, n) distance matrix from the SparseTensor SPD attr."""
     n = data.num_nodes
     unreachable = max_distance + 1
     dist = torch.full((n, n), unreachable, dtype=torch.long)
     if n > 0:
         dist.fill_diagonal_(0)
-    ei = getattr(data, f"{prefix}_edge_index")
-    ea = getattr(data, f"{prefix}_edge_attr")
-    if ei.numel():
-        dist[ei[0], ei[1]] = ea
+    row, col, val = getattr(data, attr).coo()
+    if row.numel():
+        dist[row, col] = val
     return dist
 
 
@@ -393,7 +392,7 @@ class TestGraphormerValues:
         batch = _make_batch(g)
 
         spd = model._unpack_sparse_spd(
-            batch.spd_edge_index, batch.spd_edge_attr,
+            batch.spd,
             batch.batch, batch.ptr,
             batch_size=1, max_nodes=3,
             node_mask=torch.tensor([[False, False, False]])
@@ -416,8 +415,8 @@ class TestGraphormerValues:
         g.spatial_pos_n = torch.tensor([3], dtype=torch.long)
         batch = _make_batch(g)
 
-        # Sanity: no sparse keys present.
-        assert not hasattr(batch, "spd_edge_index")
+        # Sanity: no sparse key present.
+        assert not hasattr(batch, "spd")
 
         spd = model._unpack_flat_spd(
             batch.spatial_pos, batch.spatial_pos_n,
@@ -884,26 +883,28 @@ class TestSPDValues:
         assert dist[2, 0].item() == 2  # symmetric
 
     def test_batched_spd_preserves_per_graph_distances(self):
-        """After batching, sparse SPD entries should be offset by node count per graph."""
+        """After batching, the SparseTensor should be block-diagonal with globally offset indices."""
         transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
 
         g1 = transform(_triangle_graph())  # 3 nodes; 6 ordered pairs at d=1
         g2 = transform(_path_graph())      # 3 nodes; 4 pairs at d=1, 2 pairs at d=2
 
-        e1 = g1.spd_edge_index.shape[1]
-        e2 = g2.spd_edge_index.shape[1]
+        e1 = g1.spd.nnz()
+        e2 = g2.spd.nnz()
         assert e1 == 6  # 3*2 ordered pairs
         assert e2 == 6  # (0,1),(1,0),(1,2),(2,1) at d=1; (0,2),(2,0) at d=2
 
         batch = _make_batch(g1, g2)
 
-        # Global concat: columns for g2 should be offset by n1=3.
-        assert batch.spd_edge_index.shape[1] == e1 + e2
-        g2_cols = batch.spd_edge_index[:, e1:]
-        assert (g2_cols >= 3).all()
-        # g1 columns untouched
-        g1_cols = batch.spd_edge_index[:, :e1]
-        assert (g1_cols < 3).all()
+        # Block-diagonal: sparse_sizes grow to (6, 6); g2 indices offset by 3.
+        assert batch.spd.sparse_sizes() == (6, 6)
+        assert batch.spd.nnz() == e1 + e2
+        row, col, _ = batch.spd.coo()
+        g1_mask = row < 3
+        g2_mask = ~g1_mask
+        assert (col[g1_mask] < 3).all()
+        assert (row[g2_mask] >= 3).all()
+        assert (col[g2_mask] >= 3).all()
 
         # Per-graph dense reconstruction matches expectations.
         d1 = _dense_spd(g1, 4)

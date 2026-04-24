@@ -7,6 +7,7 @@ import torch._dynamo as dynamo
 from pydantic import BaseModel
 from torch import nn
 from torch_geometric.utils import degree, to_dense_batch
+from torch_sparse import SparseTensor
 
 
 class GraphormerConfig(BaseModel):
@@ -240,49 +241,47 @@ class Graphormer(nn.Module):
 
     def _unpack_sparse_spd(
         self,
-        spd_edge_index: torch.Tensor,
-        spd_edge_attr: torch.Tensor,
+        spd: SparseTensor,
         batch_idx: torch.Tensor,
         ptr: torch.Tensor,
         batch_size: int,
         max_nodes: int,
         node_mask: torch.Tensor,
     ) -> torch.Tensor:
-        """Reconstruct padded (B, max_nodes, max_nodes) SPD from COO tensors.
+        """Reconstruct padded (B, max_nodes, max_nodes) SPD from a SparseTensor.
 
-        spd_edge_index: LongTensor[2, E] with global (batch-offset) node indices.
-        spd_edge_attr:  LongTensor[E] with distances d ∈ [1, max_distance].
+        spd: SparseTensor with global (batch-offset) row/col node indices and
+             LongTensor values d ∈ [1, max_distance].
         batch_idx: LongTensor[ΣN] graph index per node (batch.batch).
         ptr: LongTensor[B+1] cumulative node counts (batch.ptr).
         """
-        device = spd_edge_index.device
+        row, col, val = spd.coo()
+        device = row.device
         unreachable = self.max_distance + 1
-        spd = torch.full(
+        out = torch.full(
             (batch_size, max_nodes, max_nodes),
             unreachable,
             dtype=torch.long,
             device=device,
         )
 
-        if spd_edge_index.numel() > 0:
-            src = spd_edge_index[0]
-            dst = spd_edge_index[1]
-            b = batch_idx[src]
-            local_src = src - ptr[b]
-            local_dst = dst - ptr[b]
-            spd[b, local_src, local_dst] = spd_edge_attr
+        if row.numel() > 0:
+            b = batch_idx[row]
+            local_row = row - ptr[b]
+            local_col = col - ptr[b]
+            out[b, local_row, local_col] = val
 
         valid = ~node_mask
         diag_idx = torch.arange(max_nodes, device=device)
-        spd[:, diag_idx, diag_idx] = torch.where(
+        out[:, diag_idx, diag_idx] = torch.where(
             valid,
             torch.zeros_like(valid, dtype=torch.long),
             torch.full_like(valid, unreachable, dtype=torch.long),
         )
 
-        spd = spd.masked_fill(node_mask[:, :, None], unreachable)
-        spd = spd.masked_fill(node_mask[:, None, :], unreachable)
-        return spd
+        out = out.masked_fill(node_mask[:, :, None], unreachable)
+        out = out.masked_fill(node_mask[:, None, :], unreachable)
+        return out
 
     @dynamo.disable
     def _prepare_dense_inputs(self, batch):
@@ -304,10 +303,9 @@ class Graphormer(nn.Module):
         node_mask = ~node_mask
 
         if self.use_spatial_encoding:
-            if hasattr(batch, "spd_edge_index") and hasattr(batch, "spd_edge_attr"):
+            if hasattr(batch, "spd") and isinstance(batch.spd, SparseTensor):
                 spd = self._unpack_sparse_spd(
-                    batch.spd_edge_index,
-                    batch.spd_edge_attr,
+                    batch.spd,
                     batch.batch,
                     batch.ptr,
                     batch_size,
@@ -326,7 +324,7 @@ class Graphormer(nn.Module):
                 raise ValueError(
                     "use_spatial_encoding=True but batch is missing SPD attributes. "
                     "Add GraphormerSPDPreTransform to your dataset pre_transform "
-                    "(new caches use spd_edge_index/spd_edge_attr; legacy caches "
+                    "(new caches use batch.spd: SparseTensor; legacy caches "
                     "use spatial_pos/spatial_pos_n)."
                 )
             attn_bias = self.spatial_pos_emb(spd).permute(0, 3, 1, 2).contiguous()

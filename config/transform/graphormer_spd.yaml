@@ -2,4 +2,4 @@ _target_: src.utils.graphormer_spd.GraphormerSPDPreTransform
 
 max_distance: 16
 undirected: true
-attr_prefix: spd
+attr_name: spd

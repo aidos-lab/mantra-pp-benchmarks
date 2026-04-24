@@ -2,8 +2,9 @@ import unittest
 
 import torch
 from torch_geometric.data import Data
+from torch_sparse import SparseTensor
 
-from src.utils.graphormer_spd import GraphormerSPDPreTransform
+from src.utils.graphormer_spd import GraphormerSPDPreTransform, SPDData
 
 
 def _make_data(edge_index, num_nodes=None, x=None):
@@ -16,17 +17,17 @@ def _make_data(edge_index, num_nodes=None, x=None):
     return data
 
 
-def _dense_spd(data, max_distance, prefix="spd"):
-    """Reconstruct an (n, n) distance matrix from sparse SPD attributes."""
+def _dense_spd(data, max_distance, attr="spd"):
+    """Reconstruct an (n, n) distance matrix from the SparseTensor SPD attr."""
     n = data.num_nodes
     unreachable = max_distance + 1
     dist = torch.full((n, n), unreachable, dtype=torch.long)
     if n > 0:
         dist.fill_diagonal_(0)
-    ei = getattr(data, f"{prefix}_edge_index")
-    ea = getattr(data, f"{prefix}_edge_attr")
-    if ei.numel():
-        dist[ei[0], ei[1]] = ea
+    spd = getattr(data, attr)
+    row, col, val = spd.coo()
+    if row.numel():
+        dist[row, col] = val
     return dist
 
 
@@ -152,8 +153,10 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=0))
 
-        self.assertEqual(tuple(data.spd_edge_index.shape), (2, 0))
-        self.assertEqual(data.spd_edge_attr.numel(), 0)
+        self.assertIsInstance(data.spd, SparseTensor)
+        self.assertEqual(data.spd.sparse_sizes(), (0, 0))
+        self.assertEqual(data.spd.nnz(), 0)
+        self.assertIs(type(data), SPDData)
 
     def test_single_node_no_edges(self):
         edge_index = torch.empty((2, 0), dtype=torch.long)
@@ -165,20 +168,20 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
 
     # -- output format --
 
-    def test_output_is_coo_with_correct_shape(self):
+    def test_output_is_sparse_tensor(self):
         edge_index = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
         transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=3))
 
         # Only the pair 0<->1 is reachable (node 2 is isolated).
         # Expected: 2 ordered pairs (0,1) and (1,0), both at d=1.
-        self.assertEqual(data.spd_edge_index.dim(), 2)
-        self.assertEqual(data.spd_edge_index.shape[0], 2)
-        self.assertEqual(data.spd_edge_index.shape[1], 2)
-        self.assertEqual(data.spd_edge_attr.shape[0], 2)
-        self.assertEqual(data.spd_edge_index.dtype, torch.long)
-        self.assertEqual(data.spd_edge_attr.dtype, torch.long)
-        self.assertTrue(torch.equal(data.spd_edge_attr, torch.tensor([1, 1])))
+        self.assertIsInstance(data.spd, SparseTensor)
+        self.assertEqual(data.spd.sparse_sizes(), (3, 3))
+        self.assertEqual(data.spd.nnz(), 2)
+        _, _, val = data.spd.coo()
+        self.assertEqual(val.dtype, torch.long)
+        self.assertTrue(torch.equal(val, torch.tensor([1, 1])))
+        self.assertIs(type(data), SPDData)
 
     def test_num_nodes_inferred_from_x(self):
         """When num_nodes is not set, infer from x."""
@@ -193,14 +196,14 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
 
         self.assertEqual(_dense_spd(data, 4)[0, 1].item(), 1)
 
-    def test_custom_attr_prefix(self):
+    def test_custom_attr_name(self):
         edge_index = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
-        transform = GraphormerSPDPreTransform(max_distance=4, attr_prefix="my_spd")
+        transform = GraphormerSPDPreTransform(max_distance=4, attr_name="my_spd")
         data = transform(_make_data(edge_index, num_nodes=2))
 
-        self.assertTrue(hasattr(data, "my_spd_edge_index"))
-        self.assertTrue(hasattr(data, "my_spd_edge_attr"))
-        self.assertFalse(hasattr(data, "spd_edge_index"))
+        self.assertTrue(hasattr(data, "my_spd"))
+        self.assertIsInstance(data.my_spd, SparseTensor)
+        self.assertFalse(hasattr(data, "spd"))
         self.assertFalse(hasattr(data, "spatial_pos"))
 
     def test_no_edge_index_returns_data_unchanged(self):
@@ -209,8 +212,7 @@ class TestGraphormerSPDPreTransform(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=4)
         result = transform(data)
 
-        self.assertFalse(hasattr(result, "spd_edge_index"))
-        self.assertFalse(hasattr(result, "spd_edge_attr"))
+        self.assertFalse(hasattr(result, "spd"))
         self.assertFalse(hasattr(result, "spatial_pos"))
 
 
