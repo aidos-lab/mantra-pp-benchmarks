@@ -22,6 +22,7 @@ import os
 import sys
 
 import hydra
+import wandb
 import numpy as np
 import torch
 from hydra.core.config_store import ConfigStore
@@ -33,7 +34,7 @@ from mantra.datasets import ManifoldTriangulations
 
 from src.schema import EvalBarycentricConfig
 from src.utils.data_handling import filter_low_ocurrence_labels
-from src.utils.train_utils import init_metrics
+from src.utils.train_utils import init_metrics, test
 
 
 cs = ConfigStore.instance()
@@ -155,27 +156,6 @@ def get_test_loader(dataset, train_cfg, collate_fn=None):
     )
 
 
-def evaluate_model(model, test_loader, accuracies, device):
-    model.eval()
-    metrics = {}
-    y_all, y_hat_all = [], []
-
-    with torch.no_grad():
-        for batch in test_loader:
-            batch = batch.to(device)
-            y_hat = model(batch).argmax(dim=1)
-            y = batch.y.long()
-            for _, acc in accuracies:
-                acc(y_hat, y)
-            y_all.append(y)
-            y_hat_all.append(y_hat)
-
-    for name, acc in accuracies:
-        metrics[f"test/{name}"] = acc.compute().item()
-        acc.reset()
-
-    return metrics, torch.cat(y_all), torch.cat(y_hat_all)
-
 
 
 @hydra.main(version_base=None, config_path="../config", config_name="eval_barycentric")
@@ -265,21 +245,19 @@ def main(eval_cfg: EvalBarycentricConfig):
     accuracies = init_metrics(train_cfg)
     test_loader = get_test_loader(dataset, train_cfg, collate_fn)
 
-    metrics, y_total, _ = evaluate_model(
-        model, test_loader, accuracies, eval_cfg.device
-    )
+    conf_dict = OmegaConf.to_container(eval_cfg, resolve=True)
 
-    print("  Results:")
-    for k, v in metrics.items():
-        print(f"    {k}: {v:.4f}")
+    with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
+        test(
+            model, test_loader, accuracies, label_transform.label_to_index, run, eval_cfg
+        )
 
     result = {
         "checkpoint": run_name,
         "bary_level": eval_cfg.bary_level,
         "bary_dataset_root": eval_cfg.bary_dataset_root,
         "bary_local_path": eval_cfg.bary_local_path,
-        "metrics": metrics,
-        "num_test_samples": int(len(y_total)),
+        "num_test_samples": int(len(test_loader)),
     }
 
     output_path = eval_cfg.output or os.path.join(
