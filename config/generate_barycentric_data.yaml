@@ -19,3 +19,4 @@ n_levels: 2
 min_vertices: 16
 label_source: name
 min_class_count: 100
+n_smallest: 100 # smallest n_smallest samples PER CLASS (by n_vertices) are subdivided. Set to 0 to subdivide all samples.

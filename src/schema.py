@@ -76,6 +76,7 @@ class GenerateBarycentricConfig:
     min_vertices: int = 16
     label_source: str = "name"
     min_class_count: int = 100
+    n_smallest: int = 100
 
 
 @dataclass
