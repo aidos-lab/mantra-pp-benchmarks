@@ -67,16 +67,10 @@ def _make_batch(*graphs):
 
 
 def _dense_spd(data, max_distance, attr="spd"):
-    """Reconstruct an (n, n) distance matrix from the SparseTensor SPD attr."""
-    n = data.num_nodes
-    unreachable = max_distance + 1
-    dist = torch.full((n, n), unreachable, dtype=torch.long)
-    if n > 0:
-        dist.fill_diagonal_(0)
-    row, col, val = getattr(data, attr).coo()
-    if row.numel():
-        dist[row, col] = val
-    return dist
+    """Return the (n, n) long distance matrix from a Data with flat uint8 SPD."""
+    n = int(getattr(data, f"{attr}_n").item())
+    flat = getattr(data, attr)
+    return flat.view(n, n).to(torch.long)
 
 
 class FakeDataset:
@@ -378,8 +372,8 @@ class TestGraphormerValues:
         # Outputs should differ because of spatial bias
         assert not torch.allclose(out_with, out_without, atol=1e-3)
 
-    def test_spd_unpack_sparse_correctness(self):
-        """Verify _unpack_sparse_spd reconstructs the distance matrix correctly."""
+    def test_spd_unpack_dense_correctness(self):
+        """Verify _unpack_dense_spd reconstructs the distance matrix correctly."""
         model = Graphormer(
             hidden_channels=4, n_layers=1, in_channels=2, out_channels=2,
             num_heads=2, dropout=0.0, max_distance=4, use_spatial_encoding=True,
@@ -391,44 +385,14 @@ class TestGraphormerValues:
         g = spd_transform(g)
         batch = _make_batch(g)
 
-        spd = model._unpack_sparse_spd(
+        spd = model._unpack_dense_spd(
             batch.spd,
-            batch.batch, batch.ptr,
+            batch.spd_n,
             batch_size=1, max_nodes=3,
             node_mask=torch.tensor([[False, False, False]])
         )
         expected = torch.tensor([[[0, 1, 2], [1, 0, 1], [2, 1, 0]]])
         assert torch.equal(spd, expected)
-
-    def test_spd_unpack_dense_fallback(self):
-        """Verify Graphormer still handles legacy caches with spatial_pos / spatial_pos_n."""
-        model = Graphormer(
-            hidden_channels=4, n_layers=1, in_channels=2, out_channels=2,
-            num_heads=2, dropout=0.0, max_distance=4, use_spatial_encoding=True,
-        )
-        model.eval()
-
-        # Hand-build a Data carrying the legacy keys, bypassing the pre-transform.
-        g = _path_graph()
-        legacy_matrix = torch.tensor([[0, 1, 2], [1, 0, 1], [2, 1, 0]], dtype=torch.long)
-        g.spatial_pos = legacy_matrix.reshape(-1)
-        g.spatial_pos_n = torch.tensor([3], dtype=torch.long)
-        batch = _make_batch(g)
-
-        # Sanity: no sparse key present.
-        assert not hasattr(batch, "spd")
-
-        spd = model._unpack_flat_spd(
-            batch.spatial_pos, batch.spatial_pos_n,
-            batch_size=1, max_nodes=3,
-            node_mask=torch.tensor([[False, False, False]])
-        )
-        assert torch.equal(spd, legacy_matrix.unsqueeze(0))
-
-        # End-to-end: dispatch in _prepare_dense_inputs routes to the dense path.
-        out = model(batch)
-        assert out.shape == (1, 2)
-        assert torch.isfinite(out).all()
 
     def test_graphormer_mean_pool_excludes_padding(self):
         """Mean pool should only average over real nodes, not padding."""
@@ -883,34 +847,37 @@ class TestSPDValues:
         assert dist[2, 0].item() == 2  # symmetric
 
     def test_batched_spd_preserves_per_graph_distances(self):
-        """After batching, the SparseTensor should be block-diagonal with globally offset indices."""
+        """After batching, the flat uint8 SPD splits cleanly back into per-graph blocks."""
         transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
 
-        g1 = transform(_triangle_graph())  # 3 nodes; 6 ordered pairs at d=1
-        g2 = transform(_path_graph())      # 3 nodes; 4 pairs at d=1, 2 pairs at d=2
+        g1 = transform(_triangle_graph())  # 3 nodes; all off-diag = 1
+        g2 = transform(_path_graph())      # 3 nodes; chain 0-1-2
 
-        e1 = g1.spd.nnz()
-        e2 = g2.spd.nnz()
-        assert e1 == 6  # 3*2 ordered pairs
-        assert e2 == 6  # (0,1),(1,0),(1,2),(2,1) at d=1; (0,2),(2,0) at d=2
+        # Per-graph dense matrices are size n*n = 9 uint8 bytes each.
+        assert g1.spd.numel() == 9
+        assert g2.spd.numel() == 9
 
-        batch = _make_batch(g1, g2)
-
-        # Block-diagonal: sparse_sizes grow to (6, 6); g2 indices offset by 3.
-        assert batch.spd.sparse_sizes() == (6, 6)
-        assert batch.spd.nnz() == e1 + e2
-        row, col, _ = batch.spd.coo()
-        g1_mask = row < 3
-        g2_mask = ~g1_mask
-        assert (col[g1_mask] < 3).all()
-        assert (row[g2_mask] >= 3).all()
-        assert (col[g2_mask] >= 3).all()
-
-        # Per-graph dense reconstruction matches expectations.
         d1 = _dense_spd(g1, 4)
+        d2 = _dense_spd(g2, 4)
+        # Triangle: all off-diag = 1.
         for i in range(3):
             for j in range(3):
                 assert d1[i, j].item() == (0 if i == j else 1)
+        # Path 0-1-2.
+        assert torch.equal(
+            d2, torch.tensor([[0, 1, 2], [1, 0, 1], [2, 1, 0]], dtype=torch.long)
+        )
+
+        batch = _make_batch(g1, g2)
+        # Concatenated flat form: 9 + 9 = 18 uint8 bytes; spd_n = [3, 3].
+        assert batch.spd.numel() == 18
+        assert batch.spd.dtype == torch.uint8
+        assert torch.equal(batch.spd_n, torch.tensor([3, 3]))
+
+        # Splitting recovers the per-graph blocks identically.
+        chunks = torch.split(batch.spd, [9, 9])
+        assert torch.equal(chunks[0].view(3, 3).to(torch.long), d1)
+        assert torch.equal(chunks[1].view(3, 3).to(torch.long), d2)
 
         d2 = _dense_spd(g2, 4)
         assert d2[0, 2].item() == 2

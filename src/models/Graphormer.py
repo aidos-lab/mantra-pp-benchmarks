@@ -7,7 +7,6 @@ import torch._dynamo as dynamo
 from pydantic import BaseModel
 from torch import nn
 from torch_geometric.utils import degree, to_dense_batch
-from torch_sparse import SparseTensor
 
 
 class GraphormerConfig(BaseModel):
@@ -203,60 +202,25 @@ class Graphormer(nn.Module):
 
         self.final_linear = nn.Linear(hidden_channels, out_channels)
 
-    def _unpack_flat_spd(
+    def _unpack_dense_spd(
         self,
-        spatial_pos: torch.Tensor,
-        spatial_pos_n: torch.Tensor,
+        spd_flat: torch.Tensor,
+        spd_n: torch.Tensor,
         batch_size: int,
         max_nodes: int,
         node_mask: torch.Tensor,
     ) -> torch.Tensor:
-        """Reconstruct padded (B, max_nodes, max_nodes) SPD from flattened 1D tensor.
+        """Reconstruct padded (B, max_nodes, max_nodes) long SPD from flat uint8.
 
-        Legacy fallback for datasets cached with spatial_pos / spatial_pos_n.
+        spd_flat: 1D uint8 tensor of length Σ n_i² (per-graph dense SPD blocks
+            concatenated row-major). Encoding: 0 on the diagonal, 1..max_distance
+            for actual hop distances, max_distance+1 for unreachable/overflow.
+        spd_n: 1D LongTensor of shape (B,) — node count per graph.
 
-        spatial_pos: 1D LongTensor — concatenated flattened n_i*n_i matrices.
-        spatial_pos_n: 1D LongTensor of shape (B,) — node count per graph.
+        Padding cells are filled with the unreachable bucket so the embedding
+        lookup is well-defined; ``node_mask`` is then re-applied to be safe.
         """
-        device = spatial_pos.device
-        unreachable = self.max_distance + 1
-        spd = torch.full(
-            (batch_size, max_nodes, max_nodes),
-            unreachable,
-            dtype=torch.long,
-            device=device,
-        )
-
-        sizes_sq = (spatial_pos_n * spatial_pos_n).tolist()
-        splits = torch.split(spatial_pos, sizes_sq)
-        ns = spatial_pos_n.tolist()
-        for idx, (flat, n) in enumerate(zip(splits, ns)):
-            if n > 0:
-                spd[idx, :n, :n] = flat.view(n, n)
-
-        spd = spd.clamp(max=unreachable)
-        spd = spd.masked_fill(node_mask[:, :, None], unreachable)
-        spd = spd.masked_fill(node_mask[:, None, :], unreachable)
-        return spd
-
-    def _unpack_sparse_spd(
-        self,
-        spd: SparseTensor,
-        batch_idx: torch.Tensor,
-        ptr: torch.Tensor,
-        batch_size: int,
-        max_nodes: int,
-        node_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        """Reconstruct padded (B, max_nodes, max_nodes) SPD from a SparseTensor.
-
-        spd: SparseTensor with global (batch-offset) row/col node indices and
-             LongTensor values d ∈ [1, max_distance].
-        batch_idx: LongTensor[ΣN] graph index per node (batch.batch).
-        ptr: LongTensor[B+1] cumulative node counts (batch.ptr).
-        """
-        row, col, val = spd.coo()
-        device = row.device
+        device = spd_flat.device
         unreachable = self.max_distance + 1
         out = torch.full(
             (batch_size, max_nodes, max_nodes),
@@ -265,20 +229,14 @@ class Graphormer(nn.Module):
             device=device,
         )
 
-        if row.numel() > 0:
-            b = batch_idx[row]
-            local_row = row - ptr[b]
-            local_col = col - ptr[b]
-            out[b, local_row, local_col] = val
+        sizes_sq = (spd_n * spd_n).tolist()
+        splits = torch.split(spd_flat, sizes_sq)
+        ns = spd_n.tolist()
+        for idx, (flat, n) in enumerate(zip(splits, ns)):
+            if n > 0:
+                out[idx, :n, :n] = flat.view(n, n).to(torch.long)
 
-        valid = ~node_mask
-        diag_idx = torch.arange(max_nodes, device=device)
-        out[:, diag_idx, diag_idx] = torch.where(
-            valid,
-            torch.zeros_like(valid, dtype=torch.long),
-            torch.full_like(valid, unreachable, dtype=torch.long),
-        )
-
+        out = out.clamp(max=unreachable)
         out = out.masked_fill(node_mask[:, :, None], unreachable)
         out = out.masked_fill(node_mask[:, None, :], unreachable)
         return out
@@ -303,30 +261,19 @@ class Graphormer(nn.Module):
         node_mask = ~node_mask
 
         if self.use_spatial_encoding:
-            if hasattr(batch, "spd") and isinstance(batch.spd, SparseTensor):
-                spd = self._unpack_sparse_spd(
-                    batch.spd,
-                    batch.batch,
-                    batch.ptr,
-                    batch_size,
-                    max_nodes,
-                    node_mask,
-                )
-            elif hasattr(batch, "spatial_pos") and hasattr(batch, "spatial_pos_n"):
-                spd = self._unpack_flat_spd(
-                    batch.spatial_pos,
-                    batch.spatial_pos_n,
-                    batch_size,
-                    max_nodes,
-                    node_mask,
-                )
-            else:
+            if not (hasattr(batch, "spd") and hasattr(batch, "spd_n")):
                 raise ValueError(
-                    "use_spatial_encoding=True but batch is missing SPD attributes. "
-                    "Add GraphormerSPDPreTransform to your dataset pre_transform "
-                    "(new caches use batch.spd: SparseTensor; legacy caches "
-                    "use spatial_pos/spatial_pos_n)."
+                    "use_spatial_encoding=True but batch is missing 'spd' / 'spd_n'. "
+                    "Add GraphormerSPDPreTransform to your dataset pre_transform; "
+                    "it stores SPD as a dense uint8 flat block per graph."
                 )
+            spd = self._unpack_dense_spd(
+                batch.spd,
+                batch.spd_n,
+                batch_size,
+                max_nodes,
+                node_mask,
+            )
             attn_bias = self.spatial_pos_emb(spd).permute(0, 3, 1, 2).contiguous()
         else:
             attn_bias = x_dense.new_zeros(
