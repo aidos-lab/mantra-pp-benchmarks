@@ -43,6 +43,40 @@ def load_train_config(checkpoint_dir):
     return OmegaConf.load(os.path.join(checkpoint_dir, "config.yaml"))
 
 
+def extract_train_metadata(train_cfg):
+    """Pull model / embedding / representation class names out of train_cfg
+    so they can be logged to wandb alongside eval results.
+    """
+    def _last_segment(target):
+        return str(target).rsplit(".", 1)[-1] if target else None
+
+    transform_dict = train_cfg.dataset.transform
+
+    embedding_target = None
+    if "embedding" in transform_dict and "_target_" in transform_dict.embedding:
+        embedding_target = transform_dict.embedding._target_
+
+    representation_target = None
+    for key, sub in transform_dict.items():
+        if key.startswith("representation") and "_target_" in sub:
+            representation_target = sub._target_
+            break
+
+    select_repr = None
+    if "select_features" in transform_dict:
+        select_repr = transform_dict.select_features.get("representation")
+
+    return {
+        "model": _last_segment(train_cfg.model._target_),
+        "embedding": _last_segment(embedding_target),
+        "representation": _last_segment(representation_target),
+        "select_features_representation": select_repr,
+        "seed": train_cfg.get("seed"),
+        "dataset_dimension": train_cfg.dataset.dimension,
+        "dataset_balanced": bool(train_cfg.dataset.balanced),
+    }
+
+
 def build_transforms(train_cfg):
     transform_dict = train_cfg.dataset.transform
     transform_order = train_cfg.dataset.transform_order
@@ -230,10 +264,14 @@ def main(eval_cfg: EvalBarycentricConfig):
     test_loader = get_test_loader(dataset, train_cfg, collate_fn)
 
     conf_dict = OmegaConf.to_container(eval_cfg, resolve=True)
+    train_meta = extract_train_metadata(train_cfg)
+    conf_dict.update(train_meta)
+    conf_dict["checkpoint"] = run_name
 
-    with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config={**conf_dict, **train_cfg}) as run:
+    with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
+        run.summary.update(train_meta)
         test(
-            model, test_loader, accuracies, label_transform.label_to_index, run, train_cfg 
+            model, test_loader, accuracies, label_transform.label_to_index, run, train_cfg
         )
 
     result = {
