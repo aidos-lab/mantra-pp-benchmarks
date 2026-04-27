@@ -22,18 +22,17 @@ import os
 import sys
 
 import hydra
-import numpy as np
+import wandb
 import torch
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf, read_write
-from sklearn.model_selection import train_test_split
 from torch_geometric.transforms import Compose
 
 from mantra.datasets import ManifoldTriangulations
 
 from src.schema import EvalBarycentricConfig
 from src.utils.data_handling import filter_low_ocurrence_labels
-from src.utils.train_utils import init_metrics
+from src.utils.train_utils import init_metrics, test
 
 
 cs = ConfigStore.instance()
@@ -127,54 +126,21 @@ def apply_main_cfg_mutations(train_cfg, dataset, label_transform):
 
 def get_test_loader(dataset, train_cfg, collate_fn=None):
     from torch_geometric.loader import DataLoader as PyGDataLoader
-    from torch.utils.data import DataLoader, Subset
-
-    split = train_cfg.dataset.train_parameters.split
-    indices = np.arange(len(dataset))
-
-    _, test_index = train_test_split(
-        indices,
-        test_size=split.test,
-        shuffle=True,
-        stratify=dataset.y if train_cfg.dataset.use_stratified else None,
-        random_state=train_cfg.seed,
-    )
-    test_dataset = Subset(dataset, test_index)
+    from torch.utils.data import DataLoader
 
     if collate_fn is not None:
         return DataLoader(
-            test_dataset,
+            dataset,
             batch_size=train_cfg.trainer.batch_size,
             shuffle=False,
             collate_fn=collate_fn,
         )
     return PyGDataLoader(
-        test_dataset,
+        dataset,
         batch_size=train_cfg.trainer.batch_size,
         shuffle=False,
     )
 
-
-def evaluate_model(model, test_loader, accuracies, device):
-    model.eval()
-    metrics = {}
-    y_all, y_hat_all = [], []
-
-    with torch.no_grad():
-        for batch in test_loader:
-            batch = batch.to(device)
-            y_hat = model(batch).argmax(dim=1)
-            y = batch.y.long()
-            for _, acc in accuracies:
-                acc(y_hat, y)
-            y_all.append(y)
-            y_hat_all.append(y_hat)
-
-    for name, acc in accuracies:
-        metrics[f"test/{name}"] = acc.compute().item()
-        acc.reset()
-
-    return metrics, torch.cat(y_all), torch.cat(y_hat_all)
 
 
 
@@ -265,21 +231,19 @@ def main(eval_cfg: EvalBarycentricConfig):
     accuracies = init_metrics(train_cfg)
     test_loader = get_test_loader(dataset, train_cfg, collate_fn)
 
-    metrics, y_total, _ = evaluate_model(
-        model, test_loader, accuracies, eval_cfg.device
-    )
+    conf_dict = OmegaConf.to_container(eval_cfg, resolve=True)
 
-    print("  Results:")
-    for k, v in metrics.items():
-        print(f"    {k}: {v:.4f}")
+    with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
+        test(
+            model, test_loader, accuracies, label_transform.label_to_index, run, eval_cfg
+        )
 
     result = {
         "checkpoint": run_name,
         "bary_level": eval_cfg.bary_level,
         "bary_dataset_root": eval_cfg.bary_dataset_root,
         "bary_local_path": eval_cfg.bary_local_path,
-        "metrics": metrics,
-        "num_test_samples": int(len(y_total)),
+        "num_test_samples": int(len(dataset)),
     }
 
     output_path = eval_cfg.output or os.path.join(

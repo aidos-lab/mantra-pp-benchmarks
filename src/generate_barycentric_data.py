@@ -27,7 +27,7 @@ Example
 
 import json
 import os
-from collections import Counter
+from collections import Counter, defaultdict
 
 import hydra
 from hydra.core.config_store import ConfigStore
@@ -40,15 +40,37 @@ cs = ConfigStore.instance()
 cs.store(name="generate_barycentric_conf", node=GenerateBarycentricConfig)
 
 
+def _subdivide_entry(entry):
+    tri, n_v = barycentric_subdivision_raw(entry["triangulation"])
+    new_entry = dict(entry)
+    new_entry["triangulation"] = tri
+    new_entry["n_vertices"] = n_v
+    return new_entry
+
+
 def subdivide_once(entries):
-    out = []
-    for entry in entries:
-        tri, n_v = barycentric_subdivision_raw(entry["triangulation"])
-        new_entry = dict(entry)
-        new_entry["triangulation"] = tri
-        new_entry["n_vertices"] = n_v
-        out.append(new_entry)
-    return out
+    return [_subdivide_entry(e) for e in entries]
+
+
+def print_statistics(dataset, label_source="name"):
+    """Print per-class n_vertices statistics for a list of entries."""
+    class_entries = defaultdict(list)
+    for entry in dataset:
+        class_entries[entry[label_source]].append(entry)
+
+    print(
+        f"{'Class':<30} {'Count':>8} {'Min V':>8} {'Mean V':>8} {'Max V':>8}"
+    )
+    print("-" * 64)
+    for name in sorted(class_entries.keys()):
+        entries = class_entries[name]
+        nverts = [e["n_vertices"] for e in entries]
+        mean_v = sum(nverts) / len(nverts)
+        print(
+            f"{str(name):<30} {len(entries):>8} "
+            f"{min(nverts):>8} {mean_v:>8.2f} {max(nverts):>8}"
+        )
+    print(f"\nTotal: {len(dataset)}")
 
 
 def filter_by_class_count(entries, label_source, min_count):
@@ -79,6 +101,69 @@ def main(cfg: GenerateBarycentricConfig):
         )
         print(f"       classes: {kept_classes}")
 
+    if cfg.n_smallest > 0:
+        per_class = defaultdict(list)
+        for entry in data:
+            per_class[entry[cfg.label_source]].append(entry)
+
+        cohort = []
+        n_dropped = 0
+        for label in sorted(per_class.keys()):
+            sorted_entries = sorted(per_class[label], key=lambda e: e["n_vertices"])
+            kept = 0
+            for entry in sorted_entries:
+                sub = _subdivide_entry(entry)
+                if sub["n_vertices"] >= cfg.min_vertices:
+                    cohort.append(sub)
+                    kept += 1
+                    if kept == cfg.n_smallest:
+                        break
+                else:
+                    n_dropped += 1
+            if kept < cfg.n_smallest:
+                print(
+                    f"[WARN] Class {label!r}: only {kept} valid samples found "
+                    f"(requested {cfg.n_smallest}); pool exhausted."
+                )
+
+        out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_1.json")
+        with open(out_path, "w") as f:
+            json.dump(cohort, f)
+        ns = [e["n_vertices"] for e in cohort]
+        print(
+            f"[INFO] Level 1: kept {len(cohort)} smallest valid "
+            f"({cfg.n_smallest}/class, skipped {n_dropped} below "
+            f"{cfg.min_vertices} vertices) -> {out_path}"
+        )
+        if ns:
+            print(
+                f"       n_vertices: min={min(ns)}, max={max(ns)}, "
+                f"mean={sum(ns) / len(ns):.1f}"
+            )
+        print_statistics(cohort, cfg.label_source)
+
+        current = cohort
+        for level in range(2, cfg.n_levels + 1):
+            current = subdivide_once(current)
+            below = [e for e in current if e["n_vertices"] < cfg.min_vertices]
+            if below:
+                print(
+                    f"[WARN] Level {level}: {len(below)} entries below "
+                    f"{cfg.min_vertices} vertices after subdivision (unexpected)."
+                )
+            out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_{level}.json")
+            with open(out_path, "w") as f:
+                json.dump(current, f)
+            ns = [e["n_vertices"] for e in current]
+            print(f"[INFO] Level {level}: kept {len(current)} -> {out_path}")
+            if ns:
+                print(
+                    f"       n_vertices: min={min(ns)}, max={max(ns)}, "
+                    f"mean={sum(ns) / len(ns):.1f}"
+                )
+            print_statistics(current, cfg.label_source)
+        return
+
     current = data
     for level in range(1, cfg.n_levels + 1):
         current = subdivide_once(current)
@@ -100,6 +185,7 @@ def main(cfg: GenerateBarycentricConfig):
                 f"       n_vertices: min={min(ns)}, max={max(ns)}, "
                 f"mean={sum(ns) / len(ns):.1f}"
             )
+        print_statistics(filtered, cfg.label_source)
 
 
 if __name__ == "__main__":
