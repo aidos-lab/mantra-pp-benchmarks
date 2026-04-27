@@ -176,7 +176,7 @@ def get_test_loader(dataset, train_cfg, collate_fn=None):
 
 
 
-@hydra.main(version_base=None, config_path="../config", config_name="eval_barycentric")
+@hydra.main(version_base=None, config_path="config", config_name="eval_barycentric")
 def main(eval_cfg: EvalBarycentricConfig):
     ckpt_dir = eval_cfg.checkpoint_dir
     if not ckpt_dir or not os.path.isdir(ckpt_dir):

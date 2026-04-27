@@ -51,7 +51,7 @@ def _is_gpu(cfg):
     return torch.cuda.is_available()
 
 
-@hydra.main(version_base=None, config_path="../config", config_name="config")
+@hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg: RootConfig):
     if not _is_gpu(cfg):
         n_threads = os.cpu_count() or 1

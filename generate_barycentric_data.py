@@ -83,7 +83,7 @@ def filter_by_class_count(entries, label_source, min_count):
     return filtered, counts
 
 
-@hydra.main(version_base=None, config_path="../config", config_name="generate_barycentric_data")
+@hydra.main(version_base=None, config_path="config", config_name="generate_barycentric_data")
 def main(cfg: GenerateBarycentricConfig):
     os.makedirs(cfg.output_dir, exist_ok=True)
 
