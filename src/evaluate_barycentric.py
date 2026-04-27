@@ -23,11 +23,9 @@ import sys
 
 import hydra
 import wandb
-import numpy as np
 import torch
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf, read_write
-from sklearn.model_selection import train_test_split
 from torch_geometric.transforms import Compose
 
 from mantra.datasets import ManifoldTriangulations
@@ -128,29 +126,17 @@ def apply_main_cfg_mutations(train_cfg, dataset, label_transform):
 
 def get_test_loader(dataset, train_cfg, collate_fn=None):
     from torch_geometric.loader import DataLoader as PyGDataLoader
-    from torch.utils.data import DataLoader, Subset
-
-    split = train_cfg.dataset.train_parameters.split
-    indices = np.arange(len(dataset))
-
-    _, test_index = train_test_split(
-        indices,
-        test_size=split.test,
-        shuffle=True,
-        stratify=dataset.y if train_cfg.dataset.use_stratified else None,
-        random_state=train_cfg.seed,
-    )
-    test_dataset = Subset(dataset, test_index)
+    from torch.utils.data import DataLoader
 
     if collate_fn is not None:
         return DataLoader(
-            test_dataset,
+            dataset,
             batch_size=train_cfg.trainer.batch_size,
             shuffle=False,
             collate_fn=collate_fn,
         )
     return PyGDataLoader(
-        test_dataset,
+        dataset,
         batch_size=train_cfg.trainer.batch_size,
         shuffle=False,
     )
@@ -257,7 +243,7 @@ def main(eval_cfg: EvalBarycentricConfig):
         "bary_level": eval_cfg.bary_level,
         "bary_dataset_root": eval_cfg.bary_dataset_root,
         "bary_local_path": eval_cfg.bary_local_path,
-        "num_test_samples": int(len(test_loader)),
+        "num_test_samples": int(len(dataset)),
     }
 
     output_path = eval_cfg.output or os.path.join(
