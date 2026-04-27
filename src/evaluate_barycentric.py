@@ -73,8 +73,6 @@ def create_dataset(train_cfg, root, local_path, transforms, label_transform, bal
         force_reload=False,
         transform=label_transform,
     )
-    dataset = filter_low_ocurrence_labels(dataset)
-
     return dataset
 
 
@@ -233,9 +231,9 @@ def main(eval_cfg: EvalBarycentricConfig):
 
     conf_dict = OmegaConf.to_container(eval_cfg, resolve=True)
 
-    with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
+    with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config={**conf_dict, **train_cfg}) as run:
         test(
-            model, test_loader, accuracies, label_transform.label_to_index, run, eval_cfg
+            model, test_loader, accuracies, label_transform.label_to_index, run, train_cfg 
         )
 
     result = {
