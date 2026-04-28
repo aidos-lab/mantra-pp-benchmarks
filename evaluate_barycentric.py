@@ -219,24 +219,6 @@ def main(eval_cfg: EvalBarycentricConfig):
             "training."
         )
 
-    #NOTE: UGLY FIX
-    transforms, label_transform = build_transforms(train_cfg)
-
-    populate_dataset = create_dataset(
-        train_cfg,
-        root=train_cfg.root,
-        local_path=train_cfg.local_path,
-        transforms=transforms,
-        label_transform=label_transform,
-        balanced=train_cfg.balanced
-    )
-
-    for _ in populate_dataset:
-        pass
-
-    label_to_index = label_transform.label_to_index
-    #####################
-
     transforms, label_transform = build_transforms(train_cfg)
 
     dataset = create_dataset(
@@ -285,6 +267,15 @@ def main(eval_cfg: EvalBarycentricConfig):
     train_meta = extract_train_metadata(train_cfg)
     conf_dict.update(train_meta)
     conf_dict["checkpoint"] = run_name
+
+    #NOTE: UGLY FIX
+    label_str = f'/tmp/label_to_index_{train_cfg.dataset.dimension}d_'
+    if not train_cfg.dataset.balanced:
+        label_str += 'u'
+    label_str +='bal.json'
+
+    with open(label_str, "r") as f:
+        label_to_index = json.load(f)
 
     with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
         run.summary.update(train_meta)
