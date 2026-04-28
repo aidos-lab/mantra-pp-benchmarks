@@ -252,6 +252,8 @@ def main(eval_cfg: EvalBarycentricConfig):
         correct_label_to_index = json.load(f)
         correct_index_to_label = {v: k for k,v in correct_label_to_index.items()}
 
+    print(correct_index_to_label)
+    print(index_to_label)
     # This should be a map new_idx -> old_idx
     idx_to_idx = {
         previous_idx: correct_label_to_index[previous_label]
