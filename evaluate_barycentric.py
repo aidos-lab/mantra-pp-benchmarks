@@ -237,6 +237,31 @@ def main(eval_cfg: EvalBarycentricConfig):
         train_cfg, dataset, label_transform
     )
 
+    #NOTE: UGLY FIX
+    label_str = f'/tmp/label_to_index_{train_cfg.dataset.dimension}d_'
+    if not train_cfg.dataset.balanced:
+        label_str += 'u'
+    label_str +='bal.json'
+
+    # Forward and inverted map
+    label_to_index = label_transform.label_to_index
+    index_to_label = {v: k for k,v in label_to_index.items()}
+
+    # Same for the correct one
+    with open(label_str, "r") as f:
+        correct_label_to_index = json.load(f)
+        correct_index_to_label = {v: k for k,v in correct_label_to_index.items()}
+
+    # This should be a map new_idx -> old_idx
+    idx_to_idx = {
+        previous_idx: correct_label_to_index[previous_label]
+        for previous_idx, previous_label in  index_to_label.items()
+    }
+
+    # Iterate through all the dataset and remap everything
+    for data in dataset:
+        data.y = torch.tensor(idx_to_idx[data.y.item()])
+
     collate_fn = None
     if not is_graph_repr:
         from src.utils.data_loading import collate_simplicial
@@ -268,14 +293,6 @@ def main(eval_cfg: EvalBarycentricConfig):
     conf_dict.update(train_meta)
     conf_dict["checkpoint"] = run_name
 
-    #NOTE: UGLY FIX
-    label_str = f'/tmp/label_to_index_{train_cfg.dataset.dimension}d_'
-    if not train_cfg.dataset.balanced:
-        label_str += 'u'
-    label_str +='bal.json'
-
-    with open(label_str, "r") as f:
-        label_to_index = json.load(f)
 
     with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
         run.summary.update(train_meta)
