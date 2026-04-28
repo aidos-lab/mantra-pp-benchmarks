@@ -15,7 +15,8 @@
 input: ???
 output_dir: ???
 prefix: ???
-n_levels: 1
+n_levels: 1   # int >= 1: that many full rounds; 0 < x < 1: single partial round at fraction x of top-dim simplices (stellar mode only)
+seed: 42      # RNG seed for partial-stellar simplex selection
 min_vertices: ???
 label_source: name
 min_class_count: 100

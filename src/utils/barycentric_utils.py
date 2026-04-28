@@ -3,6 +3,7 @@
 No external ML dependencies — safe to import anywhere.
 """
 
+import random
 from itertools import combinations, permutations
 
 
@@ -50,19 +51,28 @@ def barycentric_subdivision_raw(triangulation):
     return new_triangulation, next_vertex - 1
 
 
-def stellar_subdivision_raw(triangulation):
-    """Stellar subdivision at every top-dim simplex.
+def stellar_subdivision_raw(triangulation, fraction=1.0, rng=None):
+    """Stellar subdivision at a (random) fraction of top-dim simplices.
 
-    For each top-dim simplex σ, add a new vertex b_σ (its barycenter) and
-    replace σ with the d+1 sub-simplices (σ \\ {v}) ∪ {b_σ} for v ∈ σ.
-    The boundary ∂σ is unchanged, so the simplicial-complex condition is
-    preserved across (d-1)-faces shared with neighbouring top-dim
-    simplices. Original vertex labels are preserved.
+    For each chosen top-dim simplex σ, add a new vertex b_σ (its
+    barycenter) and replace σ with the d+1 sub-simplices
+    (σ \\ {v}) ∪ {b_σ} for v ∈ σ. Skipped simplices are passed through
+    unchanged. ∂σ is unchanged for both chosen and skipped simplices, so
+    partial application preserves the simplicial-complex condition
+    across (d-1)-faces shared with neighbours. Original vertex labels
+    are preserved.
 
     Parameters
     ----------
     triangulation : list of list of int
         Top-dimensional simplices, 1-indexed vertices, dense labels.
+    fraction : float
+        Fraction of top-dim simplices to subdivide, in [0, 1]. 1.0
+        (default) reproduces full stellar subdivision.
+    rng : random.Random or None
+        Source of randomness for selecting the subset. Ignored when
+        fraction == 1.0. If None for fraction < 1.0, a fresh
+        ``random.Random()`` is used.
 
     Returns
     -------
@@ -71,14 +81,28 @@ def stellar_subdivision_raw(triangulation):
     """
     if not triangulation:
         return [], 0
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError(f"fraction must be in [0, 1], got {fraction}")
 
     original = set()
     for simplex in triangulation:
         original.update(simplex)
     next_v = max(original) + 1
 
+    n_total = len(triangulation)
+    if fraction == 1.0:
+        chosen = None  # subdivide all; no RNG needed
+    else:
+        n_subdivide = round(fraction * n_total)
+        if rng is None:
+            rng = random.Random()
+        chosen = set(rng.sample(range(n_total), n_subdivide))
+
     new_triangulation = []
-    for simplex in triangulation:
+    for idx, simplex in enumerate(triangulation):
+        if chosen is not None and idx not in chosen:
+            new_triangulation.append(list(simplex))
+            continue
         b = next_v
         next_v += 1
         for i in range(len(simplex)):

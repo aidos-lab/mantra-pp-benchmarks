@@ -27,6 +27,7 @@ Example
 
 import json
 import os
+import random
 from collections import Counter, defaultdict
 
 import hydra
@@ -49,17 +50,25 @@ _SUBDIVISION_FUNCTIONS = {
 }
 
 
-def _subdivide_entry(entry, mode):
+def _subdivide_entry(entry, mode, fraction=1.0, rng=None):
     fn = _SUBDIVISION_FUNCTIONS[mode]
-    tri, n_v = fn(entry["triangulation"])
+    if mode == "stellar":
+        tri, n_v = fn(entry["triangulation"], fraction=fraction, rng=rng)
+    else:
+        tri, n_v = fn(entry["triangulation"])
     new_entry = dict(entry)
     new_entry["triangulation"] = tri
     new_entry["n_vertices"] = n_v
     return new_entry
 
 
-def subdivide_once(entries, mode):
-    return [_subdivide_entry(e, mode) for e in entries]
+def subdivide_once(entries, mode, fraction=1.0, rng=None):
+    return [_subdivide_entry(e, mode, fraction=fraction, rng=rng) for e in entries]
+
+
+def _level_tag(level):
+    """Format a level for the output filename: integers as '1', fractions as '0.5'."""
+    return f"{level:g}"
 
 
 def print_statistics(dataset, label_source="name"):
@@ -108,6 +117,27 @@ def main(cfg: GenerateBarycentricConfig):
         )
     print(f"[INFO] Subdivision mode: {cfg.mode}")
 
+    nl = float(cfg.n_levels)
+    if nl <= 0:
+        raise ValueError(f"n_levels must be > 0, got {nl}")
+    fractional = nl < 1.0
+    if fractional and cfg.mode != "stellar":
+        raise ValueError(
+            "Fractional n_levels (partial subdivision) only supported in mode='stellar'; "
+            "full_barycentric breaks the SC condition under partial application."
+        )
+    n_full_levels = 0 if fractional else int(round(nl))
+    if not fractional and abs(nl - n_full_levels) > 1e-9:
+        raise ValueError(
+            f"n_levels >= 1 must be integer-valued (got {nl}); fractional values "
+            f"are only allowed in (0, 1)."
+        )
+    fraction = nl if fractional else 1.0
+    print(
+        f"[INFO] n_levels={nl} (fractional={fractional}, fraction={fraction}, "
+        f"full_levels={n_full_levels}, seed={cfg.seed})"
+    )
+
     if cfg.min_class_count > 0:
         before = len(data)
         data, counts = filter_by_class_count(data, cfg.label_source, cfg.min_class_count)
@@ -117,6 +147,9 @@ def main(cfg: GenerateBarycentricConfig):
             f"{before} -> {len(data)} entries across {len(kept_classes)} classes"
         )
         print(f"       classes: {kept_classes}")
+
+    rng = random.Random(cfg.seed)
+    first_level_tag = _level_tag(fraction if fractional else 1)
 
     if cfg.n_smallest > 0:
         per_class = defaultdict(list)
@@ -129,7 +162,7 @@ def main(cfg: GenerateBarycentricConfig):
             sorted_entries = sorted(per_class[label], key=lambda e: e["n_vertices"])
             kept = 0
             for entry in sorted_entries:
-                sub = _subdivide_entry(entry, cfg.mode)
+                sub = _subdivide_entry(entry, cfg.mode, fraction=fraction, rng=rng)
                 if sub["n_vertices"] >= cfg.min_vertices:
                     cohort.append(sub)
                     kept += 1
@@ -143,12 +176,12 @@ def main(cfg: GenerateBarycentricConfig):
                     f"(requested {cfg.n_smallest}); pool exhausted."
                 )
 
-        out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_1.json")
+        out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_{first_level_tag}.json")
         with open(out_path, "w") as f:
             json.dump(cohort, f)
         ns = [e["n_vertices"] for e in cohort]
         print(
-            f"[INFO] Level 1: kept {len(cohort)} smallest valid "
+            f"[INFO] Level {first_level_tag}: kept {len(cohort)} smallest valid "
             f"({cfg.n_smallest}/class, skipped {n_dropped} below "
             f"{cfg.min_vertices} vertices) -> {out_path}"
         )
@@ -159,8 +192,11 @@ def main(cfg: GenerateBarycentricConfig):
             )
         print_statistics(cohort, cfg.label_source)
 
+        if fractional:
+            return
+
         current = cohort
-        for level in range(2, cfg.n_levels + 1):
+        for level in range(2, n_full_levels + 1):
             current = subdivide_once(current, cfg.mode)
             below = [e for e in current if e["n_vertices"] < cfg.min_vertices]
             if below:
@@ -168,7 +204,7 @@ def main(cfg: GenerateBarycentricConfig):
                     f"[WARN] Level {level}: {len(below)} entries below "
                     f"{cfg.min_vertices} vertices after subdivision (unexpected)."
                 )
-            out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_{level}.json")
+            out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_{_level_tag(level)}.json")
             with open(out_path, "w") as f:
                 json.dump(current, f)
             ns = [e["n_vertices"] for e in current]
@@ -181,14 +217,34 @@ def main(cfg: GenerateBarycentricConfig):
             print_statistics(current, cfg.label_source)
         return
 
+    if fractional:
+        current = subdivide_once(data, cfg.mode, fraction=fraction, rng=rng)
+        filtered = [e for e in current if e["n_vertices"] >= cfg.min_vertices]
+        n_dropped = len(current) - len(filtered)
+        out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_{first_level_tag}.json")
+        with open(out_path, "w") as f:
+            json.dump(filtered, f)
+        ns = [e["n_vertices"] for e in filtered]
+        print(
+            f"[INFO] Level {first_level_tag}: kept {len(filtered)} "
+            f"(dropped {n_dropped} below {cfg.min_vertices} vertices) -> {out_path}"
+        )
+        if ns:
+            print(
+                f"       n_vertices: min={min(ns)}, max={max(ns)}, "
+                f"mean={sum(ns) / len(ns):.1f}"
+            )
+        print_statistics(filtered, cfg.label_source)
+        return
+
     current = data
-    for level in range(1, cfg.n_levels + 1):
+    for level in range(1, n_full_levels + 1):
         current = subdivide_once(current, cfg.mode)
 
         filtered = [e for e in current if e["n_vertices"] >= cfg.min_vertices]
         n_dropped = len(current) - len(filtered)
 
-        out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_{level}.json")
+        out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_{_level_tag(level)}.json")
         with open(out_path, "w") as f:
             json.dump(filtered, f)
 
