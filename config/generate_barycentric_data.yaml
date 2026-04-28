@@ -15,8 +15,10 @@
 input: ???
 output_dir: ???
 prefix: ???
-n_levels: 2
-min_vertices: 16
+n_levels: 1   # int >= 1: that many full rounds; 0 < x < 1: single partial round at fraction x of top-dim simplices (stellar mode only)
+seed: 42      # RNG seed for partial-stellar simplex selection
+min_vertices: ???
 label_source: name
 min_class_count: 100
 n_smallest: 100 # smallest n_smallest samples PER CLASS (by n_vertices) are subdivided. Set to 0 to subdivide all samples.
+mode: stellar # 'stellar' (SC-preserving, +1 vertex per top-dim simplex, d+1 sub-simplices) or 'full_barycentric' (legacy: full barycentric refinement, d! sub-simplices)
