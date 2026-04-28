@@ -219,6 +219,7 @@ def main(eval_cfg: EvalBarycentricConfig):
             "training."
         )
 
+    print(train_cfg)
     transforms, label_transform = build_transforms(train_cfg)
 
     # UGLY FIx
@@ -229,7 +230,6 @@ def main(eval_cfg: EvalBarycentricConfig):
 
     with open(label_str, "r") as f:
         correct_label_to_index = json.load(f)
-        correct_index_to_label = {v: k for k,v in correct_label_to_index.items()}
 
     prev_label_to_index = label_transform.label_to_index
     label_transform.label_to_index = correct_label_to_index
@@ -255,14 +255,6 @@ def main(eval_cfg: EvalBarycentricConfig):
     )
     print(dataset[0].y)
     print(label_transform.label_to_index)
-
-    #NOTE: UGLY FIX
-
-    # # Iterate through all the dataset and remap everything
-    # print(dataset[0].y)
-    # for data in dataset:
-    #     data.y = torch.tensor(idx_to_idx[data.y.item()])
-    # print(dataset[0].y)
 
     collate_fn = None
     if not is_graph_repr:
