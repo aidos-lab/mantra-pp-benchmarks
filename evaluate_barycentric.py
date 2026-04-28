@@ -221,6 +221,15 @@ def main(eval_cfg: EvalBarycentricConfig):
 
     transforms, label_transform = build_transforms(train_cfg)
 
+    with open(label_str, "r") as f:
+        correct_label_to_index = json.load(f)
+        correct_index_to_label = {v: k for k,v in correct_label_to_index.items()}
+
+    label_transform.label_to_index = correct_label_to_index
+
+    print(correct_index_to_label)
+    print(index_to_label)
+
     dataset = create_dataset(
         train_cfg,
         root=eval_cfg.bary_dataset_root,
@@ -248,12 +257,10 @@ def main(eval_cfg: EvalBarycentricConfig):
     index_to_label = {v: k for k,v in label_to_index.items()}
 
     # Same for the correct one
-    with open(label_str, "r") as f:
-        correct_label_to_index = json.load(f)
-        correct_index_to_label = {v: k for k,v in correct_label_to_index.items()}
 
     print(correct_index_to_label)
     print(index_to_label)
+
     # This should be a map new_idx -> old_idx
     idx_to_idx = {
         previous_idx: correct_label_to_index[previous_label]
@@ -261,8 +268,10 @@ def main(eval_cfg: EvalBarycentricConfig):
     }
 
     # Iterate through all the dataset and remap everything
+    print(dataset[0].y)
     for data in dataset:
         data.y = torch.tensor(idx_to_idx[data.y.item()])
+    print(dataset[0].y)
 
     collate_fn = None
     if not is_graph_repr:
@@ -299,7 +308,7 @@ def main(eval_cfg: EvalBarycentricConfig):
     with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
         run.summary.update(train_meta)
         test(
-            model, test_loader, accuracies, label_to_index, run, train_cfg
+            model, test_loader, accuracies, correct_label_to_index, run, train_cfg
         )
 
     result = {
