@@ -219,7 +219,6 @@ def main(eval_cfg: EvalBarycentricConfig):
             "training."
         )
 
-    print(train_cfg)
     transforms, label_transform = build_transforms(train_cfg)
 
     # UGLY FIx
@@ -234,8 +233,6 @@ def main(eval_cfg: EvalBarycentricConfig):
     prev_label_to_index = label_transform.label_to_index
     label_transform.label_to_index = correct_label_to_index
 
-    print(prev_label_to_index)
-    print(correct_label_to_index)
 
     dataset = create_dataset(
         train_cfg,
@@ -245,7 +242,6 @@ def main(eval_cfg: EvalBarycentricConfig):
         label_transform=label_transform,
         balanced=eval_cfg.bary_balanced,
     )
-    print(dataset[0].y)
 
     with read_write(train_cfg):
         train_cfg.trainer.device = eval_cfg.device
@@ -253,8 +249,6 @@ def main(eval_cfg: EvalBarycentricConfig):
     in_channels, is_graph_repr = apply_main_cfg_mutations(
         train_cfg, dataset, label_transform
     )
-    print(dataset[0].y)
-    print(label_transform.label_to_index)
 
     collate_fn = None
     if not is_graph_repr:
