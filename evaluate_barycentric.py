@@ -233,9 +233,6 @@ def main(eval_cfg: EvalBarycentricConfig):
 
     label_transform.label_to_index = correct_label_to_index
 
-    print(correct_index_to_label)
-    print(index_to_label)
-
     dataset = create_dataset(
         train_cfg,
         root=eval_cfg.bary_dataset_root,
@@ -244,6 +241,7 @@ def main(eval_cfg: EvalBarycentricConfig):
         label_transform=label_transform,
         balanced=eval_cfg.bary_balanced,
     )
+    print(dataset[0])
 
     with read_write(train_cfg):
         train_cfg.trainer.device = eval_cfg.device
@@ -251,29 +249,15 @@ def main(eval_cfg: EvalBarycentricConfig):
     in_channels, is_graph_repr = apply_main_cfg_mutations(
         train_cfg, dataset, label_transform
     )
+    print(dataset[0])
 
     #NOTE: UGLY FIX
 
-    # Forward and inverted map
-    label_to_index = label_transform.label_to_index
-    index_to_label = {v: k for k,v in label_to_index.items()}
-
-    # Same for the correct one
-
-    print(correct_index_to_label)
-    print(index_to_label)
-
-    # This should be a map new_idx -> old_idx
-    idx_to_idx = {
-        previous_idx: correct_label_to_index[previous_label]
-        for previous_idx, previous_label in  index_to_label.items()
-    }
-
-    # Iterate through all the dataset and remap everything
-    print(dataset[0].y)
-    for data in dataset:
-        data.y = torch.tensor(idx_to_idx[data.y.item()])
-    print(dataset[0].y)
+    # # Iterate through all the dataset and remap everything
+    # print(dataset[0].y)
+    # for data in dataset:
+    #     data.y = torch.tensor(idx_to_idx[data.y.item()])
+    # print(dataset[0].y)
 
     collate_fn = None
     if not is_graph_repr:
