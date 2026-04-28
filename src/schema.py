@@ -77,6 +77,7 @@ class GenerateBarycentricConfig:
     label_source: str = "name"
     min_class_count: int = 100
     n_smallest: int = 100
+    mode: str = "stellar"
 
 
 @dataclass

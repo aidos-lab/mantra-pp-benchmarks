@@ -50,6 +50,44 @@ def barycentric_subdivision_raw(triangulation):
     return new_triangulation, next_vertex - 1
 
 
+def stellar_subdivision_raw(triangulation):
+    """Stellar subdivision at every top-dim simplex.
+
+    For each top-dim simplex σ, add a new vertex b_σ (its barycenter) and
+    replace σ with the d+1 sub-simplices (σ \\ {v}) ∪ {b_σ} for v ∈ σ.
+    The boundary ∂σ is unchanged, so the simplicial-complex condition is
+    preserved across (d-1)-faces shared with neighbouring top-dim
+    simplices. Original vertex labels are preserved.
+
+    Parameters
+    ----------
+    triangulation : list of list of int
+        Top-dimensional simplices, 1-indexed vertices, dense labels.
+
+    Returns
+    -------
+    new_triangulation : list of list of int
+    n_vertices : int
+    """
+    if not triangulation:
+        return [], 0
+
+    original = set()
+    for simplex in triangulation:
+        original.update(simplex)
+    next_v = max(original) + 1
+
+    new_triangulation = []
+    for simplex in triangulation:
+        b = next_v
+        next_v += 1
+        for i in range(len(simplex)):
+            new_triangulation.append(
+                sorted(list(simplex[:i]) + list(simplex[i + 1:]) + [b])
+            )
+    return new_triangulation, next_v - 1
+
+
 def subdivide_dataset_json(data, n_subdivisions=1):
     """Apply n rounds of barycentric subdivision to all triangulations.
 

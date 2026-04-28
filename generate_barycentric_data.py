@@ -33,23 +33,33 @@ import hydra
 from hydra.core.config_store import ConfigStore
 
 from src.schema import GenerateBarycentricConfig
-from src.utils.barycentric_utils import barycentric_subdivision_raw
+from src.utils.barycentric_utils import (
+    barycentric_subdivision_raw,
+    stellar_subdivision_raw,
+)
 
 
 cs = ConfigStore.instance()
 cs.store(name="generate_barycentric_conf", node=GenerateBarycentricConfig)
 
 
-def _subdivide_entry(entry):
-    tri, n_v = barycentric_subdivision_raw(entry["triangulation"])
+_SUBDIVISION_FUNCTIONS = {
+    "stellar": stellar_subdivision_raw,
+    "full_barycentric": barycentric_subdivision_raw,
+}
+
+
+def _subdivide_entry(entry, mode):
+    fn = _SUBDIVISION_FUNCTIONS[mode]
+    tri, n_v = fn(entry["triangulation"])
     new_entry = dict(entry)
     new_entry["triangulation"] = tri
     new_entry["n_vertices"] = n_v
     return new_entry
 
 
-def subdivide_once(entries):
-    return [_subdivide_entry(e) for e in entries]
+def subdivide_once(entries, mode):
+    return [_subdivide_entry(e, mode) for e in entries]
 
 
 def print_statistics(dataset, label_source="name"):
@@ -91,6 +101,13 @@ def main(cfg: GenerateBarycentricConfig):
         data = json.load(f)
     print(f"[INFO] Loaded {len(data)} raw triangulations from {cfg.input}")
 
+    if cfg.mode not in _SUBDIVISION_FUNCTIONS:
+        raise ValueError(
+            f"Unknown subdivision mode {cfg.mode!r}; expected one of "
+            f"{sorted(_SUBDIVISION_FUNCTIONS)}"
+        )
+    print(f"[INFO] Subdivision mode: {cfg.mode}")
+
     if cfg.min_class_count > 0:
         before = len(data)
         data, counts = filter_by_class_count(data, cfg.label_source, cfg.min_class_count)
@@ -112,7 +129,7 @@ def main(cfg: GenerateBarycentricConfig):
             sorted_entries = sorted(per_class[label], key=lambda e: e["n_vertices"])
             kept = 0
             for entry in sorted_entries:
-                sub = _subdivide_entry(entry)
+                sub = _subdivide_entry(entry, cfg.mode)
                 if sub["n_vertices"] >= cfg.min_vertices:
                     cohort.append(sub)
                     kept += 1
@@ -144,7 +161,7 @@ def main(cfg: GenerateBarycentricConfig):
 
         current = cohort
         for level in range(2, cfg.n_levels + 1):
-            current = subdivide_once(current)
+            current = subdivide_once(current, cfg.mode)
             below = [e for e in current if e["n_vertices"] < cfg.min_vertices]
             if below:
                 print(
@@ -166,7 +183,7 @@ def main(cfg: GenerateBarycentricConfig):
 
     current = data
     for level in range(1, cfg.n_levels + 1):
-        current = subdivide_once(current)
+        current = subdivide_once(current, cfg.mode)
 
         filtered = [e for e in current if e["n_vertices"] >= cfg.min_vertices]
         n_dropped = len(current) - len(filtered)
