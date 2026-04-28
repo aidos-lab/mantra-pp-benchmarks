@@ -221,6 +221,12 @@ def main(eval_cfg: EvalBarycentricConfig):
 
     transforms, label_transform = build_transforms(train_cfg)
 
+    # UGLY FIx
+    label_str = f'/tmp/label_to_index_{train_cfg.dataset.dimension}d_'
+    if not train_cfg.dataset.balanced:
+        label_str += 'u'
+    label_str +='bal.json'
+
     with open(label_str, "r") as f:
         correct_label_to_index = json.load(f)
         correct_index_to_label = {v: k for k,v in correct_label_to_index.items()}
@@ -247,10 +253,6 @@ def main(eval_cfg: EvalBarycentricConfig):
     )
 
     #NOTE: UGLY FIX
-    label_str = f'/tmp/label_to_index_{train_cfg.dataset.dimension}d_'
-    if not train_cfg.dataset.balanced:
-        label_str += 'u'
-    label_str +='bal.json'
 
     # Forward and inverted map
     label_to_index = label_transform.label_to_index
