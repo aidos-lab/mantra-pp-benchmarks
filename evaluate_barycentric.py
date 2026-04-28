@@ -219,6 +219,24 @@ def main(eval_cfg: EvalBarycentricConfig):
             "training."
         )
 
+    #NOTE: UGLY FIX
+    transforms, label_transform = build_transforms(train_cfg)
+
+    populate_dataset = create_dataset(
+        train_cfg,
+        root=train_cfg.root,
+        local_path=train_cfg.local_path,
+        transforms=transforms,
+        label_transform=label_transform,
+        balanced=train_cfg.balanced
+    )
+
+    for _ in populate_dataset:
+        pass
+
+    label_to_index = label_transform.label_to_index
+    #####################
+
     transforms, label_transform = build_transforms(train_cfg)
 
     dataset = create_dataset(
@@ -271,7 +289,7 @@ def main(eval_cfg: EvalBarycentricConfig):
     with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
         run.summary.update(train_meta)
         test(
-            model, test_loader, accuracies, label_transform.label_to_index, run, train_cfg
+            model, test_loader, accuracies, label_to_index, run, train_cfg
         )
 
     result = {
