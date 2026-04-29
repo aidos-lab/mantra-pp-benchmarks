@@ -122,7 +122,7 @@ def main(cfg: GenerateBarycentricConfig):
     print(f"[INFO] Subdivision mode: {cfg.mode}")
 
     nl = float(cfg.n_levels)
-    if nl <= 0:
+    if nl <= 0 and cfg.mode != 'graded':
         raise ValueError(f"n_levels must be > 0, got {nl}")
     fractional = nl < 1.0
     if fractional and cfg.mode != "stellar":
@@ -130,13 +130,13 @@ def main(cfg: GenerateBarycentricConfig):
             "Fractional n_levels (partial subdivision) only supported in mode='stellar'; "
             "full_barycentric breaks the SC condition under partial application."
         )
-    n_full_levels = 0 if fractional else int(round(nl))
-    if not fractional and abs(nl - n_full_levels) > 1e-9:
+    n_full_levels = 0 if fractional or cfg.mode =='graded' else int(round(nl))
+    if not fractional and abs(nl - n_full_levels) > 1e-9 and cfg.mode != 'graded':
         raise ValueError(
             f"n_levels >= 1 must be integer-valued (got {nl}); fractional values "
             f"are only allowed in (0, 1)."
         )
-    fraction = nl if fractional else 1.0
+    fraction = nl if fractional or cfg.mode == 'graded' else 1.0
     print(
         f"[INFO] n_levels={nl} (fractional={fractional}, fraction={fraction}, "
         f"full_levels={n_full_levels}, seed={cfg.seed})"
@@ -165,7 +165,7 @@ def main(cfg: GenerateBarycentricConfig):
         n_dropped = 0
         for label in sorted(per_class.keys()):
             # Sort incide per number of vertices
-            sorted_entries = sorted(per_class[label], key=lambda e: e["n_vertices"], ascending=(cfg.mode != 'graded')) # Descending if it's graded
+            sorted_entries = sorted(per_class[label], key=lambda e: e["n_vertices"], reverse=(cfg.mode == 'graded')) # Descending if it's graded
             kept = 0
 
             for entry in sorted_entries:
@@ -183,7 +183,10 @@ def main(cfg: GenerateBarycentricConfig):
                     f"(requested {cfg.n_smallest}); pool exhausted."
                 )
 
-        out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_{first_level_tag}.json")
+        if cfg.mode == 'graded':
+            out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_graded_n{cfg.n_levels}.json")
+        else:
+            out_path = os.path.join(cfg.output_dir, f"{cfg.prefix}_bary_{first_level_tag}.json")
         with open(out_path, "w") as f:
             json.dump(cohort, f)
         ns = [e["n_vertices"] for e in cohort]
