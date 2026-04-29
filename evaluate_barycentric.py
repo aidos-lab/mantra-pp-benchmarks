@@ -221,6 +221,19 @@ def main(eval_cfg: EvalBarycentricConfig):
 
     transforms, label_transform = build_transforms(train_cfg)
 
+    # UGLY FIx
+    label_str = f'/tmp/label_to_index_{train_cfg.dataset.dimension}d_'
+    if not train_cfg.dataset.balanced:
+        label_str += 'u'
+    label_str +='bal.json'
+
+    with open(label_str, "r") as f:
+        correct_label_to_index = json.load(f)
+
+    prev_label_to_index = label_transform.label_to_index
+    label_transform.label_to_index = correct_label_to_index
+
+
     dataset = create_dataset(
         train_cfg,
         root=eval_cfg.bary_dataset_root,
@@ -268,19 +281,11 @@ def main(eval_cfg: EvalBarycentricConfig):
     conf_dict.update(train_meta)
     conf_dict["checkpoint"] = run_name
 
-    #NOTE: UGLY FIX
-    label_str = f'/tmp/label_to_index_{train_cfg.dataset.dimension}d_'
-    if not train_cfg.dataset.balanced:
-        label_str += 'u'
-    label_str +='bal.json'
-
-    with open(label_str, "r") as f:
-        label_to_index = json.load(f)
 
     with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
         run.summary.update(train_meta)
         test(
-            model, test_loader, accuracies, label_to_index, run, train_cfg
+            model, test_loader, accuracies, correct_label_to_index, run, train_cfg
         )
 
     result = {
