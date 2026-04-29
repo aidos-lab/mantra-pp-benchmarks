@@ -56,7 +56,7 @@ def _subdivide_entry(entry, mode, fraction=1.0, rng=None):
     fn = _SUBDIVISION_FUNCTIONS[mode]
     if mode == "stellar":
         tri, n_v = fn(entry["triangulation"], fraction=fraction, rng=rng)
-    if mode == "graded":
+    elif mode == "graded":
         tri, n_v = fn(entry['triangulation'], over_vrtx_cnt=fraction, rng=rng)
     else:
         tri, n_v = fn(entry["triangulation"])
