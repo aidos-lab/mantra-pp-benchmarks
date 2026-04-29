@@ -51,6 +51,68 @@ def barycentric_subdivision_raw(triangulation):
     return new_triangulation, next_vertex - 1
 
 
+def barycentric_stellar_graded(triangulation, over_vrtx_cnt, rng=None):
+    """ Subdivide the triangulation until there are `over_vrtx_cnt` vertices
+    """
+
+    if not triangulation:
+        return [], 0
+
+    original = set()
+
+    # Add vertices of all top-level simplices
+    for simplex in triangulation:
+        original.add(frozenset(simplex))
+
+    # Next vertex numbering
+    next_v = max([max(s) for s in list(original)]) + 1
+
+    # Init rng
+    if rng is None:
+        rng = random.Random()
+
+    already_chosen = set()
+    running = True
+    
+    running_simplices = set()
+    while running:
+            # Check available simplices
+            available_for_choosing = original - already_chosen
+
+            # In this case we need to perform further subdivision
+            if len(available_for_choosing) == 0:
+                original.update(running_simplices)
+                running_simplices = set()
+                already_chosen = set()
+                continue
+
+            # Pick a random top level simplex
+            chosen = rng.choice(list(available_for_choosing))
+
+            # Remove from other simplices
+            original.remove(chosen)
+
+            # Get all combinations of k-1 vertices of the k-simplex  (actually k+1)
+            new_simplices = set([frozenset(list(s) + [next_v]) for s in list(combinations(chosen, len(chosen)-1))])
+
+            print(new_simplices)
+
+            running_simplices.update(new_simplices)
+
+            # next node
+            next_v += 1
+
+            # Update already chosen
+            already_chosen.add(frozenset(chosen))
+
+            # We readched the max_vrtx cnt
+            if next_v == over_vrtx_cnt+1:
+                original.update(running_simplices)
+                break
+
+
+    return list(original), next_v - 1
+
 def stellar_subdivision_raw(triangulation, fraction=1.0, rng=None):
     """Stellar subdivision at a (random) fraction of top-dim simplices.
 

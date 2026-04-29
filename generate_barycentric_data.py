@@ -37,6 +37,7 @@ from src.schema import GenerateBarycentricConfig
 from src.utils.barycentric_utils import (
     barycentric_subdivision_raw,
     stellar_subdivision_raw,
+    barycentric_stellar_graded
 )
 
 
@@ -47,6 +48,7 @@ cs.store(name="generate_barycentric_conf", node=GenerateBarycentricConfig)
 _SUBDIVISION_FUNCTIONS = {
     "stellar": stellar_subdivision_raw,
     "full_barycentric": barycentric_subdivision_raw,
+    "graded": barycentric_stellar_graded
 }
 
 
@@ -54,6 +56,8 @@ def _subdivide_entry(entry, mode, fraction=1.0, rng=None):
     fn = _SUBDIVISION_FUNCTIONS[mode]
     if mode == "stellar":
         tri, n_v = fn(entry["triangulation"], fraction=fraction, rng=rng)
+    if mode == "graded":
+        tri, n_v = fn(entry['triangulation'], over_vrtx_cnt=fraction, rng=rng)
     else:
         tri, n_v = fn(entry["triangulation"])
     new_entry = dict(entry)
@@ -153,14 +157,17 @@ def main(cfg: GenerateBarycentricConfig):
 
     if cfg.n_smallest > 0:
         per_class = defaultdict(list)
+        # name -> List of triangulations with this manifold type
         for entry in data:
             per_class[entry[cfg.label_source]].append(entry)
 
         cohort = []
         n_dropped = 0
         for label in sorted(per_class.keys()):
-            sorted_entries = sorted(per_class[label], key=lambda e: e["n_vertices"])
+            # Sort incide per number of vertices
+            sorted_entries = sorted(per_class[label], key=lambda e: e["n_vertices"], ascending=(cfg.mode != 'graded')) # Descending if it's graded
             kept = 0
+
             for entry in sorted_entries:
                 sub = _subdivide_entry(entry, cfg.mode, fraction=fraction, rng=rng)
                 if sub["n_vertices"] >= cfg.min_vertices:
