@@ -110,7 +110,7 @@ def barycentric_stellar_graded(triangulation, over_vrtx_cnt, rng=None):
                 original.update(running_simplices)
                 break
 
-    return [list(s) for s in original], next_v - 1
+    return [sorted(s) for s in original], next_v - 1
 
 def stellar_subdivision_raw(triangulation, fraction=1.0, rng=None):
     """Stellar subdivision at a (random) fraction of top-dim simplices.
