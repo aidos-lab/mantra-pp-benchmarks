@@ -24,7 +24,7 @@ from src.utils.train_utils import train, validate, test, init_metrics
 from tqdm import tqdm
 from torch_geometric.profile import count_parameters
 
-#torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
+torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
 
 
 cs = ConfigStore().instance()
@@ -104,9 +104,14 @@ def main(cfg: RootConfig):
 
     dataset = filter_low_ocurrence_labels(dataset)
 
+
+    max_num_nodes = -1
     #TODO: Fix this, shouldn't need to do a pass over the dataset to calculate the labels
     for data in dataset:
-        pass
+        print(data)
+        max_num_nodes = max(data.num_nodes, max_num_nodes)
+
+    print("Max num nodes: ", max_num_nodes)
 
     label_to_index = label_transform.label_to_index
 
@@ -162,6 +167,9 @@ def main(cfg: RootConfig):
         imbalance = imbalance / np.sum(imbalance)
 
     conf_dict = OmegaConf.to_container(cfg, resolve=True)
+    print("DEBUG")
+    print(len(label_to_index))
+    print(label_to_index)
 
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})
