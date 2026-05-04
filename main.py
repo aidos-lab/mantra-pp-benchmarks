@@ -217,8 +217,8 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
     early_stopping_cnt = cfg.trainer.early_stopping
     last_val_loss = None
 
-    checkpoint_dir = os.path.join(cfg.checkpoint_path, run.name)
-    os.makedirs(checkpoint_dir)
+    checkpoint_dir = os.path.join(cfg.checkpoint_path, run.name or run.id)
+    os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):
