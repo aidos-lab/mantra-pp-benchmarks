@@ -105,13 +105,9 @@ def main(cfg: RootConfig):
     dataset = filter_low_ocurrence_labels(dataset)
 
 
-    max_num_nodes = -1
-    #TODO: Fix this, shouldn't need to do a pass over the dataset to calculate the labels
     for data in dataset:
-        print(data)
-        max_num_nodes = max(data.num_nodes, max_num_nodes)
+        pass
 
-    print("Max num nodes: ", max_num_nodes)
 
     label_to_index = label_transform.label_to_index
 
