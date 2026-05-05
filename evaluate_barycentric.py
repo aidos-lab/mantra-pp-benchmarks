@@ -221,16 +221,12 @@ def main(eval_cfg: EvalBarycentricConfig):
 
     transforms, label_transform = build_transforms(train_cfg)
 
-    # UGLY FIx
-    label_str = f'/tmp/label_to_index_{train_cfg.dataset.dimension}d_'
-    if not train_cfg.dataset.balanced:
-        label_str += 'u'
-    label_str +='bal.json'
-
-    with open(label_str, "r") as f:
+    # The label-index map was written next to the checkpoint by main.py at
+    # training time; load it so the eval-time CreateLabels uses identical
+    # indices to the trained model.
+    label_index_path = os.path.join(ckpt_dir, "label_to_index.json")
+    with open(label_index_path, "r") as f:
         correct_label_to_index = json.load(f)
-
-    prev_label_to_index = label_transform.label_to_index
     label_transform.label_to_index = correct_label_to_index
 
 

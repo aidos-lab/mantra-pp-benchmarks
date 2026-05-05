@@ -41,7 +41,6 @@ are included in the vendored copy and will be made available after review period
 │   ├── metrics/                 # loss + task metrics
 │   └── schema.py                # OmegaConf dataclasses for Hydra structured configs
 ├── tests/                       # pytest suite (math utils, transforms, models, losses, …)
-├── datasets/                    # Raw + subdivided MANTRA JSONs shipped with the repo (see Datasets section)
 └── mantra/                      # Vendored MANTRA dataset library (see note above)
     └── mantra/                  # Python package
         ├── augmentations/       # Pachner moves + balancing logic
@@ -87,58 +86,24 @@ All commands below assume `.venv/bin/python` (or `uv run python …`).
 
 ### Datasets
 
-All JSONs needed to reproduce the experiments are checked in under
-[`datasets/`](./datasets):
+The repository does **not** ship the raw or subdivided MANTRA JSONs.
+There are three dataset variants used in the paper, all derived from the
+upstream MANTRA release:
 
-```
-datasets/
-├── 2_manifolds.json                                  # Unbalanced 2-manifolds (with updated class labels)
-├── 2_manifolds_balanced.json                         # Balanced 2-manifolds (target_count=1000)
-├── 3_manifolds.json                                  # Unbalanced 3-manifolds
-├── 3_manifolds_balanced.json                         # Balanced 3-manifolds
-├── mantra_bary_2d_unbalanced_full/                   # Full barycentric, level 1
-├── mantra_bary_2d_unbalanced_stellar/                # Stellar, levels 0.75 and 1
-├── mantra_bary_2d_unbalanced_graded/                 # Graded subdivisions n=16..20
-├── mantra_bary_2d_balanced_full/
-├── mantra_bary_2d_balanced_stellar/
-├── mantra_bary_3d_balanced_full/
-└── mantra_bary_3d_balanced_stellar/
-```
-
-There are three dataset variants used in the paper:
-
-1. **Original (unbalanced) MANTRA.** The version with updated class
-   labels lives at
-   [`datasets/2_manifolds.json`](./datasets/2_manifolds.json) /
-   [`datasets/3_manifolds.json`](./datasets/3_manifolds.json). The same
-   JSONs are also auto-downloaded from upstream by
-   `ManifoldTriangulations(root=..., balanced=False)` if you don't pre-populate
-   the cache (see *Pre-populating the unbalanced cache* below).
-2. **Balanced MANTRA.** Pre-generated at
-   [`datasets/2_manifolds_balanced.json`](./datasets/2_manifolds_balanced.json) /
-   [`datasets/3_manifolds_balanced.json`](./datasets/3_manifolds_balanced.json).
-   You can also re-generate them yourself via
-   `mantra/mantra/generate_balanced.py`
+1. **Original (unbalanced) MANTRA.** The 2- and 3-manifold JSONs are
+   auto-downloaded from the upstream MANTRA release the first time you
+   instantiate `ManifoldTriangulations(root=..., balanced=False)`.
+   After one run the file is on disk at
+   `${dataset.root}/mantra/${dim}D/raw/${dim}_manifolds.json` and is
+   reused in subsequent runs (see [Running a single training run](#running-a-single-training-run)).
+2. **Balanced MANTRA.** Produced by Pachner-move augmentation +
+   deduplication on the unbalanced JSON via
+   [`mantra/mantra/generate_balanced.py`](./mantra/mantra/generate_balanced.py)
    (see [Generating the balanced dataset](#generating-the-balanced-dataset)).
-3. **Subdivided MANTRA.** Pre-generated under `datasets/mantra_bary_*/`
-   for every (dim × balanced × subdivision-mode) combination used in the
-   paper. You can also re-generate them via
+3. **Subdivided MANTRA.** Full-barycentric / stellar / graded
+   subdivisions of the unbalanced or balanced JSONs, produced by
    `generate_barycentric_data.py` (see
    [Reproducing the subdivision experiments](#reproducing-the-subdivision-experiments)).
-
-#### Pre-populating the unbalanced cache (optional)
-
-`main.py` enforces `dataset.local_path is None XOR dataset.balanced`,
-so to train on `datasets/2_manifolds.json` *without* the upstream
-download, copy the JSON into the cache layout PyG expects:
-
-```bash
-mkdir -p data/mantra/2D/raw && cp datasets/2_manifolds.json data/mantra/2D/raw/
-mkdir -p data/mantra/3D/raw && cp datasets/3_manifolds.json data/mantra/3D/raw/
-```
-
-After this, `dataset.root=data` + `dataset.balanced=False` will skip
-the download.
 
 
 ### Generating the balanced dataset
@@ -148,13 +113,15 @@ deduplication on the unbalanced JSON. Source code:
 [`mantra/mantra/augmentations/balancing.py`](./mantra/mantra/augmentations/balancing.py);
 CLI: [`mantra/mantra/generate_balanced.py`](mantra/mantra/generate_balanced.py).
 
-A reduced version can be generated and run locally on a CPU in a reasonable time; the full version (target count 1000) is best run on a cluster. 
+A reduced version can be generated and run locally on a CPU in a reasonable time; the full version (target count 1000) is best run on a cluster. The unbalanced source JSON has to be on disk first — trigger the
+auto-download by running `main.py` once with `dataset.balanced=False`,
+or load it explicitly via `ManifoldTriangulations(root='data', balanced=False)`.
 
 For the 2-manifolds (small target count for a quick CPU run):
 
 ```bash
 .venv/bin/python mantra/mantra/generate_balanced.py \
-    datasets/2_manifolds.json \
+    data/mantra/2D/raw/2_manifolds.json \
     /tmp/2_manifolds_balanced_demo.json \
     --dimension 2 \
     --target-count 100 \
@@ -165,16 +132,16 @@ For the 3-manifolds:
 
 ```bash
 .venv/bin/python mantra/mantra/generate_balanced.py \
-    datasets/3_manifolds.json \
+    data/mantra/3D/raw/3_manifolds.json \
     /tmp/3_manifolds_balanced_demo.json \
     --dimension 3 \
     --target-count 100 \
     --dedup-max-rounds 5
 ```
 
-The full-target-count `(target_count=1000)` versions used in the paper
-are already shipped at
-`datasets/{2,3}_manifolds_balanced.json`.
+The full-target-count (`target_count=1000`) versions used in the paper
+are produced by the same command with `--target-count 1000`
+(typically run on a cluster).
 
 Useful flags:
 
@@ -188,20 +155,15 @@ Useful flags:
 | `--no-dedup`             | off     | Skip the post-augmentation isomorphic-duplicate removal ().                |
 | `--dedup-max-rounds`     | 5       | Number of dedup-and-regenerate rounds before falling back to "remove only".                  |
 
-The unbalanced source JSONs `${dim}_manifolds.json` are produced by the
-auto-download path of `ManifoldTriangulations`; after one
-`balanced=False` run the file is in
-`${dataset.root}/mantra/${dim}D/raw/${dim}_manifolds.json` and can be
-fed straight into `generate_balanced.py`.
-
 #### Loading a locally generated balanced JSON in training
 
-To train on the in-repo balanced 2-manifolds JSON:
+To train on a balanced JSON you produced (here the demo file from the
+example above):
 
 ```bash
 .venv/bin/python main.py \
     dataset.balanced=True \
-    dataset.local_path=datasets/2_manifolds_balanced.json \
+    dataset.local_path=/tmp/2_manifolds_balanced_demo.json \
     dataset.root=data/2d_mantra_balanced \
     dataset.dimension=2 \
     model=gcn \
@@ -232,14 +194,13 @@ i.e. they must both be set or both be unset.
 ## Running a single training run
 
 `main.py` is a Hydra app with the default composition defined in
-`config/config.yaml`. A minimal CPU run on the in-repo balanced
-2-manifolds:
+`config/config.yaml`. A minimal CPU run on the unbalanced 2-manifolds
+(JSON is auto-downloaded into `data/mantra/2D/raw/` on first invocation):
 
 ```bash
 .venv/bin/python main.py \
-    dataset.balanced=True \
-    dataset.local_path=datasets/2_manifolds_balanced.json \
-    dataset.root=data/2d_mantra_balanced \
+    dataset.balanced=False \
+    dataset.root=data \
     dataset.dimension=2 \
     model=gcn \
     representation@dataset.transform.representation=one_skeleton \
@@ -251,8 +212,10 @@ i.e. they must both be set or both be unset.
     trainer.device=cpu trainer.max_epoch=2
 ```
 
-For the unbalanced variant, first pre-populate the cache (see above)
-and then drop the `dataset.{balanced,local_path}` overrides.
+For the balanced variant, generate the JSON first (see
+[Generating the balanced dataset](#generating-the-balanced-dataset))
+and then add the `dataset.balanced=True` /
+`dataset.local_path=<path-to-generated-json>` overrides.
 
 Key Hydra groups:
 
@@ -284,9 +247,13 @@ three-step pipeline. Throughout, `${LEVEL}` denotes the subdivision level
 
 ### 1. Generate the subdivided JSONs
 
+The unbalanced source JSON is whatever `ManifoldTriangulations` cached
+locally — e.g. `data/mantra/2D/raw/2_manifolds.json` after one
+`balanced=False` run:
+
 ```bash
 .venv/bin/python generate_barycentric_data.py \
-    input=datasets/2_manifolds.json \
+    input=data/mantra/2D/raw/2_manifolds.json \
     output_dir=/tmp/mantra_bary_demo \
     prefix=2_manifolds \
     n_levels=1 \
@@ -302,19 +269,15 @@ for all options (notably `n_smallest`, `min_class_count`, and the
 `mode` validity rules; valid `mode` values are `stellar`,
 `full_barycentric`, `graded`).
 
-The pre-generated outputs used in the paper ship under
-`datasets/mantra_bary_*/` and can be used directly without re-running
-this step.
-
 ### 2. Build the pre_transform cache for that level
 
-Using the in-repo unbalanced stellar level-1 JSON:
+Using the demo stellar level-1 JSON produced in step 1:
 
 ```bash
 .venv/bin/python precompute_barycentric.py \
     +bary_level=1 \
     dataset.root=data/bary1_2d_unbalanced_random_features_dual_graph \
-    dataset.local_path=datasets/mantra_bary_2d_unbalanced_stellar/2_manifolds_bary_1.json \
+    dataset.local_path=/tmp/mantra_bary_demo/2_manifolds_bary_1.json \
     dataset.dimension=2 \
     dataset.balanced=False \
     representation@dataset.transform.representation=dual_graph \
@@ -340,7 +303,7 @@ The aggregated launchers used in the paper are
     checkpoint_dir=checkpoints/<run_name> \
     bary_level=1 \
     bary_dataset_root=data/bary1_2d_unbalanced_random_features_dual_graph \
-    bary_local_path=datasets/mantra_bary_2d_unbalanced_stellar/2_manifolds_bary_1.json \
+    bary_local_path=/tmp/mantra_bary_demo/2_manifolds_bary_1.json \
     bary_balanced=False \
     device=cpu
 ```
@@ -361,7 +324,7 @@ To sweep over levels and / or checkpoints, use Hydra multirun:
     checkpoint_dir=checkpoints/run_a,checkpoints/run_b \
     bary_level=1 \
     bary_dataset_root='data/bary${bary_level}_2d_unbalanced_random_features_dual_graph' \
-    bary_local_path='datasets/mantra_bary_2d_unbalanced_stellar/2_manifolds_bary_${bary_level}.json'
+    bary_local_path='/tmp/mantra_bary_demo/2_manifolds_bary_${bary_level}.json'
 ```
 
 Per-checkpoint results are written to

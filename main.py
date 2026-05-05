@@ -1,3 +1,5 @@
+import json
+
 import wandb
 from omegaconf import OmegaConf
 
@@ -175,14 +177,14 @@ def main(cfg: RootConfig):
         run.log({"model_parameters": count_parameters(model)})
         accuracies = init_metrics(cfg)
         if cfg.train:
-            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg)
+            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index)
 
         test(model, test_dataloader, accuracies, label_to_index, run, cfg)
 
 
 
 
-def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg):
+def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index):
     MAX_EPOCH = cfg.trainer.max_epoch
 
     if is_blackwell_gpu(cfg):
@@ -219,6 +221,9 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
 
     checkpoint_dir = os.path.join(cfg.checkpoint_path, run.name or run.id)
     os.makedirs(checkpoint_dir, exist_ok=True)
+
+    with open(os.path.join(checkpoint_dir, "label_to_index.json"), "w") as f:
+        json.dump(label_to_index, f)
 
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):
