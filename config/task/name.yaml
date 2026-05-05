@@ -2,4 +2,4 @@ defaults:
   - base_task
 name: Name
 target: name
-imbalanced: True
+imbalanced: False #this is a legacy flag, it should be set to False

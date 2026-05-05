@@ -59,6 +59,15 @@ def main(cfg: RootConfig):
 
     assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
 
+    if cfg.task.imbalanced:
+        raise RuntimeError(
+            "cfg.task.imbalanced=True is a legacy option and is not supported: "
+            "filter_low_ocurrence_labels drops classes after label_to_index is "
+            "built, so the class-weight tensor and model.out_channels disagree "
+            "and cross-entropy crashes. All published models were trained with "
+            "imbalanced=False; set it to False (the new default for task=name)."
+        )
+
     # Only set for CPU
     if not is_gpu(cfg):
         torch.set_num_threads(os.cpu_count())
