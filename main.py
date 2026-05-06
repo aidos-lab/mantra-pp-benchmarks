@@ -1,3 +1,5 @@
+import json
+
 import wandb
 from omegaconf import OmegaConf
 
@@ -56,6 +58,15 @@ def main(cfg: RootConfig):
     transform_order = dataset_config.transform_order
 
     assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
+
+    if cfg.task.imbalanced:
+        raise RuntimeError(
+            "cfg.task.imbalanced=True is a legacy option and is not supported: "
+            "filter_low_ocurrence_labels drops classes after label_to_index is "
+            "built, so the class-weight tensor and model.out_channels disagree "
+            "and cross-entropy crashes. All published models were trained with "
+            "imbalanced=False; set it to False (the new default for task=name)."
+        )
 
     # Only set for CPU
     if not is_gpu(cfg):
@@ -171,14 +182,14 @@ def main(cfg: RootConfig):
         run.log({"model_parameters": count_parameters(model)})
         accuracies = init_metrics(cfg)
         if cfg.train:
-            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg)
+            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index)
 
         test(model, test_dataloader, accuracies, label_to_index, run, cfg)
 
 
 
 
-def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg):
+def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index):
     MAX_EPOCH = cfg.trainer.max_epoch
 
     if is_blackwell_gpu(cfg):
@@ -213,8 +224,11 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
     early_stopping_cnt = cfg.trainer.early_stopping
     last_val_loss = None
 
-    checkpoint_dir = os.path.join(cfg.checkpoint_path, run.name)
-    os.makedirs(checkpoint_dir)
+    checkpoint_dir = os.path.join(cfg.checkpoint_path, run.name or run.id)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    with open(os.path.join(checkpoint_dir, "label_to_index.json"), "w") as f:
+        json.dump(label_to_index, f)
 
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):
