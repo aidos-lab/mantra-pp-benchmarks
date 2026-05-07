@@ -1,4 +1,4 @@
-# MANTRA++ Benchmarks
+#  No Triangulation Without Representation: Generalization in Topological Deep Learning
 
 Code accompanying the paper *No Triangulation Without Representation:
 Generalization in Topological Deep Learning*.
@@ -113,7 +113,7 @@ deduplication on the unbalanced JSON. Source code:
 [`mantra/mantra/augmentations/balancing.py`](./mantra/mantra/augmentations/balancing.py);
 CLI: [`mantra/mantra/generate_balanced.py`](mantra/mantra/generate_balanced.py).
 
-A reduced version can be generated and run locally on a CPU in a reasonable time; the full version (target count 1000) is best run on a cluster. The unbalanced source JSON has to be on disk first — trigger the
+A reduced version can be generated and run locally on a CPU in a reasonable time; the full version is best run on a cluster. The unbalanced source JSON has to be on disk first — trigger the
 auto-download by running `main.py` once with `dataset.balanced=False`,
 or load it explicitly via `ManifoldTriangulations(root='data', balanced=False)`.
 
@@ -124,7 +124,7 @@ For the 2-manifolds (small target count for a quick CPU run):
     data/mantra/2D/raw/2_manifolds.json \
     /tmp/2_manifolds_balanced_demo.json \
     --dimension 2 \
-    --target-count 100 \
+    --target-count 200 \
     --dedup-max-rounds 5
 ```
 
@@ -139,9 +139,8 @@ For the 3-manifolds:
     --dedup-max-rounds 5
 ```
 
-The full-target-count (`target_count=1000`) versions used in the paper
-are produced by the same command with `--target-count 1000`
-(typically run on a cluster).
+The full-target-count used in the paper are produced by the same command 
+with `--target-count 2500` and `--target-count 5000` for 2D and 3D respectively.
 
 Useful flags:
 
