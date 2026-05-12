@@ -26,23 +26,23 @@ dependencies = [
 [project.optional-dependencies]
 cpu = [
     "mantra-dataset",
-    "torch==2.9.0+cpu; sys_platform == 'linux'",
-    "torch==2.9.0; sys_platform == 'darwin'",
+    "torch==2.11.0+cpu; sys_platform == 'linux'",
+    "torch==2.11.0; sys_platform == 'darwin'",
     "torch-geometric",
-    "pyg-lib==0.6.0+pt29cpu; sys_platform == 'linux'",
-    "pyg-lib==0.6.0+pt29; sys_platform == 'darwin'",
-    "torch-sparse==0.6.18+pt29cpu; sys_platform == 'linux'",
+    "pyg-lib==0.6.0+pt211cpu; sys_platform == 'linux'",
+    "pyg-lib==0.6.0+pt210; sys_platform == 'darwin'",
+    "torch-sparse==0.6.18+pt211cpu; sys_platform == 'linux'",
     "torch-sparse==0.6.18; sys_platform == 'darwin'",
-    "torch-scatter==2.1.2+pt29cpu; sys_platform == 'linux'",
+    "torch-scatter==2.1.2+pt211cpu; sys_platform == 'linux'",
     "torch-scatter==2.1.2; sys_platform == 'darwin'",
 ]
 cu130 = [
     "mantra-dataset; sys_platform == 'linux'",
-    "torch==2.9.0+cu130; sys_platform == 'linux'",
+    "torch==2.11.0+cu130; sys_platform == 'linux'",
     "torch-geometric; sys_platform == 'linux'",
-    "pyg-lib==0.6.0+pt29cu130; sys_platform == 'linux'",
-    "torch-sparse==0.6.18+pt29cu130; sys_platform == 'linux'",
-    "torch-scatter==2.1.2+pt29cu130; sys_platform == 'linux'",
+    "pyg-lib==0.6.0+pt211cu130; sys_platform == 'linux'",
+    "torch-sparse==0.6.18+pt211cu130; sys_platform == 'linux'",
+    "torch-scatter==2.1.2+pt211cu130; sys_platform == 'linux'",
 ]
 
 [dependency-groups]
@@ -66,13 +66,13 @@ explicit = true
 
 [[tool.uv.index]]
 name = "pyg-cuda" 
-url = "https://data.pyg.org/whl/torch-2.9.0+cu130.html"
+url = "https://data.pyg.org/whl/torch-2.11.0+cu130.html"
 explicit = true
 format = "flat"
 
 [[tool.uv.index]]
 name = "pyg-cpu" 
-url = "https://data.pyg.org/whl/torch-2.9.0+cpu.html"
+url = "https://data.pyg.org/whl/torch-2.11.0+cpu.html"
 explicit = true
 format = "flat"
 
