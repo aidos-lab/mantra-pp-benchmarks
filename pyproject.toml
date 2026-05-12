@@ -30,7 +30,7 @@ cpu = [
     "torch==2.11.0; sys_platform == 'darwin'",
     "torch-geometric",
     "pyg-lib==0.6.0+pt211cpu; sys_platform == 'linux'",
-    "pyg-lib==0.6.0+pt210; sys_platform == 'darwin'",
+    "pyg-lib==0.6.0+pt211; sys_platform == 'darwin'",
     "torch-sparse==0.6.18+pt211cpu; sys_platform == 'linux'",
     "torch-sparse==0.6.18; sys_platform == 'darwin'",
     "torch-scatter==2.1.2+pt211cpu; sys_platform == 'linux'",
