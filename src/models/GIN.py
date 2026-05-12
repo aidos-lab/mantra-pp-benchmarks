@@ -54,11 +54,11 @@ class GIN(nn.Module):
 
         self.hidden_layers = nn.ModuleList(
             [
-                GINLayer(hidden_channels, hidden_channels, batch_norm, residuals, dropout)
+                GINLayer(hidden_channels, hidden_channels, batch_norm, residuals)
                 for _ in range(n_layers)
             ]
         )
-        self.hidden_layers.insert(0, GINLayer(in_channels, hidden_channels, batch_norm, residual=False, dropout=dropout))
+        self.hidden_layers.insert(0, GINLayer(in_channels, hidden_channels, batch_norm, residual=False))
 
         self.dropout = dropout
         self.lin_1 = nn.Linear(hidden_channels, hidden_channels)

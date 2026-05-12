@@ -27,7 +27,9 @@ from tqdm import tqdm
 from torch_geometric.profile import count_parameters
 
 torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
-torch.cuda.set_sync_debug_mode('warn')
+
+# NOTE: Debugging option
+#torch.cuda.set_sync_debug_mode('warn')
 
 
 cs = ConfigStore().instance()
@@ -150,8 +152,7 @@ def main(cfg: RootConfig):
 
     # Only compile on GPU
     if is_blackwell_gpu(cfg) and cfg.compile:
-        pass
-        #model = torch.compile(model, dynamic=True)
+        model = torch.compile(model, dynamic=True)
 
 
     print(f"Model parameters: {count_parameters(model)}")
