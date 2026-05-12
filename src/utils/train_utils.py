@@ -39,6 +39,7 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
             acc(y_hat.detach(), y)
 
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
     metrics['train/loss'] = torch.stack(losses).mean().item()
