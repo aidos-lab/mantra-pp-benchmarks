@@ -77,8 +77,8 @@ def main(cfg: RootConfig):
 
     elif is_blackwell_gpu(cfg):
         torch.backends.fp32_precision = "tf32"
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.conv.fp32_precision = 'tf32'
+        torch.backends.cuda.matmul.fp32_precision = 'tf32'
     # Set config GPU
     elif is_gpu(cfg):
         torch.backends.cudnn.benchmark = True
