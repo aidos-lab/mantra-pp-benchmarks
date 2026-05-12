@@ -74,8 +74,7 @@ def main(cfg: RootConfig):
         torch.set_num_threads(os.cpu_count())
 
     elif is_blackwell_gpu(cfg):
-        torch.backends.cuda.matmul.fp32_precision = 'tf32'
-        torch.backends.cudnn.conv.fp32_precision = 'tf32'
+        torch.backends.fp32_precision = "tf32"
     # Set config GPU
     elif is_gpu(cfg):
         torch.backends.cudnn.benchmark = True
@@ -151,7 +150,8 @@ def main(cfg: RootConfig):
 
     # Only compile on GPU
     if is_blackwell_gpu(cfg) and cfg.compile:
-        model = torch.compile(model, dynamic=True)
+        pass
+        #model = torch.compile(model, dynamic=True)
 
 
     print(f"Model parameters: {count_parameters(model)}")
@@ -195,7 +195,6 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
     if is_blackwell_gpu(cfg):
         optimizer = torch.optim.AdamW(
             model.parameters(), lr=float(cfg.trainer.learning_rate), weight_decay=cfg.trainer.weight_decay,
-            fused=True
         )
     else:
         optimizer = torch.optim.AdamW(
