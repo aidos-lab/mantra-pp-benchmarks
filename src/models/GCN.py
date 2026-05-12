@@ -33,7 +33,7 @@ class GCNLayer(nn.Module):
         # Batch normalization before activation
         h = self.batchnorm_h(h)
 
-        h = F.relu(h)
+        h = F.leaky_relu(h)
 
         if self.dropout is not None:
             h = F.dropout(h, p=self.dropout, training=self.training)

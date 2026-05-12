@@ -27,6 +27,7 @@ from tqdm import tqdm
 from torch_geometric.profile import count_parameters
 
 torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
+torch.cuda.set_sync_debug_mode('warn')
 
 
 cs = ConfigStore().instance()
@@ -257,20 +258,20 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
         scheduler.step(val_metrics['val/loss'])
 
         #TODO: Optimize
-        if last_val_loss is None or val_metrics['val/loss'] < last_val_loss:
-            last_val_loss = val_metrics['val/loss']
-            early_stopping_cnt = cfg.trainer.early_stopping
+        # if last_val_loss is None or val_metrics['val/loss'] < last_val_loss:
+        #     last_val_loss = val_metrics['val/loss']
+        #     early_stopping_cnt = cfg.trainer.early_stopping
 
-            # Save weights and config of the best model
-            torch.save(model.state_dict(), os.path.join(checkpoint_dir, "best_val.pt"))
-            with open(os.path.join(checkpoint_dir, "config.yaml"), "w") as f:
-                f.write(OmegaConf.to_yaml(cfg))
+        #     # Save weights and config of the best model
+        #     torch.save(model.state_dict(), os.path.join(checkpoint_dir, "best_val.pt"))
+        #     with open(os.path.join(checkpoint_dir, "config.yaml"), "w") as f:
+        #         f.write(OmegaConf.to_yaml(cfg))
 
         early_stopping_cnt -= 1
 
     # Save model with best validation
-    state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
-    model.load_state_dict(state_dict)
+    # state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
+    # model.load_state_dict(state_dict)
     return model
 
 
