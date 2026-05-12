@@ -5,7 +5,7 @@ Implementation for Graph Convolutional Neural Network.
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import GCNConv
-from src.models.utils import mean_pool
+from src.models.utils import mean_pool, sum_pool
 
 
 
@@ -68,7 +68,7 @@ class GCN(nn.Module):
             x = layer(x, edge_index)
 
         # 2. Readout layer
-        x = mean_pool(x, batch)  # [batch_size, hidden_channels]
+        x = sum_pool(x, batch)  # [batch_size, hidden_channels]
         # 3. Apply a final classifier
         x = self.final_linear(x)
         return x

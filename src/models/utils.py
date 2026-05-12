@@ -4,6 +4,9 @@ from torch_geometric.utils import scatter
 def mean_pool(x, batch):
     return scatter(x, batch, dim=-2, reduce='mean')
 
+def sum_pool(x, batch):
+    return scatter(x, batch, dim=-2, reduce='sum')
+
 class SumReadout(nn.Module):
     def __init__(self, in_features, out_features):
         super(SumReadout, self).__init__()

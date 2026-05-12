@@ -75,12 +75,11 @@ def main(cfg: RootConfig):
     # Set config GPU
     if is_gpu(cfg):
         torch.backends.cudnn.benchmark = True
-        torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = True
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
     if is_blackwell_gpu(cfg):
         torch.backends.cuda.matmul.fp32_precision = 'tf32'
         torch.backends.cudnn.conv.fp32_precision = 'tf32'
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
 
 
     transforms = [None for _ in range(len(list(transform_dict.items())))]
@@ -193,12 +192,12 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
     MAX_EPOCH = cfg.trainer.max_epoch
 
     if is_blackwell_gpu(cfg):
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.AdamW(
             model.parameters(), lr=float(cfg.trainer.learning_rate), weight_decay=cfg.trainer.weight_decay,
             fused=True
         )
     else:
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.AdamW(
             model.parameters(), lr=float(cfg.trainer.learning_rate), weight_decay=cfg.trainer.weight_decay,
         )
 
@@ -257,6 +256,7 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
 
         scheduler.step(val_metrics['val/loss'])
 
+        #TODO: Optimize
         if last_val_loss is None or val_metrics['val/loss'] < last_val_loss:
             last_val_loss = val_metrics['val/loss']
             early_stopping_cnt = cfg.trainer.early_stopping
