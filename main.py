@@ -73,14 +73,14 @@ def main(cfg: RootConfig):
     if not is_gpu(cfg):
         torch.set_num_threads(os.cpu_count())
 
+    elif is_blackwell_gpu(cfg):
+        torch.backends.cuda.matmul.fp32_precision = 'tf32'
+        torch.backends.cudnn.conv.fp32_precision = 'tf32'
     # Set config GPU
-    if is_gpu(cfg):
+    elif is_gpu(cfg):
         torch.backends.cudnn.benchmark = True
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
-    if is_blackwell_gpu(cfg):
-        torch.backends.cuda.matmul.fp32_precision = 'tf32'
-        torch.backends.cudnn.conv.fp32_precision = 'tf32'
 
 
     transforms = [None for _ in range(len(list(transform_dict.items())))]
