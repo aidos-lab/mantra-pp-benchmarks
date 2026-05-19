@@ -253,7 +253,7 @@ class SANTMX(nn.Module):
         down_laplacian = self._reconstruct(batch, "down_laplacian_1")
 
         hodge_laplacian = up_laplacian + down_laplacian
-        P = self._compute_projection_matrix(hodge_laplacian, batch_1)
+        P = self._compute_projection_matrix(hodge_laplacian)
 
         for layer in self.layers:
             x = layer(x, down_laplacian, up_laplacian, P)
