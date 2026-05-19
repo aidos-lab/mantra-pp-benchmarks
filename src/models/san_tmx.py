@@ -189,6 +189,19 @@ class SANTMX(nn.Module):
             sparse_sizes=(n_rows, n_cols)
         )
 
+    def _sparse_tensor_power(self, sparse_mat: SparseTensor, n):
+        if n == 0:
+            return SparseTensor.eye(*sparse_mat.shape, device=sparse_mat.device())
+            
+        if n == 1:
+            return sparse_mat 
+            
+        if n % 2 == 0:
+            half_power = self._sparse_tensor_power(sparse_mat, n // 2)
+            return half_power @ half_power
+        else:
+            return sparse_mat @ self._sparse_tensor_power(sparse_mat, n - 1)
+
     def _compute_projection_matrix(self, L_g):
         """ Naive projector without using harmonics.
 
@@ -204,9 +217,18 @@ class SANTMX(nn.Module):
                     Projection matrix.
         """        
         n = L_g.size(0)
-        eye = torch.eye(n, device=L_g.device)
-        proj = eye - self.epsilon * L_g
-        return torch.linalg.matrix_power(proj, self.k_proj)
+        eye = SparseTensor.eye(n, device=L_g.device())
+
+        row_t, col_t, value_t = L_g.coo()
+        row_e, col_e, value_e = eye.coo()
+
+        proj = SparseTensor(
+            row=torch.cat([row_e, row_t]),
+            col=torch.cat([col_e, col_t]),
+            value = torch.cat([value_e, -self.epsilon*value_t]),
+            sparse_sizes=L_g.sparse_sizes()
+        ).coalesce()
+        return self._sparse_tensor_power(proj, self.k_proj)
 
     def _harmonic_projector(self, hodge_laplacian, batch_1):
         """Per-graph harmonic projectors assembled as block-diagonal SparseTensor."""
