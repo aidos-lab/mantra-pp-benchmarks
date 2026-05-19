@@ -190,7 +190,19 @@ class SANTMX(nn.Module):
         )
 
     def _compute_projection_matrix(self, L_g):
-        """P_g = (I - ε·L)^k — matches TopoModelX SAN.compute_projection_matrix."""
+        """ Naive projector without using harmonics.
+
+            Parameters
+            ----------
+                hodge_laplacian: Tensor
+                    Tensor containing the hodge_laplacian L_1.
+                batch_1: Tensor
+                    Tensor containing the simplicial complext that each 1-simplex is a part of.
+            Returns
+            -------
+                Tensor
+                    Projection matrix.
+        """        
         n = L_g.size(0)
         eye = torch.eye(n, device=L_g.device)
         proj = eye - self.epsilon * L_g
@@ -241,7 +253,7 @@ class SANTMX(nn.Module):
         down_laplacian = self._reconstruct(batch, "down_laplacian_1")
 
         hodge_laplacian = up_laplacian + down_laplacian
-        P = self._harmonic_projector(hodge_laplacian, batch_1)
+        P = self._compute_projection_matrix(hodge_laplacian, batch_1)
 
         for layer in self.layers:
             x = layer(x, down_laplacian, up_laplacian, P)
