@@ -1,6 +1,1 @@
-_target_: mantra.transforms.EffectiveResistance
-
-
-statistics:
-  - min
-  - max
+_target_: mantra.transforms.EffectiveResistanceEmbedding
