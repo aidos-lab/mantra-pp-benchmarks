@@ -1,0 +1,5 @@
+defaults:
+  - base_task
+name: HodgeNumber
+target: h11
+imbalanced: False #this is a legacy flag, it should be set to False
