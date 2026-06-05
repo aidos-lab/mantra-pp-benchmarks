@@ -13,7 +13,6 @@ import os
 from torch_geometric.transforms import Compose
 
 
-from mantra.datasets import ManifoldTriangulations
 from mantra.representations.internal.simplex_trie import SimplexNode, SimplexTrie
 
 from src.schema import RootConfig
@@ -52,15 +51,42 @@ def is_gpu(cfg):
 
 torch._dynamo.config.capture_scalar_outputs = True
 
+def arrange_transforms(dataset_config) -> Compose:
+    """ Arrange transforms and mappings
+    """
+
+    transform_dict = dataset_config.transform
+    transform_order = dataset_config.transform_order
+    transforms = [None for _ in range(len(list(transform_dict.items())))]
+
+    label_transform = None
+    select_transform = None
+
+    assert len(transforms) == len(transform_order), "There's a mismatch between specified transforms and specified order"
+
+    for name, transform in transform_dict.items():
+        trans = hydra.utils.instantiate(transform)
+        if name == 'create_labels':
+            label_transform = trans
+        elif name == 'select_features':
+            select_transform = trans
+
+        assert name in transform_order, f"Transform {name} not in transforms"
+        transforms[transform_order.index(name)] = trans
+
+    assert label_transform is not None, "Missing the `create_labels` transform"
+    assert select_transform is not None, "Missing the `select_features` transform"
+
+    transforms = Compose(transforms)
+    return transforms, label_transform
 
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg: RootConfig):
 
     dataset_config = cfg.dataset
-    transform_dict = dataset_config.transform
-    transform_order = dataset_config.transform_order
 
-    assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
+    if "balanced" in dataset_config:
+        assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
 
     if cfg.task.imbalanced:
         raise RuntimeError(
@@ -85,45 +111,44 @@ def main(cfg: RootConfig):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
+    transforms, label_transform = arrange_transforms(dataset_config)
 
-    transforms = [None for _ in range(len(list(transform_dict.items())))]
 
-    label_transform = None
-    select_transform = None
-    for name, transform in transform_dict.items():
-        trans = hydra.utils.instantiate(transform)
-        if name == 'create_labels':
-            label_transform = trans
-        elif name == 'select_features':
-            select_transform = trans
+    OmegaConf.resolve(cfg)
+    print(cfg)
 
-        assert name in transform_order, f"Transform {name} not in transforms"
-        transforms[transform_order.index(name)] = trans
-
-    assert label_transform is not None, "Missing the `create_labels` transform"
-    assert select_transform is not None, "Missing the `select_features` transform"
-
-    transforms = Compose(transforms)
-
-    dataset = ManifoldTriangulations(
-        balanced=dataset_config.balanced,
-        root=dataset_config.root,
-        dimension=dataset_config.dimension,
-        version=dataset_config.version,
-        local_path=dataset_config.local_path,
-        pre_transform=transforms,
-        force_reload=dataset_config.reload,
-        transform=label_transform
-    )
+    #TODO: Fix ugly
+    if "CY" in dataset_config._target_:
+        from mantra.datasets import CY
+        dataset = CY(root=dataset_config.root,
+                    debug=dataset_config.debug,
+                    version=dataset_config.version,
+                    local_path=dataset_config.local_path,
+                    force_reload=dataset_config.reload,
+                    transform=label_transform,
+                    pre_transform=transforms)
+    else:
+        from mantra.datasets import MANTRA
+        dataset = MANTRA(
+            balanced=dataset_config.balanced,
+            root=dataset_config.root,
+            dimension=dataset_config.dimension,
+            version=dataset_config.version,
+            local_path=dataset_config.local_path,
+            pre_transform=transforms,
+            force_reload=dataset_config.reload,
+            transform=label_transform,
+        )
 
     dataset = filter_low_ocurrence_labels(dataset)
 
 
     for data in dataset:
-        pass
+        continue
 
 
-    label_to_index = label_transform.label_to_index
+    label_to_index = label_transform.index_remap
+    assert len(label_to_index) > 0
 
     # Change the outputs based on classification task
     if cfg.task.task_type == 'classification':
@@ -177,9 +202,6 @@ def main(cfg: RootConfig):
         imbalance = imbalance / np.sum(imbalance)
 
     conf_dict = OmegaConf.to_container(cfg, resolve=True)
-    print("DEBUG")
-    print(len(label_to_index))
-    print(label_to_index)
 
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})
@@ -188,9 +210,6 @@ def main(cfg: RootConfig):
             model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index)
 
         test(model, test_dataloader, accuracies, label_to_index, run, cfg)
-
-
-
 
 def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index):
     MAX_EPOCH = cfg.trainer.max_epoch

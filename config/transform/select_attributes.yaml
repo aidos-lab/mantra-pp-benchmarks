@@ -1,0 +1,4 @@
+_target_: mantra.transforms.SelectAttributes
+
+
+keep_keys: null

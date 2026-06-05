@@ -3,7 +3,7 @@ defaults:
   - _self_
   - logger: wandb
   - model: gcn 
-  - dataset: dataset
+  - dataset: mantra 
   - representation@dataset.transform.representation: dual_graph
   - transform@dataset.transform.embedding: random_walk_pe
   - transform@dataset.transform.create_labels: create_labels
