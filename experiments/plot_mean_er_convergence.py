@@ -126,56 +126,52 @@ def plot(trajs: dict[str, np.ndarray], output: Path) -> None:
     steps = np.arange(N_STEPS + 1)
 
     fig, axes = plt.subplots(
-        1, 2, figsize=(14, 5.5),
-        gridspec_kw={"wspace": 0.28, "left": 0.07, "right": 0.97,
-                     "top": 0.88, "bottom": 0.12},
+        1, 2, figsize=(14, 5.0),
+        gridspec_kw={"wspace": 0.25, "left": 0.07, "right": 0.95,
+                     "top": 0.93, "bottom": 0.12},
     )
 
     def _draw(ax, kn_list, colors, title, legend_title):
         for _, name in sphere:
             arr  = trajs[name]
             m, s = arr.mean(0), arr.std(0)
-            ax.plot(steps, m, color=sp_color, lw=2.2, ls="--", zorder=5)
-            ax.fill_between(steps, m - s, m + s, color=sp_color, alpha=0.13)
+            ax.plot(steps, m, color=sp_color, lw=2.0, ls="--", zorder=5)
+            ax.fill_between(steps, m - s, m + s, color=sp_color, alpha=0.10)
 
         for k, name in kn_list:
             arr  = trajs[name]
             m, s = arr.mean(0), arr.std(0)
             c    = colors[name]
-            ax.plot(steps, m, color=c, lw=1.8)
-            ax.fill_between(steps, m - s, m + s, color=c, alpha=0.15)
+            ax.plot(steps, m, color=c, lw=1.6)
+            ax.fill_between(steps, m - s, m + s, color=c, alpha=0.12)
 
-        ax.axhline(1/3, color="black", lw=1.2, ls="--", alpha=0.6,
-                   label="limit = 1/3")
-        ax.set_xlabel("# stellar subdivisions", fontsize=10)
-        ax.set_ylabel("Mean edge ER", fontsize=10)
-        ax.set_title(title, fontsize=10.5, fontweight="bold")
+        ax.axhline(1/3, color="#333333", lw=1.0, ls="--", alpha=0.5)
+        ax.text(N_STEPS + 2, 1/3, "1/3", va="center", fontsize=8.5,
+                color="#333333", alpha=0.7)
+
+        ax.set_xlabel("stellar subdivisions", fontsize=9.5)
+        ax.set_ylabel("mean edge ER", fontsize=9.5)
+        ax.set_title(title, fontsize=11, pad=8)
         ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-        ax.grid(alpha=0.2, ls="--")
+        ax.tick_params(labelsize=8.5)
+        ax.grid(alpha=0.15, ls="--")
+        ax.spines[["top", "right"]].set_visible(False)
 
-        handles = [mlines.Line2D([], [], color=sp_color, lw=2.2, ls="--",
-                                  label=r"$S^2$ (dashed)")]
-        handles += [mlines.Line2D([], [], color=colors[n], lw=1.8, label=_label(n))
+        handles = [mlines.Line2D([], [], color=sp_color, lw=2.0, ls="--",
+                                  label=r"$S^2$")]
+        handles += [mlines.Line2D([], [], color=colors[n], lw=1.6, label=_label(n))
                     for _, n in kn_list]
-        handles.append(mlines.Line2D([], [], color="black", lw=1.2, ls="--",
-                                      alpha=0.6, label="limit = 1/3  (all surfaces)"))
-        ax.legend(handles=handles, fontsize=7, loc="center right",
-                  title=legend_title, title_fontsize=8,
-                  framealpha=0.88, ncols=1)
+        ax.legend(handles=handles, fontsize=7.5, loc="center right",
+                  title=legend_title, title_fontsize=8.5,
+                  framealpha=0.9, frameon=True, edgecolor="#cccccc", ncols=1)
 
     _draw(axes[0], nonorient, no_colors,
-          r"Non-orientable  $\#^k RP^2$  (light $\to$ dark = $k$ ↑)",
-          "k = crosscaps")
+          r"Non-orientable  $\#^k RP^2$",
+          "crosscaps $k$")
     _draw(axes[1], orient, or_colors,
-          r"Orientable  $\#^k T^2$  (light $\to$ dark = $k$ ↑)",
-          "k = handles")
+          r"Orientable  $\#^k T^2$",
+          "handles $k$")
 
-    fig.suptitle(
-        rf"Mean edge ER $= (V-1)\,/\,3(V-\chi)$  over {N_STEPS} stellar subdivisions"
-        "\n"
-        r"All surfaces converge to $\mathbf{1/3}$  (monotonically ↓ for $S^2$, ↑ for all others)",
-        fontsize=11,
-    )
     fig.savefig(output, bbox_inches="tight", dpi=150)
     print(f"Saved → {output}")
 
