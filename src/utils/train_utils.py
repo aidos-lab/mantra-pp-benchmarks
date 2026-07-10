@@ -88,7 +88,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg):
     is_classification = cfg.task.task_type == 'classification'
 
     if not is_classification:
-        raise NotImplementedError("No test for regression yet")
+        return test_regression(model, test_dataset, accuracies, run, cfg)
 
     for _, acc in accuracies:
         acc.reset()
@@ -133,6 +133,33 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg):
         }
     )
 
+def test_regression(model, test_dataset, accuracies, run, cfg):
+    """ Run the test evaluation for regression tasks
+    """
+
+    for _, acc in accuracies:
+        acc.reset()
+
+    with torch.no_grad():
+        metrics = dict()
+
+        model.eval()
+        for batch in test_dataset:
+            batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
+
+            y_hat = model(batch)
+            y = batch.y
+
+            for _, acc in accuracies:
+                acc(y_hat.detach(), y)
+
+        for name, acc in accuracies:
+            metrics[f"test/{name}"] = acc.compute().item()
+            acc.reset()
+
+    log_metrics(metrics, epoch=cfg.trainer.max_epoch, step=None, run=run, cfg=cfg)
+    print({k: round(v, 4) for k, v in metrics.items()})
+
 def init_metrics(cfg: RootConfig):
     """ Initialize the metric classes
 
@@ -140,8 +167,10 @@ def init_metrics(cfg: RootConfig):
     """
     accs = []
     for name, acc in cfg.task.metrics.items():
-        if 'accuracy' in acc._target_.lower():
-            assert cfg.task.task_type == 'classification', "Cannot assign accuracy for regression tasks"
+        if cfg.task.task_type == 'regression':
+            metric = hydra.utils.instantiate(acc).to(cfg.trainer.device)
+            accs.append((name, metric))
+        elif 'accuracy' in acc._target_.lower():
             metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels).to(cfg.trainer.device)
             accs.append((name, metric))
     return accs

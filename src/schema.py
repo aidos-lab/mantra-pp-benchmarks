@@ -28,6 +28,10 @@ class TaskMeta:
     task_type: str
     imbalanced: bool = False
     metrics: Dict[str, MetricMeta] = field(default_factory=dict)
+    # Regression tasks (e.g. Hodge numbers): source attributes of the
+    # target vector and whether to sum them into a single scalar.
+    targets: List[str] = field(default_factory=list)
+    sum_targets: bool = False
 
 @dataclass
 class TransformMeta:
@@ -36,6 +40,11 @@ class TransformMeta:
 @dataclass
 class DatasetMeta:
     root: str
+    # 'mantra' (JSON-based manifold triangulations) or 'cy' (parquet-based
+    # Calabi-Yau star triangulations with vertex coordinates).
+    type: str = "mantra"
+    # Only process the first `limit` samples (CY only).
+    limit: int | None = None
     version: str = "latest"
     dimension: int = 2
     local_path: str | None = None

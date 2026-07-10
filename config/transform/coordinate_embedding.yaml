@@ -1,0 +1,3 @@
+_target_: mantra.transforms.CoordinateEmbedding
+
+propagate: False

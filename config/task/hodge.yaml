@@ -1,0 +1,22 @@
+defaults:
+  - base_task
+
+name: Hodge
+task_type: regression
+
+# Source attributes for the regression target; overrides:
+#   task.targets=[h12]                     -> predict h12
+#   'task.targets=[h11,h12]'               -> predict both jointly
+#   'task.targets=[h11,h12]' task.sum_targets=true -> predict h11+h12
+targets: [h11]
+sum_targets: False
+
+# Unused for regression; kept for compatibility with transforms that
+# interpolate ${task.target}.
+target: h11
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError
+  rounded_accuracy:
+    _target_: src.metrics.regression.RoundedAccuracy

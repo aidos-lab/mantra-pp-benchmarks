@@ -1,4 +1,5 @@
 import json
+import time
 
 import wandb
 from omegaconf import OmegaConf
@@ -13,7 +14,7 @@ import os
 from torch_geometric.transforms import Compose
 
 
-from mantra.datasets import ManifoldTriangulations
+from mantra.datasets import CY, ManifoldTriangulations
 from mantra.representations.internal.simplex_trie import SimplexNode, SimplexTrie
 
 from src.schema import RootConfig
@@ -57,7 +58,17 @@ def main(cfg: RootConfig):
     transform_dict = dataset_config.transform
     transform_order = dataset_config.transform_order
 
-    assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
+    is_cy = dataset_config.get("type", "mantra") == "cy"
+
+    if not is_cy:
+        assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
+
+    if cfg.task.task_type == 'regression' and 'CrossEntropy' in cfg.task.loss._target_:
+        raise RuntimeError(
+            "task_type=regression combined with CrossEntropyLoss: the "
+            "default loss config is still active and would silently "
+            "produce a zero loss. Add `loss=mse` to the overrides."
+        )
 
     if cfg.task.imbalanced:
         raise RuntimeError(
@@ -102,30 +113,42 @@ def main(cfg: RootConfig):
 
     transforms = Compose(transforms)
 
-    dataset = ManifoldTriangulations(
-        balanced=dataset_config.balanced,
-        root=dataset_config.root,
-        dimension=dataset_config.dimension,
-        version=dataset_config.version,
-        local_path=dataset_config.local_path,
-        pre_transform=transforms,
-        force_reload=dataset_config.reload,
-        transform=label_transform
-    )
-
-    dataset = filter_low_ocurrence_labels(dataset)
-
-
-    for data in dataset:
-        pass
-
+    if is_cy:
+        dataset = CY(
+            root=dataset_config.root,
+            version=dataset_config.version,
+            local_path=dataset_config.local_path,
+            limit=dataset_config.get("limit", None),
+            pre_transform=transforms,
+            force_reload=dataset_config.reload,
+            transform=label_transform
+        )
+    else:
+        dataset = ManifoldTriangulations(
+            balanced=dataset_config.balanced,
+            root=dataset_config.root,
+            dimension=dataset_config.dimension,
+            version=dataset_config.version,
+            local_path=dataset_config.local_path,
+            pre_transform=transforms,
+            force_reload=dataset_config.reload,
+            transform=label_transform
+        )
 
     label_to_index = label_transform.label_to_index
 
-    # Change the outputs based on classification task
+    # Change the outputs based on the task type
     if cfg.task.task_type == 'classification':
+        dataset = filter_low_ocurrence_labels(dataset)
+
+        # Populate `label_to_index` by touching every sample once.
+        for data in dataset:
+            pass
+
         num_classes = len(label_to_index)
         cfg.model.out_channels = num_classes
+    else:
+        cfg.model.out_channels = int(dataset[0].y.shape[-1])
 
 
     OmegaConf.resolve(cfg)
@@ -238,7 +261,9 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
             break
 
         # Train
+        epoch_start = time.perf_counter()
         train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
+        train_metrics['train/epoch_time_s'] = time.perf_counter() - epoch_start
 
         # Validation
         val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg)

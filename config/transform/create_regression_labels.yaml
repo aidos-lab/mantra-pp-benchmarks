@@ -1,0 +1,4 @@
+_target_: mantra.transforms.CreateRegressionLabels
+
+sources: ${task.targets}
+sum_sources: ${task.sum_targets}
