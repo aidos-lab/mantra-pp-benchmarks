@@ -1,0 +1,14 @@
+defaults:
+  - base_task
+
+name: HodgeClass
+task_type: classification
+
+# Each integer value of the target Hodge number becomes one class,
+# mapped by the standard CreateLabels transform. Override the source
+# with e.g. task.target=h12.
+target: h11
+
+metrics:
+  acc:
+    _target_: torchmetrics.Accuracy
