@@ -142,6 +142,10 @@ def main(cfg: RootConfig):
         dataset = filter_low_ocurrence_labels(dataset)
 
         # Populate `label_to_index` by touching every sample once.
+        # Clear it first: on a cache-building run the pre-transform has
+        # already registered every pre-filter label, which would size
+        # the model head differently than a rerun on the same cache.
+        label_to_index.clear()
         for data in dataset:
             pass
 
@@ -251,7 +255,8 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     with open(os.path.join(checkpoint_dir, "label_to_index.json"), "w") as f:
-        json.dump(label_to_index, f)
+        # Multi-target labels are tuples; JSON keys must be strings.
+        json.dump({str(k): v for k, v in label_to_index.items()}, f)
 
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):

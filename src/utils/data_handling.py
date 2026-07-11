@@ -11,7 +11,13 @@ from torch.utils.data import DataLoader
 
 from src.utils.imbalance_handling import sorted_imbalance_weights, compute_target_frequency
 
-def split_dataset(dataset, cfg, pin_memory, num_workers=4, collate_fn=None):
+def split_dataset(dataset, cfg, pin_memory, num_workers=None, collate_fn=None):
+    if num_workers is None:
+        num_workers = int(getattr(cfg.trainer, "num_workers", 4))
+    # Validation/test loaders only run between epochs; keep the bulk
+    # of the workers (they are persistent processes) for training.
+    eval_workers = max(2, num_workers // 4)
+
     split_params = cfg.dataset.train_parameters.split
 
     train_val_index, test_index = train_test_split(
@@ -47,12 +53,12 @@ def split_dataset(dataset, cfg, pin_memory, num_workers=4, collate_fn=None):
 
     if collate_fn is not None:
         train_loader = DataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
-        val_loader = DataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
-        test_loader = DataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
+        val_loader = DataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=eval_workers, pin_memory=pin_memory, persistent_workers=True)
+        test_loader = DataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=eval_workers, pin_memory=pin_memory, persistent_workers=True)
     else:
         train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=num_workers, persistent_workers=True)
-        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=num_workers, persistent_workers=True)
-        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=num_workers, persistent_workers=True)
+        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=eval_workers, persistent_workers=True)
+        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=eval_workers, persistent_workers=True)
 
     return train_loader, val_loader, test_loader
 
