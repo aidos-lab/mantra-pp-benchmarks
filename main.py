@@ -29,6 +29,11 @@ from torch_geometric.profile import count_parameters
 
 torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
 
+# The default file_descriptor sharing strategy passes one fd per tensor
+# between dataloader workers and exhausts `ulimit -n` with many workers
+# and attribute-rich batches ("received 0 items of ancdata").
+torch.multiprocessing.set_sharing_strategy("file_system")
+
 
 cs = ConfigStore().instance()
 cs.store(name="main_conf", node=RootConfig)
