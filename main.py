@@ -29,10 +29,15 @@ from torch_geometric.profile import count_parameters
 
 torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
 
-# The default file_descriptor sharing strategy passes one fd per tensor
-# between dataloader workers and exhausts `ulimit -n` with many workers
-# and attribute-rich batches ("received 0 items of ancdata").
-torch.multiprocessing.set_sharing_strategy("file_system")
+# With many dataloader workers the default file_descriptor sharing
+# strategy can exhaust `ulimit -n` ("received 0 items of ancdata");
+# the SLURM script raises the soft limit to the hard limit instead of
+# switching strategies, because file_system proved fragile on shared
+# nodes (/dev/shm segments unlinked underneath running jobs ->
+# "could not unlink the shared memory file"). Escape hatch in case the
+# fd limit cannot be raised far enough:
+if os.environ.get("TORCH_SHARING_STRATEGY"):
+    torch.multiprocessing.set_sharing_strategy(os.environ["TORCH_SHARING_STRATEGY"])
 
 
 cs = ConfigStore().instance()
