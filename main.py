@@ -89,9 +89,13 @@ def main(cfg: RootConfig):
             "imbalanced=False; set it to False (the new default for task=name)."
         )
 
-    # Only set for CPU
+    # Only set for CPU. os.cpu_count() reports all node cores; under a
+    # cgroup (SLURM) size the thread pool to the actual allocation.
     if not is_gpu(cfg):
-        torch.set_num_threads(os.cpu_count())
+        if hasattr(os, "sched_getaffinity"):
+            torch.set_num_threads(len(os.sched_getaffinity(0)))
+        else:
+            torch.set_num_threads(os.cpu_count())
 
     # Set config GPU
     if is_gpu(cfg):
