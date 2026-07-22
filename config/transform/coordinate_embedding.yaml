@@ -3,6 +3,7 @@ _target_: mantra.transforms.CoordinateEmbedding
 propagate: False
 
 # Scalar data attributes broadcast as constant feature columns to all
-# simplices, e.g. [vertex_count,facet_count,point_count,dual_point_count]
+# simplices, e.g.
+# [polytope_vertex_count,polytope_facet_count,polytope_point_count,polytope_dual_point_count]
 # for the "fair features" comparison with arXiv:2112.09117.
 append_attributes: null
