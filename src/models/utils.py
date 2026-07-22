@@ -1,6 +1,21 @@
 from torch import nn 
 from torch_geometric.utils import scatter
 
+READOUTS = ('mean', 'sum')
+
+
+def pool(x, batch, reduce='mean'):
+    """Aggregate node features into one vector per graph.
+
+    `reduce='sum'` keeps the readout extensive, which matters for the
+    Calabi-Yau targets: they scale with the size of the complex (e.g.
+    h11 = f0 - 5 counts triangulation points), and a mean readout
+    divides out exactly that quantity.
+    """
+    assert reduce in READOUTS, f"unknown readout {reduce!r}"
+    return scatter(x, batch, dim=-2, reduce=reduce)
+
+
 def mean_pool(x, batch):
     return scatter(x, batch, dim=-2, reduce='mean')
 

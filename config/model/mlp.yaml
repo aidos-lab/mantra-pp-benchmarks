@@ -6,3 +6,5 @@ out_channels: 1 # Get from task
 dropout: 0.2
 batch_norm: True
 residuals: True
+
+readout: mean  # sum keeps the readout extensive (CY targets scale with complex size)

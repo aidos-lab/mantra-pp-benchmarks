@@ -1,0 +1,16 @@
+_target_: src.transforms.TensorizeAttributes
+
+# Numpy-array attributes attached by mantra.datasets.CY from the
+# ks_n*_cylabels.parquet columns; converted to tensors so the
+# processed cache collates. Missing attributes are skipped.
+# `intersection_numbers` is the (nnz, 4) COO block emitted by the
+# regenerated parquet; `kappa_*` are the equivalent columns of the older
+# ks_n*_cylabels.parquet files. Missing sources are skipped, so listing
+# both keeps either schema working.
+sources:
+  - c2
+  - intersection_numbers
+  - kappa_i
+  - kappa_j
+  - kappa_k
+  - kappa_val

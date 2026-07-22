@@ -9,8 +9,22 @@ from src.schema import RootConfig
 
 
 
+def select_supervised(y_hat, batch):
+    """ Restrict node-level predictions to the supervised nodes.
+
+    Node-level tasks carry a boolean `node_mask` (e.g. the origin of a
+    Calabi-Yau triangulation corresponds to no divisor and has no
+    Chern-class entry). Graph-level batches have no mask and pass
+    through unchanged.
+    """
+    mask = getattr(batch, 'node_mask', None)
+    if mask is not None and y_hat.shape[0] == mask.shape[0]:
+        return y_hat[mask], batch.y[mask]
+    return y_hat, batch.y
+
+
 def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
-    """ Run the training 
+    """ Run the training
 
 
     """
@@ -25,8 +39,7 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
         batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
         optimizer.zero_grad(set_to_none=True)
 
-        y_hat = model(batch)
-        y = batch.y
+        y_hat, y = select_supervised(model(batch), batch)
 
         loss = loss_fn(
             y_hat,
@@ -63,8 +76,7 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
         for batch in val_dataset:
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-            y_hat = model(batch)
-            y = batch.y
+            y_hat, y = select_supervised(model(batch), batch)
 
             loss = loss_fn(y_hat, y)
 
@@ -147,8 +159,7 @@ def test_regression(model, test_dataset, accuracies, run, cfg):
         for batch in test_dataset:
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-            y_hat = model(batch)
-            y = batch.y
+            y_hat, y = select_supervised(model(batch), batch)
 
             for _, acc in accuracies:
                 acc(y_hat.detach(), y)

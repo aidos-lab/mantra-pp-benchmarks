@@ -6,3 +6,6 @@ out_channels: 1 # Set at runtime
 batch_norm: true
 residuals: true
 dropout: 0.5
+task_level: graph  # 'node' emits one output per vertex
+
+readout: mean  # sum keeps the readout extensive (CY targets scale with complex size)

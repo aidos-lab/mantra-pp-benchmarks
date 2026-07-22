@@ -38,8 +38,10 @@ class MLPLayer(nn.Module):
         return h
 
 class MLP(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals, readout='mean'):
         super().__init__()
+        assert readout in ('mean', 'sum')
+        self.readout_reduce = readout
 
         self.hidden_layers = nn.ModuleList()
 
@@ -60,5 +62,5 @@ class MLP(nn.Module):
         for layer in self.hidden_layers:
             x = layer(x)
         x = self.readout(x)
-        x = scatter(x, batch.batch, reduce='mean')
+        x = scatter(x, batch.batch, reduce=self.readout_reduce)
         return x

@@ -73,8 +73,14 @@ class ResidualGatedGCN(nn.Module):
         batch_norm: bool = True,
         residuals: bool = True,
         dropout: float = 0.5,
+        task_level: str = 'graph',
+        readout: str = 'mean',
     ):
         super().__init__()
+        assert task_level in ('graph', 'node')
+        assert readout in ('mean', 'sum')
+        self.task_level = task_level
+        self.readout = readout
         self.input_proj = nn.Linear(
             in_channels, hidden_channels
         )
@@ -99,7 +105,8 @@ class ResidualGatedGCN(nn.Module):
         x = self.input_proj(x)
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
-        x = mean_pool(x, batch_idx)
+        if self.task_level == 'graph':
+            x = scatter(x, batch_idx, dim=-2, reduce=self.readout)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.final_linear(x)
         return x

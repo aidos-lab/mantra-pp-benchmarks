@@ -1,0 +1,21 @@
+defaults:
+  - base_task
+
+name: Chern
+task_type: regression
+
+# Graph-level regression of the anticanonical second Chern number
+# c2(X) . (-K) = sum_i c2 . D_i, a scalar column of the
+# ks_n*_cylabels.parquet files. Requires `loss=mse`.
+targets: [c2_anticanonical]
+sum_targets: False
+
+# Unused for regression; kept for compatibility with transforms that
+# interpolate ${task.target}.
+target: c2_anticanonical
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError
+  rounded_accuracy:
+    _target_: src.metrics.regression.RoundedAccuracy

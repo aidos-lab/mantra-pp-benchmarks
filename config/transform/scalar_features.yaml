@@ -2,4 +2,12 @@ _target_: mantra.transforms.ScalarFeatures
 
 # Lattice-point counts of the polytope and its dual -- the input
 # representation of the MLP baseline in arXiv:2112.09117.
-sources: [vertex_count, facet_count, point_count, dual_point_count]
+#
+# NOTE: these are polytope-level attributes and carry the `polytope_`
+# prefix in the regenerated Calabi-Yau parquet files (the triangulation
+# points live in `vertices`).
+sources:
+  - polytope_vertex_count
+  - polytope_facet_count
+  - polytope_point_count
+  - polytope_dual_point_count

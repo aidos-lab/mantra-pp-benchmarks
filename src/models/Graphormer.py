@@ -160,12 +160,16 @@ class Graphormer(nn.Module):
             use_spatial_encoding: bool = True,
             ffn_expansion_ratio: int = 4,
             spd_undirected: bool = True,
+            readout: str = 'mean',
     ):
         super().__init__()
         if hidden_channels % num_heads != 0:
             raise ValueError(
                 "hidden_channels must be divisible by num_heads for Graphormer."
             )
+        if readout not in ('mean', 'sum'):
+            raise ValueError(f"unknown readout {readout!r}")
+        self.readout = readout
         self.hidden_dim = hidden_channels
         self.num_heads = num_heads
         self.use_spatial_encoding = use_spatial_encoding
@@ -291,9 +295,10 @@ class Graphormer(nn.Module):
             x_dense = layer(x_dense, node_mask, attn_bias)
 
         valid_nodes = ~node_mask
-        summed = (x_dense * valid_nodes.unsqueeze(-1)).sum(dim=1)
-        denom = valid_nodes.sum(dim=1).clamp(min=1).unsqueeze(-1)
-        out = summed / denom
+        out = (x_dense * valid_nodes.unsqueeze(-1)).sum(dim=1)
+        if self.readout == 'mean':
+            denom = valid_nodes.sum(dim=1).clamp(min=1).unsqueeze(-1)
+            out = out / denom
 
         out = self.dropout(out)
         out = self.final_linear(out)

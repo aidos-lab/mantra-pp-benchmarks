@@ -1,0 +1,10 @@
+_target_: src.transforms.CreateNodeRegressionLabels
+
+# Per-vertex attribute to regress (one value per triangulation
+# vertex); `c2` holds the second Chern class paired with each prime
+# toric divisor.
+source: c2
+
+# Vertex 0 is the origin of the polytope: no divisor, entry = -sum of
+# the rest. Masked out of the supervision.
+mask_first: True

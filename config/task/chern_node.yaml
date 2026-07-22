@@ -1,0 +1,25 @@
+defaults:
+  - base_task
+
+name: ChernNode
+task_type: regression
+
+# Node-level regression: one target per triangulation vertex, the
+# second Chern class paired with the vertex's prime toric divisor
+# (c2 . D_i). Use with
+#   transform@dataset.transform.create_labels=create_node_regression_labels
+#   model.task_level=node
+# and `loss=mse`. The origin vertex carries no divisor and is masked
+# out via `node_mask` (see src/transforms.py).
+targets: [c2]
+sum_targets: False
+
+# Unused for regression; kept for compatibility with transforms that
+# interpolate ${task.target}.
+target: c2
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError
+  rounded_accuracy:
+    _target_: src.metrics.regression.RoundedAccuracy
