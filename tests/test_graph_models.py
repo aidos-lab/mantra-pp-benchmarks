@@ -5,6 +5,7 @@ from torch_geometric.data import Batch, Data
 
 from src.utils.graphormer_spd import GraphormerSPDPreTransform
 from src.models.Graphormer import Graphormer
+from src.models.GIN import GIN
 from src.models.ResidualGatedGCN import ResidualGatedGCN
 
 
@@ -29,6 +30,46 @@ def make_batch_with_spd(max_distance=4) -> Batch:
 
 
 class GraphModelIntegrationTests(unittest.TestCase):
+    def test_gin_forward_returns_graph_level_outputs(self):
+        model = GIN(
+            in_channels=2,
+            hidden_channels=8,
+            out_channels=3,
+            n_layers=2,
+            residuals=True,
+            batch_norm=True,
+            dropout=0.0,
+            readout='sum',
+        )
+        model.eval()
+
+        graph_a, graph_b = make_graph_batch()
+        batch = Batch.from_data_list([graph_a, graph_b])
+        output = model(batch)
+
+        self.assertEqual(output.shape, (2, 3))
+        self.assertTrue(torch.isfinite(output).all())
+
+    def test_gin_node_level_returns_per_node_outputs(self):
+        model = GIN(
+            in_channels=2,
+            hidden_channels=8,
+            out_channels=1,
+            n_layers=2,
+            residuals=True,
+            batch_norm=True,
+            dropout=0.0,
+            task_level='node',
+        )
+        model.eval()
+
+        graph_a, graph_b = make_graph_batch()
+        batch = Batch.from_data_list([graph_a, graph_b])
+        output = model(batch)
+
+        self.assertEqual(output.shape, (5, 1))
+        self.assertTrue(torch.isfinite(output).all())
+
     def test_graphormer_forward_returns_graph_level_outputs(self):
         model = Graphormer(
             hidden_channels=8,
