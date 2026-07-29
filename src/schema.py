@@ -32,6 +32,11 @@ class TaskMeta:
     # target vector and whether to sum them into a single scalar.
     targets: List[str] = field(default_factory=list)
     sum_targets: bool = False
+    # Regression only: z-score the targets with train-split statistics
+    # during training and invert before the metrics, so large-scale
+    # targets (c2_anticanonical ~ -98 +- 10) do not have to be reached
+    # through the output bias. Metrics stay in original units.
+    standardize_targets: bool = False
 
 @dataclass
 class TransformMeta:

@@ -1,4 +1,5 @@
 name: Base
 imbalanced: False
 task_type: classification # classification / regression
+standardize_targets: False
 metrics: {}

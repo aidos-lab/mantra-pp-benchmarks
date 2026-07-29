@@ -23,7 +23,44 @@ def select_supervised(y_hat, batch):
     return y_hat, batch.y
 
 
-def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
+def compute_target_scaler(train_dataloader):
+    """ (mean, std) of the supervised regression targets, train split only.
+
+    The model is trained against `(y - mean) / std` and its predictions
+    are mapped back with `y_hat * std + mean` before any metric, so the
+    reported MAE/accuracies stay in original label units while the
+    optimization no longer has to reach a far-away label scale through
+    the output bias. Only the train split enters the statistics.
+    """
+    ys = []
+    for data in train_dataloader.dataset:
+        y = data.y
+        mask = getattr(data, 'node_mask', None)
+        if mask is not None and y.shape[0] == mask.shape[0]:
+            y = y[mask]
+        ys.append(y.detach().float().reshape(-1))
+    y = torch.cat(ys)
+    std = y.std().item()
+    if not (std > 1e-8):  # constant targets: fall back to a no-op scale
+        std = 1.0
+    return y.mean().item(), std
+
+
+def scale_targets(y, scaler):
+    if scaler is None:
+        return y
+    mean, std = scaler
+    return (y.float() - mean) / std
+
+
+def unscale_predictions(y_hat, scaler):
+    if scaler is None:
+        return y_hat
+    mean, std = scaler
+    return y_hat * std + mean
+
+
+def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg, target_scaler=None):
     """ Run the training
 
 
@@ -43,13 +80,13 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
         loss = loss_fn(
             y_hat,
-            y,
+            scale_targets(y, target_scaler),
         )
 
         losses.append(loss.detach())
 
         for _, acc in accuracies:
-            acc(y_hat.detach(), y)
+            acc(unscale_predictions(y_hat.detach(), target_scaler), y)
 
         loss.backward()
         optimizer.step()
@@ -62,7 +99,7 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def validate(model,  val_dataset, loss_fn, accuracies, cfg):
+def validate(model,  val_dataset, loss_fn, accuracies, cfg, target_scaler=None):
     """ Run the validation evaluation
 
     """
@@ -78,10 +115,10 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
             y_hat, y = select_supervised(model(batch), batch)
 
-            loss = loss_fn(y_hat, y)
+            loss = loss_fn(y_hat, scale_targets(y, target_scaler))
 
             for _, acc in accuracies:
-                acc(y_hat.detach(), y)
+                acc(unscale_predictions(y_hat.detach(), target_scaler), y)
 
             losses.append(loss.detach())
         
@@ -93,14 +130,15 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def test(model, test_dataset, accuracies, label_to_index, run, cfg):
+def test(model, test_dataset, accuracies, label_to_index, run, cfg, target_scaler=None):
     """ Run the test evaluation
     """
 
     is_classification = cfg.task.task_type == 'classification'
 
     if not is_classification:
-        return test_regression(model, test_dataset, accuracies, run, cfg)
+        return test_regression(model, test_dataset, accuracies, run, cfg,
+                               target_scaler=target_scaler)
 
     for _, acc in accuracies:
         acc.reset()
@@ -145,7 +183,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg):
         }
     )
 
-def test_regression(model, test_dataset, accuracies, run, cfg):
+def test_regression(model, test_dataset, accuracies, run, cfg, target_scaler=None):
     """ Run the test evaluation for regression tasks
     """
 
@@ -162,7 +200,7 @@ def test_regression(model, test_dataset, accuracies, run, cfg):
             y_hat, y = select_supervised(model(batch), batch)
 
             for _, acc in accuracies:
-                acc(y_hat.detach(), y)
+                acc(unscale_predictions(y_hat.detach(), target_scaler), y)
 
         for name, acc in accuracies:
             metrics[f"test/{name}"] = acc.compute().item()

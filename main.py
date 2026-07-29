@@ -22,7 +22,9 @@ from src.utils.imbalance_handling import sorted_imbalance_weights
 from src.utils.logging import log_metrics
 from src.utils.data_handling import split_dataset, filter_low_ocurrence_labels
 from src.utils.data_loading import collate_simplicial
-from src.utils.train_utils import train, validate, test, init_metrics
+from src.utils.train_utils import (
+    train, validate, test, init_metrics, compute_target_scaler,
+)
 
 from tqdm import tqdm
 from torch_geometric.profile import count_parameters
@@ -214,6 +216,13 @@ def main(cfg: RootConfig):
         imbalance = np.array(list(imbalance))
         imbalance = imbalance / np.sum(imbalance)
 
+    # z-score regression targets with train-split statistics; metrics
+    # are computed in original units (see compute_target_scaler).
+    target_scaler = None
+    if cfg.task.task_type == 'regression' and cfg.task.standardize_targets:
+        target_scaler = compute_target_scaler(train_dataloader)
+        print(f"Target scaler: mean={target_scaler[0]:.4f} std={target_scaler[1]:.4f}")
+
     conf_dict = OmegaConf.to_container(cfg, resolve=True)
     print("DEBUG")
     print(len(label_to_index))
@@ -223,14 +232,14 @@ def main(cfg: RootConfig):
         run.log({"model_parameters": count_parameters(model)})
         accuracies = init_metrics(cfg)
         if cfg.train:
-            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index)
+            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index, target_scaler)
 
-        test(model, test_dataloader, accuracies, label_to_index, run, cfg)
-
-
+        test(model, test_dataloader, accuracies, label_to_index, run, cfg, target_scaler)
 
 
-def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index):
+
+
+def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index, target_scaler=None):
     MAX_EPOCH = cfg.trainer.max_epoch
 
     if is_blackwell_gpu(cfg):
@@ -281,11 +290,11 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
 
         # Train
         epoch_start = time.perf_counter()
-        train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
+        train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg, target_scaler)
         train_metrics['train/epoch_time_s'] = time.perf_counter() - epoch_start
 
         # Validation
-        val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg)
+        val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg, target_scaler)
 
         # Construct the progress bar
         pbar_str = ""

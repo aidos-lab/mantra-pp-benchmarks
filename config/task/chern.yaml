@@ -10,6 +10,12 @@ task_type: regression
 targets: [c2_anticanonical]
 sum_targets: False
 
+# The label scale (~ -98 +- 10) is far from the models' output-at-init;
+# without standardization the MLP baseline never left y_hat ~ 0 in the
+# 2026-07 batch (test/mae 98 = |label mean|, early-stopped without a
+# single val improvement).
+standardize_targets: True
+
 # Unused for regression; kept for compatibility with transforms that
 # interpolate ${task.target}.
 target: c2_anticanonical
@@ -19,3 +25,8 @@ metrics:
     _target_: torchmetrics.MeanAbsoluteError
   rounded_accuracy:
     _target_: src.metrics.regression.RoundedAccuracy
+  # c2_anticanonical is even on every sample; score against the even
+  # lattice as well so odd roundings are not counted as misses.
+  lattice_accuracy:
+    _target_: src.metrics.regression.LatticeRoundedAccuracy
+    spacing: 2

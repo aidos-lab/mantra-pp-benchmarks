@@ -14,6 +14,11 @@ task_type: regression
 targets: [c2]
 sum_targets: False
 
+# Standardized like task=chern, mostly for consistency: the per-vertex
+# targets are small (~ 2.2 +- 3.1) but the loss scale then matches the
+# graph-level task and val/loss curves stay comparable.
+standardize_targets: True
+
 # Unused for regression; kept for compatibility with transforms that
 # interpolate ${task.target}.
 target: c2
@@ -23,3 +28,8 @@ metrics:
     _target_: torchmetrics.MeanAbsoluteError
   rounded_accuracy:
     _target_: src.metrics.regression.RoundedAccuracy
+  # c2 . D_i is even on every sample; score against the even lattice as
+  # well so odd roundings are not counted as misses.
+  lattice_accuracy:
+    _target_: src.metrics.regression.LatticeRoundedAccuracy
+    spacing: 2
