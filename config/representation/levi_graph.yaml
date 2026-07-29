@@ -1,0 +1,3 @@
+# @package transform
+_target_: mantra.representations.LeviGraph
+feature_propagation: null
