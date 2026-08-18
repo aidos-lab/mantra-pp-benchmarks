@@ -2,9 +2,9 @@
 
 These consume the extra columns of the CY parquet files (second Chern
 class per prime toric divisor, triple intersection numbers; generated
-by the CY labeling pipeline on the ``cy-exp`` branch), which
-``mantra.datasets.CY`` attaches to each ``Data`` object verbatim as
-numpy arrays.
+by ``create_dataset.py`` in the aidos-lab/calabi-yau repository),
+which ``mantra.datasets.CY`` attaches to each ``Data`` object verbatim
+as numpy arrays.
 """
 
 import numpy as np
