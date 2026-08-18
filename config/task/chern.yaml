@@ -4,16 +4,17 @@ defaults:
 name: Chern
 task_type: regression
 
-# Graph-level regression of the anticanonical second Chern number
-# c2(X) . (-K) = sum_i c2 . D_i, a scalar column of the
-# ks_n*_cylabels.parquet files. Requires `loss=mse`.
+# Graph-level regression of the `c2_anticanonical` scalar column.
+# NOTE on the sign: the column stores the origin entry of the c2
+# vector, which CYTools assigns to the canonical divisor K, so the
+# label is c2 . K = -(c2 . (-K)) ~ -98 -- flipped relative to the
+# literature value of the anticanonical integral. Requires `loss=mse`.
 targets: [c2_anticanonical]
 sum_targets: False
 
-# The label scale (~ -98 +- 10) is far from the models' output-at-init;
-# without standardization the MLP baseline never left y_hat ~ 0 in the
-# 2026-07 batch (test/mae 98 = |label mean|, early-stopped without a
-# single val improvement).
+# The label scale (~ -98 +- 10) is far from the models' output at
+# init; standardization lets the optimizer reach it without pushing
+# everything through the output bias.
 standardize_targets: True
 
 # Unused for regression; kept for compatibility with transforms that

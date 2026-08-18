@@ -207,6 +207,8 @@ def test_regression(model, test_dataset, accuracies, run, cfg, target_scaler=Non
             acc.reset()
 
     log_metrics(metrics, epoch=cfg.trainer.max_epoch, step=None, run=run, cfg=cfg)
+    # The experiment drivers grep this final-metrics line from the run
+    # logs to detect completed runs; keep it stable.
     print({k: round(v, 4) for k, v in metrics.items()})
 
 def init_metrics(cfg: RootConfig):

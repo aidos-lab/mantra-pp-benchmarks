@@ -1,8 +1,8 @@
 """Benchmark-side transforms for the Calabi-Yau label columns.
 
-These consume the extra columns of the ``ks_n*_cylabels.parquet``
-files produced by ``scripts/cy/generate_cy_labels.py`` (second Chern
-class per prime toric divisor, triple intersection numbers), which
+These consume the extra columns of the CY parquet files (second Chern
+class per prime toric divisor, triple intersection numbers; generated
+by the CY labeling pipeline on the ``cy-exp`` branch), which
 ``mantra.datasets.CY`` attaches to each ``Data`` object verbatim as
 numpy arrays.
 """
