@@ -146,16 +146,13 @@ class TestGCNValues:
     def test_gcn_layer_identity_weights(self):
         """With identity weights and no bias, GCN conv on constant features
         should preserve the features (up to normalization)."""
+        # batch_norm=False makes batchnorm_h an Identity, so no manual
+        # neutralization is needed.
         layer = GCNLayer(in_dim=2, out_dim=2, batch_norm=False, residual=False, dropout=None)
         # Force identity weight and zero bias
         with torch.no_grad():
             layer.conv.lin.weight.copy_(torch.eye(2))
             layer.conv.bias.fill_(0)
-            # Disable batch norm by making it identity
-            layer.batchnorm_h.weight.fill_(1)
-            layer.batchnorm_h.bias.fill_(0)
-            layer.batchnorm_h.running_mean.fill_(0)
-            layer.batchnorm_h.running_var.fill_(1)
         layer.eval()
 
         # Constant features on a triangle
@@ -177,22 +174,11 @@ class TestGCNValues:
         layer = GCNLayer(in_dim=2, out_dim=2, batch_norm=False, residual=True, dropout=None)
         layer.eval()
 
-        # Disable batch norm
-        with torch.no_grad():
-            layer.batchnorm_h.weight.fill_(1)
-            layer.batchnorm_h.bias.fill_(0)
-            layer.batchnorm_h.running_mean.fill_(0)
-            layer.batchnorm_h.running_var.fill_(1)
-
         g = _triangle_graph()
         # With residual, output should be different from without
         layer_no_res = GCNLayer(in_dim=2, out_dim=2, batch_norm=False, residual=False, dropout=None)
         layer_no_res.eval()
         with torch.no_grad():
-            layer_no_res.batchnorm_h.weight.fill_(1)
-            layer_no_res.batchnorm_h.bias.fill_(0)
-            layer_no_res.batchnorm_h.running_mean.fill_(0)
-            layer_no_res.batchnorm_h.running_var.fill_(1)
             # Copy weights
             layer_no_res.conv.lin.weight.copy_(layer.conv.lin.weight)
             layer_no_res.conv.bias.copy_(layer.conv.bias)

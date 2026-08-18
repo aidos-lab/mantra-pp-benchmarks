@@ -32,12 +32,11 @@ from torch_geometric.profile import count_parameters
 torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
 
 # With many dataloader workers the default file_descriptor sharing
-# strategy can exhaust `ulimit -n` ("received 0 items of ancdata");
-# the SLURM script raises the soft limit to the hard limit instead of
-# switching strategies, because file_system proved fragile on shared
-# nodes (/dev/shm segments unlinked underneath running jobs ->
-# "could not unlink the shared memory file"). Escape hatch in case the
-# fd limit cannot be raised far enough:
+# strategy can exhaust `ulimit -n` ("received 0 items of ancdata"),
+# while file_system proved fragile on shared nodes (/dev/shm segments
+# unlinked underneath running jobs -> "could not unlink the shared
+# memory file"). Data loads in the main process by default; this is the
+# escape hatch for runs that do use workers:
 if os.environ.get("TORCH_SHARING_STRATEGY"):
     torch.multiprocessing.set_sharing_strategy(os.environ["TORCH_SHARING_STRATEGY"])
 
@@ -170,6 +169,12 @@ def main(cfg: RootConfig):
     else:
         cfg.model.out_channels = int(dataset[0].y.shape[-1])
 
+        # A ReLU on the output head clamps predictions to >= 0, which can
+        # never fit regression targets; force the plain linear head on
+        # models that expose the switch (MLP).
+        if 'readout_activation' in cfg.model:
+            cfg.model.readout_activation = False
+
 
     OmegaConf.resolve(cfg)
 
@@ -224,9 +229,6 @@ def main(cfg: RootConfig):
         print(f"Target scaler: mean={target_scaler[0]:.4f} std={target_scaler[1]:.4f}")
 
     conf_dict = OmegaConf.to_container(cfg, resolve=True)
-    print("DEBUG")
-    print(len(label_to_index))
-    print(label_to_index)
 
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})

@@ -11,16 +11,13 @@ task_type: regression
 #   model.task_level=node
 # and `loss=mse`. The origin vertex carries no divisor and is masked
 # out via `node_mask` (see src/transforms.py).
-targets: [c2]
-sum_targets: False
 
-# Standardized like task=chern, mostly for consistency: the per-vertex
-# targets are small (~ 2.2 +- 3.1) but the loss scale then matches the
-# graph-level task and val/loss curves stay comparable.
+# The per-vertex targets are small (~ 2.2 +- 3.1); standardizing anyway
+# keeps the loss scale comparable with the graph-level task=chern.
 standardize_targets: True
 
-# Unused for regression; kept for compatibility with transforms that
-# interpolate ${task.target}.
+# Source attribute for create_node_regression_labels (interpolated as
+# ${task.target}).
 target: c2
 
 metrics:

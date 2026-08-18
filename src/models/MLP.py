@@ -38,7 +38,7 @@ class MLPLayer(nn.Module):
         return h
 
 class MLP(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals, readout='mean'):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals, readout='mean', readout_activation=True):
         super().__init__()
         assert readout in ('mean', 'sum')
         self.readout_reduce = readout
@@ -52,8 +52,13 @@ class MLP(nn.Module):
         # Input layer
         self.hidden_layers.insert(0, MLPLayer(in_channels, hidden_channels, batch_norm=batch_norm, residuals=False, dropout=dropout))
 
-        # Readout layer
-        self.readout = MLPLayer(hidden_channels, out_channels, batch_norm=False, residuals=False, dropout=None)
+        # Readout layer. The MLPLayer head ends in a ReLU, which clamps
+        # the output to >= 0; regression tasks need the plain linear head
+        # (main.py forces readout_activation=False for them).
+        if readout_activation:
+            self.readout = MLPLayer(hidden_channels, out_channels, batch_norm=False, residuals=False, dropout=None)
+        else:
+            self.readout = nn.Linear(hidden_channels, out_channels)
 
 
 

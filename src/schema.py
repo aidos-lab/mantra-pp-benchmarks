@@ -11,6 +11,8 @@ class TrainerMeta:
     early_stopping: int
     batch_size: int
     device: str
+    # 0 loads data in the main process (no worker pools).
+    num_workers: int = 0
 
 @dataclass
 class MetricMeta:

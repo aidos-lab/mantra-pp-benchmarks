@@ -2,7 +2,7 @@
 Implementation of the Graph Isomorphism Network (GIN).
 
 Xu et al., "How Powerful are Graph Neural Networks?", ICLR 2019
-(https://arxiv.org/abs/1810.10826). Sum aggregation with an MLP update
+(https://arxiv.org/abs/1810.00826). Sum aggregation with an MLP update
 makes GIN as expressive as the 1-WL test -- a natural upper-bound
 control for the message-passing models on the triangulation benchmarks.
 
@@ -35,7 +35,7 @@ class GINLayer(nn.Module):
             nn.Linear(out_dim, out_dim),
         )
         self.conv = GINConv(mlp, train_eps=True)
-        self.batchnorm_h = nn.BatchNorm1d(out_dim)
+        self.batchnorm_h = nn.BatchNorm1d(out_dim) if batch_norm else nn.Identity()
 
     def forward(self, x, edge_index):
         h_in = x  # Saving the residual

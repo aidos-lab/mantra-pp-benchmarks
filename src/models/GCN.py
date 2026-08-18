@@ -21,7 +21,7 @@ class GCNLayer(nn.Module):
 
         #assert in_dim == out_dim, "Cannot use residuals here"
 
-        self.batchnorm_h = nn.BatchNorm1d(out_dim)
+        self.batchnorm_h = nn.BatchNorm1d(out_dim) if batch_norm else nn.Identity()
         self.conv = GCNConv(in_dim, out_dim, add_self_loops=False, normalize=True)
 
     def forward(self, x, edge_index):

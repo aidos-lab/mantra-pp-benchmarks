@@ -8,3 +8,8 @@ batch_norm: True
 residuals: True
 
 readout: mean  # sum keeps the readout extensive (CY targets scale with complex size)
+
+# ReLU on the output head (the historical classification behavior).
+# main.py forces this to False for regression tasks: a clamped head
+# cannot emit below-mean predictions.
+readout_activation: True
