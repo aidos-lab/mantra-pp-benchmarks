@@ -265,8 +265,8 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, "best_val.pt"))
             with open(os.path.join(checkpoint_dir, "config.yaml"), "w") as f:
                 f.write(OmegaConf.to_yaml(cfg))
-
-        early_stopping_cnt -= 1
+        else:
+            early_stopping_cnt -= 1
 
     # Save model with best validation
     state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
