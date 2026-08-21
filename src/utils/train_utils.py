@@ -18,6 +18,7 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
     model.train()
     metrics = defaultdict(float)
     losses = []
+    batch_sizes = []
 
 
     # Go over each batch
@@ -34,14 +35,18 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
         )
 
         losses.append(loss.detach())
+        batch_sizes.append(y.shape[0])
 
         for _, acc in accuracies:
             acc(y_hat.detach(), y)
 
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
-    metrics['train/loss'] = torch.stack(losses).mean().item()
+    losses = torch.stack(losses)
+    sizes = torch.tensor(batch_sizes, device=losses.device, dtype=losses.dtype)
+    metrics['train/loss'] = (losses * sizes).sum().item() / sizes.sum().item()
 
     for name, acc in accuracies:
         metrics[f'train/{name}'] = acc.compute().detach().cpu().item()
@@ -60,6 +65,7 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
     with torch.no_grad():
         metrics = defaultdict(float)
         losses = []
+        batch_sizes = []
         for batch in val_dataset:
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
@@ -72,8 +78,11 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
                 acc(y_hat.detach(), y)
 
             losses.append(loss.detach())
-        
-        metrics['val/loss'] = torch.stack(losses).mean().item()
+            batch_sizes.append(y.shape[0])
+
+        losses = torch.stack(losses)
+        sizes = torch.tensor(batch_sizes, device=losses.device, dtype=losses.dtype)
+        metrics['val/loss'] = (losses * sizes).sum().item() / sizes.sum().item()
 
     for name, acc in accuracies:
         metrics[f"val/{name}"] = acc.compute().detach().cpu().item()
