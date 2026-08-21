@@ -6,9 +6,10 @@ import torch
 import torch.nn.functional as F
 from pydantic import BaseModel
 from torch import nn
-from torch_geometric.nn import global_mean_pool
 
+from 
 from torch_geometric.utils import scatter
+from src.models.utils import pool
 
 
 class ResidualGatedGCNConfig(BaseModel):
@@ -73,8 +74,10 @@ class ResidualGatedGCN(nn.Module):
         batch_norm: bool = True,
         residuals: bool = True,
         dropout: float = 0.5,
+        pool_method: str = "mean"
     ):
         super().__init__()
+        self.pool_method = pool_method
         self.input_proj = nn.Linear(
             in_channels, hidden_channels
         )
@@ -99,7 +102,7 @@ class ResidualGatedGCN(nn.Module):
         x = self.input_proj(x)
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
-        x = mean_pool(x, batch_idx)
+        x = pool(x, batch_idx, self.pool_method)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.final_linear(x)
         return x
