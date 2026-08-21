@@ -1,0 +1,8 @@
+_target_: src.models.set_transformer.SetTransformer
+
+num_inds: 32
+num_outputs: 4
+hidden_channels: 64
+num_heads: 4
+ln: False
+out_channels: 1 # Get from task

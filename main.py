@@ -62,7 +62,9 @@ def arrange_transforms(dataset_config) -> Compose:
     label_transform = None
     select_transform = None
 
-    assert len(transforms) == len(transform_order), "There's a mismatch between specified transforms and specified order"
+    assert len(transforms) == len(transform_order), f"There's a mismatch between specified transforms ({list(transform_dict.keys())}) and specified order ({transform_order})"
+
+
 
     for name, transform in transform_dict.items():
         trans = hydra.utils.instantiate(transform)
@@ -160,18 +162,20 @@ def main(cfg: RootConfig):
 
     #TODO: Ugly fix, do something about this
 
-    is_graph_representation =  cfg.dataset.transform.select_features.representation == 'graph'
+    is_sc_representation = cfg.dataset.transform.select_features.representation == 'sc'
 
     # TODO Fix, this is only for the case of SCCNN
-    if is_graph_representation or ("SCCNN" not in cfg.model._target_ and 'CWN' not in cfg.model._target_):
+    if not is_sc_representation or ("SCCNN" not in cfg.model._target_ and 'CWN' not in cfg.model._target_):
         if cfg.dataset.num_features != 'auto':
             in_channels = int(cfg.dataset.num_features)
-        else: #NOTE: Handles the case for SAN
-            in_channels = dataset[0]['x_1'].shape[1] if hasattr(dataset[0], 'x_1') else dataset[0].x.shape[1]
+        else: #NOTE: Handles the case for SAN or other higher-order models
+            data_obj = dataset[0]
+            tensor_name = 'x_1' if hasattr(data_obj, 'x_1') else 'x'
+            tensor_idx = 1 if len(getattr(data_obj, tensor_name).size()) > 1 else 0
+            in_channels = getattr(data_obj, tensor_name).shape[tensor_idx]
     else:
         feature_keys = [feat_key for feat_key in dataset[0].keys() if feat_key.split('_')[0] == "x" ]
         in_channels = [dataset[0][feat_key].shape[1] for feat_key in feature_keys] if cfg.dataset.num_features == 'auto' else [int(cfg.dataset.num_features)] * len(list(dataset[0].x.keys()))
-        
 
     #NOTE: Model initialization
     model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
@@ -184,7 +188,7 @@ def main(cfg: RootConfig):
 
     print(f"Model parameters: {count_parameters(model)}")
 
-    collate_fn = None if is_graph_representation else collate_simplicial
+    collate_fn = collate_simplicial if is_sc_representation else None
 
     #NOTE: Create checkpoint directory
     if not os.path.exists(cfg.checkpoint_path):

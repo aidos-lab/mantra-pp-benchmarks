@@ -1,4 +1,4 @@
-_target_: mantra.datasets.MANTRA
+_target_: mantra.datasets.ManifoldTriangulations
 root: "./data"
 version: latest
 dimension: 2
