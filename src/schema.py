@@ -11,6 +11,7 @@ class TrainerMeta:
     early_stopping: int
     batch_size: int
     device: str
+    num_workers: int = 0
 
 @dataclass
 class MetricMeta:

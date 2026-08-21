@@ -90,7 +90,7 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def test(model, test_dataset, accuracies, label_to_index, run, cfg):
+def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
     """ Run the test evaluation
     """
 
@@ -112,14 +112,14 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg):
         for batch in test_dataset:
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-            y_hat = model(batch).argmax(dim=1)
+            logits = model(batch)
             y = batch.y.long()
 
             for _, acc in accuracies:
-                acc(y_hat, y)
+                acc(logits.detach(), y)
 
             y_all.append(y)
-            y_hat_all.append(y_hat)
+            y_hat_all.append(logits.argmax(dim=1))
 
             # for t,p in zip(y.view(-1), y_hat.view(-1)):
             #     conf_mat[t.long(), p.long()] += 1
@@ -132,7 +132,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg):
             metrics[f"test/{name}"] = acc.compute().item()
             acc.reset()
 
-    log_metrics(metrics, epoch=cfg.trainer.max_epoch, step=None, run=run, cfg=cfg)
+    log_metrics(metrics, epoch=epoch, step=None, run=run, cfg=cfg)
 
     class_names = list(index_to_label.values())
 
