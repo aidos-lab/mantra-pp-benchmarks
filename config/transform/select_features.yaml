@@ -1,4 +1,4 @@
-_target_: mantra.transforms.select_features.SelectFeatures
+_target_: mantra.transforms.SelectFeatures
 src: moment_curve_embedding
 dst: null
 representation: graph

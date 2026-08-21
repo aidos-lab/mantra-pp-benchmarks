@@ -1,0 +1,3 @@
+_target_: mantra.transforms.PropagateConvexComb
+
+source: moment_curve_embedding

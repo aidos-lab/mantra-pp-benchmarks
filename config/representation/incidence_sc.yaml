@@ -1,5 +1,5 @@
 # @package transform
-_target_: mantra.representations.simplicial_connectivity.IncidenceSimplicialComplex
+_target_: mantra.representations.IncidenceSimplicialComplex
 
 signed: false
 index: false
