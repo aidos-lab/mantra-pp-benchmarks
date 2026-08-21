@@ -2,4 +2,3 @@ _target_: mantra.transforms.MomentCurveEmbedding
 
 perturb: False
 normalize: False
-propagate: False
