@@ -20,7 +20,6 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
     losses = []
     batch_sizes = []
 
-
     # Go over each batch
     for batch in train_dataset:
         batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
@@ -96,9 +95,6 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
 
     is_classification = cfg.task.task_type == 'classification'
 
-    if not is_classification:
-        raise NotImplementedError("No test for regression yet")
-
     for _, acc in accuracies:
         acc.reset()
 
@@ -123,7 +119,6 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
 
             # for t,p in zip(y.view(-1), y_hat.view(-1)):
             #     conf_mat[t.long(), p.long()] += 1
-
 
         y_total = torch.cat(y_all)
         y_hat_total = torch.cat(y_hat_all)

@@ -13,13 +13,11 @@ import os
 from torch_geometric.transforms import Compose
 
 
-from mantra.datasets import ManifoldTriangulations
-from mantra.representations.internal.simplex_trie import SimplexNode, SimplexTrie
+from mantra.datasets import MantraDataset
 
 from src.schema import RootConfig
 from src.utils.imbalance_handling import sorted_imbalance_weights
 from src.utils.logging import log_metrics
-from src.utils.data_handling import split_dataset, filter_low_ocurrence_labels
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
 
@@ -50,24 +48,7 @@ def is_gpu(cfg):
 torch._dynamo.config.capture_scalar_outputs = True
 
 
-@hydra.main(version_base=None, config_path="config", config_name="config")
-def main(cfg: RootConfig):
-
-    dataset_config = cfg.dataset
-    transform_dict = dataset_config.transform
-    transform_order = dataset_config.transform_order
-
-    assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
-
-    if cfg.task.imbalanced:
-        raise RuntimeError(
-            "cfg.task.imbalanced=True is a legacy option and is not supported: "
-            "filter_low_ocurrence_labels drops classes after label_to_index is "
-            "built, so the class-weight tensor and model.out_channels disagree "
-            "and cross-entropy crashes. All published models were trained with "
-            "imbalanced=False; set it to False (the new default for task=name)."
-        )
-
+def set_gpu_configs(cfg):
     # Only set for CPU
     if not is_gpu(cfg):
         torch.set_num_threads(os.cpu_count())
@@ -82,50 +63,61 @@ def main(cfg: RootConfig):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
+@hydra.main(version_base=None, config_path="config", config_name="config")
+def main(cfg: RootConfig):
+
+    dataset_config = cfg.dataset
+    transform_dict = dataset_config.transform
+    transform_order = dataset_config.transform_order
+
+    assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
 
     transforms = [None for _ in range(len(list(transform_dict.items())))]
 
-    label_transform = None
     select_transform = None
     for name, transform in transform_dict.items():
         trans = hydra.utils.instantiate(transform)
-        if name == 'create_labels':
-            label_transform = trans
-        elif name == 'select_features':
+        if name == 'select_features':
             select_transform = trans
 
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
-    assert label_transform is not None, "Missing the `create_labels` transform"
     assert select_transform is not None, "Missing the `select_features` transform"
 
     transforms = Compose(transforms)
 
-    dataset = ManifoldTriangulations(
-        balanced=dataset_config.balanced,
-        root=dataset_config.root,
-        dimension=dataset_config.dimension,
-        version=dataset_config.version,
-        local_path=dataset_config.local_path,
-        pre_transform=transforms,
-        force_reload=dataset_config.reload,
-        transform=label_transform
+    dataset_parameters = {
+            "root": dataset_config.root,
+            "dimension": dataset_config.dimension,
+            "version": dataset_config.version,
+            "balanced": dataset_config.balanced,
+            "min_sample_per_class": 100,
+            "division_type": "none",
+            "stratified": dataset_config.use_stratified,
+            "max_vertices": 10,
+            "n_moves": 5,
+            "target_count": 100,
+            "use_surgery": True,
+            "max_ood_size_per_class": 100,
+
+        }
+
+    train_dataset = MantraDataset(
+        split_type="train",
+        **dataset_parameters
+    )
+    val_dataset = MantraDataset(
+            split_type="val",
+            **dataset_parameters
+    )
+    test_dataset = MantraDataset(
+            split_type="test",
+            **dataset_parameters
     )
 
-    dataset = filter_low_ocurrence_labels(dataset)
 
-
-    for data in dataset:
-        pass
-
-
-    label_to_index = label_transform.label_to_index
-
-    # Change the outputs based on classification task
-    if cfg.task.task_type == 'classification':
-        num_classes = len(label_to_index)
-        cfg.model.out_channels = num_classes
+    #TODO: Re-asign labels 
 
 
     OmegaConf.resolve(cfg)
@@ -133,6 +125,24 @@ def main(cfg: RootConfig):
     #TODO: Ugly fix, do something about this
 
     is_graph_representation =  cfg.dataset.transform.select_features.representation == 'graph'
+
+
+    # TODO: Fix this assignment
+    if is not is_graph_representation:
+        train_loader = DataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
+        val_loader = DataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
+        test_loader = DataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
+    else: # Graph
+        train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
+        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
+        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
+
+    #TODO: Output classes for the final layer
+    # Change the outputs based on classification task
+    if cfg.task.task_type == 'classification':
+        num_classes = len(label_to_index) # This has to be the train classes
+        cfg.model.out_channels = num_classes
+
 
     # TODO Fix, this is only for the case of SCCNN
     if is_graph_representation or ("SCCNN" not in cfg.model._target_ and 'CWN' not in cfg.model._target_):
@@ -153,44 +163,27 @@ def main(cfg: RootConfig):
     if is_blackwell_gpu(cfg) and cfg.compile:
         model = torch.compile(model, dynamic=True)
 
-
     print(f"Model parameters: {count_parameters(model)}")
-
-    collate_fn = None if is_graph_representation else collate_simplicial
 
     #NOTE: Create checkpoint directory
     if not os.path.exists(cfg.checkpoint_path):
         os.makedirs(cfg.checkpoint_path)
 
-    #NOTE: Dataset initialization
-    train_dataloader, val_dataloader, test_dataloader = split_dataset(dataset, cfg, pin_memory= (cfg.trainer.device != 'cpu'), collate_fn=collate_fn)
-
-    imbalance = None
-    if cfg.task.imbalanced:
-        imbalance = sorted_imbalance_weights(
-            dataset
-        )
-        imbalance = np.array(list(imbalance))
-        imbalance = imbalance / np.sum(imbalance)
-
     conf_dict = OmegaConf.to_container(cfg, resolve=True)
-    print("DEBUG")
-    print(len(label_to_index))
-    print(label_to_index)
 
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})
         accuracies = init_metrics(cfg)
         last_epoch = 0
         if cfg.train:
-            model, last_epoch = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index)
+            model, last_epoch = training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index)
 
         test(model, test_dataloader, accuracies, label_to_index, run, cfg, epoch=last_epoch)
 
 
 
 
-def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index):
+def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):
     MAX_EPOCH = cfg.trainer.max_epoch
 
     if is_blackwell_gpu(cfg):
@@ -205,22 +198,7 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
 
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
-
-    # TODO: Should this be like this ?
-
-    imbalance = (
-        torch.tensor(
-            imbalance, device=cfg.trainer.device, dtype=torch.float32
-        )
-        if imbalance is not None
-        else None
-    )
-
-    #TODO: Maybe this should change ?
-    if imbalance is not None:
-        loss_fn = hydra.utils.instantiate(cfg.task.loss, weight=imbalance)
-    else:
-        loss_fn = hydra.utils.instantiate(cfg.task.loss)
+    loss_fn = hydra.utils.instantiate(cfg.task.loss)
 
     early_stopping_cnt = cfg.trainer.early_stopping
     last_val_loss = None
