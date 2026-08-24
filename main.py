@@ -181,10 +181,11 @@ def main(cfg: RootConfig):
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})
         accuracies = init_metrics(cfg)
+        last_epoch = 0
         if cfg.train:
-            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index)
+            model, last_epoch = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index)
 
-        test(model, test_dataloader, accuracies, label_to_index, run, cfg)
+        test(model, test_dataloader, accuracies, label_to_index, run, cfg, epoch=last_epoch)
 
 
 
@@ -223,6 +224,7 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
 
     early_stopping_cnt = cfg.trainer.early_stopping
     last_val_loss = None
+    last_epoch = 0
 
     checkpoint_dir = os.path.join(cfg.checkpoint_path, run.name or run.id)
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -236,6 +238,8 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
         if early_stopping_cnt == 0:
             print("Early stopping...")
             break
+
+        last_epoch = epoch
 
         # Train
         train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
@@ -271,7 +275,7 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
     # Save model with best validation
     state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
     model.load_state_dict(state_dict)
-    return model
+    return model, last_epoch
 
 
 if __name__ == "__main__":
