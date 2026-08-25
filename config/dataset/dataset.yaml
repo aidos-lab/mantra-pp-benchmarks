@@ -11,7 +11,13 @@ train_parameters:
 
 transform: {}
 transform_order: []
-num_features: auto # (auto or number)
 
 reload: False
 use_stratified: True
+max_vertices: null
+n_moves: 5
+min_sample_per_class: 100
+target_count: 100
+use_surgery: True
+max_ood_size_per_class: 100
+division_type: "none"
