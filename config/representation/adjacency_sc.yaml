@@ -1,4 +1,4 @@
 # @package transform
-_target_: mantra.representations.simplicial_connectivity.AdjacencySimplicialComplex
+_target_: mantra.representations.AdjacencySimplicialComplex
 
 signed: false
