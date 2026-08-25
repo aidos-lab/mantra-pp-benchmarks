@@ -6,7 +6,6 @@ defaults:
   - dataset: dataset
   - representation@dataset.transform.representation: dual_graph
   - transform@dataset.transform.embedding: random_walk_pe
-  - transform@dataset.transform.create_labels: create_labels
   - transform@dataset.transform.select_features: select_features
   - task: name 
   - trainer: default
@@ -16,7 +15,6 @@ dataset:
   transform_order:
     - embedding
     - representation
-    - create_labels
     - select_features
 train: True
 seed: 42
