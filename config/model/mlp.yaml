@@ -6,3 +6,10 @@ out_channels: 1 # Get from task
 dropout: 0.2
 batch_norm: True
 residuals: True
+
+# sum keeps the readout extensive (CY targets scale with complex size)
+readout: mean
+
+# ReLU on the output head (historical classification behavior);
+# main.py forces this to False for regression tasks.
+readout_activation: True

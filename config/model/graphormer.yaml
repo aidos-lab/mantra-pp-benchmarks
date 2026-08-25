@@ -10,3 +10,6 @@ max_distance: 16
 use_spatial_encoding: true
 spd_undirected: true
 ffn_expansion_ratio: 4
+
+# sum keeps the readout extensive (CY targets scale with complex size)
+readout: mean
