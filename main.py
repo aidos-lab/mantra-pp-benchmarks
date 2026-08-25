@@ -19,7 +19,6 @@ from mantra.representations.internal.simplex_trie import SimplexNode
 
 from src.schema import RootConfig
 from src.transforms import RemapLabels
-from src.utils.imbalance_handling import sorted_imbalance_weights
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
@@ -140,6 +139,8 @@ def create_model(cfg, num_features, label_to_index):
 def main(cfg: RootConfig):
 
     OmegaConf.resolve(cfg)
+
+    set_gpu_configs(cfg)
 
     # ---- Dataset -----
 

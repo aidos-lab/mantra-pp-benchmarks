@@ -28,7 +28,6 @@ class TaskMeta:
     loss: LossMeta
     target: str
     task_type: str
-    imbalanced: bool = False
     metrics: Dict[str, MetricMeta] = field(default_factory=dict)
 
 @dataclass

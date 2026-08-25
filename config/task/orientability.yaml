@@ -3,4 +3,3 @@ defaults:
   - /transform@dataset.transform.create_labels: orientable_labels
 name: Orientability
 target: orientability
-imbalanced: True
