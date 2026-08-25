@@ -31,7 +31,6 @@ from torch_geometric.transforms import Compose
 from mantra.datasets import ManifoldTriangulations
 
 from src.schema import EvalBarycentricConfig
-from src.utils.data_handling import filter_low_ocurrence_labels
 from src.utils.train_utils import init_metrics, test
 
 
