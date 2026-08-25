@@ -1,4 +1,5 @@
 import json
+import time
 
 import wandb
 from omegaconf import OmegaConf
@@ -22,7 +23,13 @@ from src.schema import RootConfig
 from src.transforms import RemapLabels
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
-from src.utils.train_utils import train, validate, test, init_metrics
+from src.utils.train_utils import (
+    train,
+    validate,
+    test,
+    init_metrics,
+    compute_target_scaler,
+)
 from src.utils.gpu_utils import is_blackwell_gpu, set_gpu_configs
 
 from tqdm import tqdm
@@ -163,6 +170,13 @@ def main(cfg: RootConfig):
 
     OmegaConf.resolve(cfg)
 
+    if cfg.task.task_type == "regression" and "CrossEntropy" in cfg.task.loss._target_:
+        raise RuntimeError(
+            "task_type=regression combined with CrossEntropyLoss: the "
+            "default loss config is still active and would silently "
+            "produce a meaningless loss. Add `loss=mse` to the overrides."
+        )
+
     set_gpu_configs(cfg)
 
     # ---- Dataset -----
@@ -190,17 +204,24 @@ def main(cfg: RootConfig):
 
     conf_dict = OmegaConf.to_container(cfg, resolve=True)
 
+    # z-score regression targets with train-split statistics; metrics
+    # are computed in original units (see compute_target_scaler).
+    target_scaler = None
+    if cfg.task.task_type == "regression" and cfg.task.standardize_targets:
+        target_scaler = compute_target_scaler(train_dl)
+        print(f"Target scaler: mean={target_scaler[0]:.4f} std={target_scaler[1]:.4f}")
+
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})
         accuracies = init_metrics(cfg)
         last_epoch = 0
         if cfg.train:
-            model, last_epoch = training_loop(train_dl, val_dl, model, accuracies, run, cfg, label_to_index)
+            model, last_epoch = training_loop(train_dl, val_dl, model, accuracies, run, cfg, label_to_index, target_scaler)
 
-        test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch)
+        test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch, target_scaler=target_scaler)
 
 
-def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):
+def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index, target_scaler=None):
     MAX_EPOCH = cfg.trainer.max_epoch
     if MAX_EPOCH <= 0:
         raise ValueError("trainer.max_epoch must be greater than zero")
@@ -249,10 +270,12 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
         last_epoch = epoch
 
         # Train
-        train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
+        epoch_start = time.perf_counter()
+        train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg, target_scaler)
+        train_metrics['train/epoch_time_s'] = time.perf_counter() - epoch_start
 
         # Validation
-        val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg)
+        val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg, target_scaler)
 
         # Construct the progress bar
         pbar_str = ""
