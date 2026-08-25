@@ -51,11 +51,16 @@ def create_dataset(cfg):
 
     transforms = Compose(transforms)
 
+    split = dataset_cfg.train_parameters.split
     dataset_parameters = {
             "root": dataset_cfg.root,
             "dimension": dataset_cfg.dimension,
             "version": dataset_cfg.version,
             "balanced": dataset_cfg.balanced,
+            "local_path": dataset_cfg.local_path,
+            "force_reload": dataset_cfg.reload,
+            "seed": cfg.seed,
+            "split_proportions": [split.train, split.val, split.test],
             "min_sample_per_class": dataset_cfg.min_sample_per_class,
             "division_type": dataset_cfg.division_type,
             "stratified": dataset_cfg.use_stratified,
@@ -120,18 +125,6 @@ def create_model(cfg, num_features, label_to_index):
 
     in_channels = num_features
 
-    # #TODO: Ugly fix, do something about this
-    # # TODO Fix, this is only for the case of SCCNN
-    # if is_graph_representation or ("SCCNN" not in cfg.model._target_ and 'CWN' not in cfg.model._target_):
-    #     if cfg.dataset.num_features != 'auto':
-    #         in_channels = int(cfg.dataset.num_features)
-    #     else: #NOTE: Handles the case for SAN
-    #         in_channels = dataset[0]['x_1'].shape[1] if hasattr(dataset[0], 'x_1') else dataset[0].x.shape[1]
-    # else:
-    #     feature_keys = [feat_key for feat_key in dataset[0].keys() if feat_key.split('_')[0] == "x" ]
-    #     in_channels = [dataset[0][feat_key].shape[1] for feat_key in feature_keys] if cfg.dataset.num_features == 'auto' else [int(cfg.dataset.num_features)] * len(list(dataset[0].x.keys()))
-    #
-
     #NOTE: Model initialization
     model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
     model = model.to(cfg.trainer.device)
@@ -147,13 +140,6 @@ def create_model(cfg, num_features, label_to_index):
 def main(cfg: RootConfig):
 
     OmegaConf.resolve(cfg)
-
-    dataset_cfg = cfg.dataset
-    trainer_cfg = cfg.trainer
-    transform_cfg = dataset_cfg.transform
-
-    assert not ((dataset_cfg.local_path is not None) ^ dataset_cfg.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
-
 
     # ---- Dataset -----
 
