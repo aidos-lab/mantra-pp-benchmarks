@@ -8,9 +8,10 @@ This repository contains:
 - Implementation of Pachner moves, rebalancing and duplication checks of topological datasets
 - Training and evaluation pipeline for graph- and simplicial / cell-complex
   models on the (extended) MANTRA manifold-triangulation classification benchmarks.
-- A subdivision pipeline (full barycentric, *stellar*, and *graded*) used to
-  generate out-of-distribution test sets from the original triangulations,
-  together with the corresponding precompute and evaluation scripts.
+- Out-of-distribution evaluation on subdivided triangulations (full
+  barycentric, *stellar*, and *graded*); the subdivision machinery itself
+  lives in the MANTRA library, which serves the subdivided test set as the
+  `ood` split of `MantraDataset`.
 
 ## Anonymity note (double-blind submission)
 
@@ -26,13 +27,16 @@ package is preserved in `mantra/pyproject.toml`, `mantra/LICENSE.md`, and
 Modifications we made to the MANTRA library while developing this paper
 are included in the vendored copy and will be made available after review period ends.
 
+Note: the code currently targets a newer MANTRA API than the vendored
+snapshot provides, so the `mantra-dataset` dependency resolves to the
+standalone checkout expected at `../mantra`; the vendored copy is kept
+as the review-time snapshot only.
+
 ## Repository layout
 
 ```
 .
 ├── main.py                      # Hydra entry point: train + test a model
-├── precompute_barycentric.py    # Build pre_transform cache for a subdivided dataset (no training)
-├── generate_barycentric_data.py # Subdivide a raw MANTRA JSON into level-k JSONs
 ├── evaluate_barycentric.py      # Load a checkpoint, evaluate on a subdivided cache
 ├── config/                      # Hydra config groups (model, dataset, transform, task, …)
 ├── src/

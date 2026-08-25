@@ -22,7 +22,7 @@ from src.transforms import RemapLabels
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
-from src.utils.gpu_utils import is_gpu, is_blackwell_gpu, set_gpu_configs
+from src.utils.gpu_utils import is_blackwell_gpu, set_gpu_configs
 
 from tqdm import tqdm
 from torch_geometric.profile import count_parameters
