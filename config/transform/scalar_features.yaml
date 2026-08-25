@@ -1,0 +1,9 @@
+_target_: mantra.transforms.ScalarFeatures
+
+# Lattice-point counts of the polytope and its dual -- the input
+# representation of the MLP baseline in arXiv:2112.09117.
+sources:
+  - polytope_vertex_count
+  - polytope_facet_count
+  - polytope_point_count
+  - polytope_dual_point_count

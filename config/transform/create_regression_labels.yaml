@@ -1,0 +1,3 @@
+_target_: mantra.transforms.AttributeToRegressionTransform
+
+source: ${task.target}

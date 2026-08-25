@@ -1,0 +1,19 @@
+defaults:
+  - dataset
+
+_target_: mantra.datasets.CalabiYau
+type: cy
+root: "./data/cy"
+local_path: null
+limit: null
+
+# Regression targets are continuous; sklearn's stratified split rejects
+# float labels.
+use_stratified: False
+
+# 20% test split as in arXiv:2112.09117.
+train_parameters:
+  split:
+    train: 0.7
+    val: 0.1
+    test: 0.2

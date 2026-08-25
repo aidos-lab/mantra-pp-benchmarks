@@ -1,4 +1,5 @@
 import json
+import time
 
 import wandb
 from omegaconf import OmegaConf
@@ -13,7 +14,7 @@ import os
 from torch_geometric.transforms import Compose
 
 
-from mantra.datasets import ManifoldTriangulations
+from mantra.datasets import CalabiYau, ManifoldTriangulations
 from mantra.representations.internal.simplex_trie import SimplexNode, SimplexTrie
 
 from src.schema import RootConfig
@@ -21,12 +22,20 @@ from src.utils.imbalance_handling import sorted_imbalance_weights
 from src.utils.logging import log_metrics
 from src.utils.data_handling import split_dataset, filter_low_ocurrence_labels
 from src.utils.data_loading import collate_simplicial
-from src.utils.train_utils import train, validate, test, init_metrics
+from src.utils.train_utils import (
+    train, validate, test, init_metrics, compute_target_scaler,
+)
 
 from tqdm import tqdm
 from torch_geometric.profile import count_parameters
 
 torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
+
+# Escape hatch for runs with dataloader workers: the default
+# file_descriptor sharing strategy can exhaust `ulimit -n`, and
+# file_system proved fragile on shared nodes.
+if os.environ.get("TORCH_SHARING_STRATEGY"):
+    torch.multiprocessing.set_sharing_strategy(os.environ["TORCH_SHARING_STRATEGY"])
 
 
 cs = ConfigStore().instance()
@@ -87,7 +96,17 @@ def main(cfg: RootConfig):
     transform_dict = dataset_config.transform
     transform_order = dataset_config.transform_order
 
-    assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
+    is_cy = dataset_config.get("type", "mantra") == "cy"
+
+    if not is_cy:
+        assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
+
+    if cfg.task.task_type == 'regression' and 'CrossEntropy' in cfg.task.loss._target_:
+        raise RuntimeError(
+            "task_type=regression combined with CrossEntropyLoss: the "
+            "default loss config is still active and would silently "
+            "produce a zero loss. Add `loss=mse` to the overrides."
+        )
 
     if cfg.task.imbalanced:
         raise RuntimeError(
@@ -98,9 +117,13 @@ def main(cfg: RootConfig):
             "imbalanced=False; set it to False (the new default for task=name)."
         )
 
-    # Only set for CPU
+    # Only set for CPU. os.cpu_count() reports all node cores; under a
+    # cgroup (SLURM) size the thread pool to the actual allocation.
     if not is_gpu(cfg):
-        torch.set_num_threads(os.cpu_count())
+        if hasattr(os, "sched_getaffinity"):
+            torch.set_num_threads(len(os.sched_getaffinity(0)))
+        else:
+            torch.set_num_threads(os.cpu_count())
 
     # Set config GPU
     if is_gpu(cfg):
@@ -132,30 +155,48 @@ def main(cfg: RootConfig):
 
     transforms = Compose(transforms)
 
-    dataset = ManifoldTriangulations(
-        balanced=dataset_config.balanced,
-        root=dataset_config.root,
-        dimension=dataset_config.dimension,
-        version=dataset_config.version,
-        local_path=dataset_config.local_path,
-        pre_transform=transforms,
-        force_reload=dataset_config.reload,
-        transform=label_transform
-    )
+    if is_cy:
+        dataset = CalabiYau(
+            root=dataset_config.root,
+            version=dataset_config.version,
+            local_path=dataset_config.local_path,
+            limit=dataset_config.limit,
+            pre_transform=transforms,
+            force_reload=dataset_config.reload,
+            transform=label_transform
+        )
+    else:
+        dataset = ManifoldTriangulations(
+            balanced=dataset_config.balanced,
+            root=dataset_config.root,
+            dimension=dataset_config.dimension,
+            version=dataset_config.version,
+            local_path=dataset_config.local_path,
+            pre_transform=transforms,
+            force_reload=dataset_config.reload,
+            transform=label_transform
+        )
 
-    dataset = filter_low_ocurrence_labels(dataset)
+        dataset = filter_low_ocurrence_labels(dataset)
 
+        for data in dataset:
+            pass
 
-    for data in dataset:
-        pass
+    # Stateless transforms (regression) carry no label index.
+    label_to_index = getattr(label_transform, "label_to_index", {})
 
-
-    label_to_index = label_transform.label_to_index
-
-    # Change the outputs based on classification task
+    # Change the outputs based on the task type
     if cfg.task.task_type == 'classification':
         num_classes = len(label_to_index)
         cfg.model.out_channels = num_classes
+    else:
+        cfg.model.out_channels = int(dataset[0].y.shape[-1])
+
+        # A ReLU on the output head clamps predictions to >= 0, which
+        # cannot fit regression targets; force the plain linear head on
+        # models that expose the switch (MLP).
+        if 'readout_activation' in cfg.model:
+            cfg.model.readout_activation = False
 
 
     OmegaConf.resolve(cfg)
@@ -205,23 +246,27 @@ def main(cfg: RootConfig):
         imbalance = np.array(list(imbalance))
         imbalance = imbalance / np.sum(imbalance)
 
+    # z-score regression targets with train-split statistics; metrics
+    # are computed in original units (see compute_target_scaler).
+    target_scaler = None
+    if cfg.task.task_type == 'regression' and cfg.task.standardize_targets:
+        target_scaler = compute_target_scaler(train_dataloader)
+        print(f"Target scaler: mean={target_scaler[0]:.4f} std={target_scaler[1]:.4f}")
+
     conf_dict = OmegaConf.to_container(cfg, resolve=True)
-    print("DEBUG")
-    print(len(label_to_index))
-    print(label_to_index)
 
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})
         accuracies = init_metrics(cfg)
         if cfg.train:
-            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index)
+            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index, target_scaler)
 
-        test(model, test_dataloader, accuracies, label_to_index, run, cfg)
-
-
+        test(model, test_dataloader, accuracies, label_to_index, run, cfg, target_scaler)
 
 
-def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index):
+
+
+def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index, target_scaler=None):
     MAX_EPOCH = cfg.trainer.max_epoch
 
     if is_blackwell_gpu(cfg):
@@ -270,10 +315,12 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
             break
 
         # Train
-        train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
+        epoch_start = time.perf_counter()
+        train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg, target_scaler)
+        train_metrics['train/epoch_time_s'] = time.perf_counter() - epoch_start
 
         # Validation
-        val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg)
+        val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg, target_scaler)
 
         # Construct the progress bar
         pbar_str = ""

@@ -11,6 +11,8 @@ class TrainerMeta:
     early_stopping: int
     batch_size: int
     device: str
+    # 0 loads data in the main process (no worker pools).
+    num_workers: int = 0
 
 @dataclass
 class MetricMeta:
@@ -28,6 +30,9 @@ class TaskMeta:
     task_type: str
     imbalanced: bool = False
     metrics: Dict[str, MetricMeta] = field(default_factory=dict)
+    # Regression only: z-score targets with train-split statistics and
+    # invert before the metrics (see compute_target_scaler).
+    standardize_targets: bool = False
 
 @dataclass
 class TransformMeta:
@@ -36,6 +41,11 @@ class TransformMeta:
 @dataclass
 class DatasetMeta:
     root: str
+    # 'mantra' (JSON manifold triangulations) or 'cy' (parquet
+    # Calabi-Yau star triangulations).
+    type: str = "mantra"
+    # Only process the first `limit` samples (cy only).
+    limit: int | None = None
     version: str = "latest"
     dimension: int = 2
     local_path: str | None = None
