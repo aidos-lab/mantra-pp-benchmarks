@@ -99,7 +99,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
         acc.reset()
 
     with torch.no_grad():
-        index_to_label = {v: k for k,v in label_to_index.items()}
+        index_to_label = {}
         y_all = []
         y_hat_all = []
         metrics = dict()
@@ -108,20 +108,16 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
         for batch in test_dataset:
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-            logits = model(batch)
-            y = batch.y.long()
+            predictions = model(batch)
+            y = batch.y.long() if is_classification else batch.y
+
+            if is_classification:
+                make_labels(index_to_label, y, batch.label)
+                y_all.append(y)
+                y_hat_all.append(predictions.argmax(dim=1))
 
             for _, acc in accuracies:
-                acc(logits.detach(), y)
-
-            y_all.append(y)
-            y_hat_all.append(logits.argmax(dim=1))
-
-            # for t,p in zip(y.view(-1), y_hat.view(-1)):
-            #     conf_mat[t.long(), p.long()] += 1
-
-        y_total = torch.cat(y_all)
-        y_hat_total = torch.cat(y_hat_all)
+                acc(predictions.detach(), y)
 
         for name, acc in accuracies:
             metrics[f"test/{name}"] = acc.compute().item()
@@ -129,7 +125,18 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
 
     log_metrics(metrics, epoch=epoch, step=None, run=run, cfg=cfg)
 
-    class_names = list(index_to_label.values())
+    if not is_classification:
+        return
+
+    y_total = torch.cat(y_all)
+    y_hat_total = torch.cat(y_hat_all)
+    original_label_by_index = {
+        index: label for label, index in label_to_index.items()
+    }
+    class_names = [
+        str(index_to_label.get(index, original_label_by_index[index]))
+        for index in range(len(label_to_index))
+    ]
 
     run.log(
         {
@@ -137,16 +144,30 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
         }
     )
 
+
+def make_labels(index_to_label, y, labels):
+    if isinstance(labels, torch.Tensor):
+        labels = labels.detach().cpu().reshape(-1).tolist()
+    elif not isinstance(labels, (list, tuple)):
+        labels = [labels]
+
+    indices = y.detach().cpu().reshape(-1).tolist()
+    if len(indices) != len(labels):
+        raise ValueError("Each test target must have one corresponding data.label")
+
+    for index, label in zip(indices, labels):
+        previous_label = index_to_label.setdefault(index, label)
+        assert previous_label != label, f"There's a label mismatch in {label}"
+
 def init_metrics(cfg: RootConfig):
     """ Initialize the metric classes
-
-
     """
     accs = []
     for name, acc in cfg.task.metrics.items():
         if 'accuracy' in acc._target_.lower():
             assert cfg.task.task_type == 'classification', "Cannot assign accuracy for regression tasks"
-            metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels).to(cfg.trainer.device)
-            accs.append((name, metric))
+            metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels)
+        else:
+            metric = hydra.utils.instantiate(acc)
+        accs.append((name, metric.to(cfg.trainer.device)))
     return accs
-

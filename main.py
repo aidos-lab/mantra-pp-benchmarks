@@ -99,28 +99,26 @@ def create_dataset(cfg):
 def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
     trainer_cfg = cfg.trainer
     transform_cfg = cfg.dataset.transform
+    persistent_workers = trainer_cfg.num_workers > 0
 
     is_graph_representation = transform_cfg.select_features.representation == 'graph'
 
     # TODO: Fix this assignment
     if not is_graph_representation:
-        train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
-        val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
-        test_loader = DataLoader(test_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
+        train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        test_loader = DataLoader(test_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
     else: # Graph
-        train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
-        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
-        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
+        train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
 
     return train_loader, val_loader, test_loader
 
 def create_model(cfg, num_features, label_to_index):
-    #TODO: Output classes for the final layer
-    # Change the outputs based on classification task
-
-    out_channels = 1 # Default and for regression
-    if cfg.task.task_type == 'classification':
-        out_channels = len(label_to_index)
+    cfg.model.out_channels = (
+        len(label_to_index) if cfg.task.task_type == "classification" else 1
+    )
 
     is_graph_representation = (
         cfg.dataset.transform.select_features.representation == "graph"
@@ -144,7 +142,7 @@ def create_model(cfg, num_features, label_to_index):
     #
 
     #NOTE: Model initialization
-    model = hydra.utils.instantiate(cfg.model, in_channels=in_channels, out_channels=out_channels)
+    model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
     model = model.to(cfg.trainer.device)
 
     # Only compile on GPU
@@ -197,6 +195,10 @@ def main(cfg: RootConfig):
 
 def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):
     MAX_EPOCH = cfg.trainer.max_epoch
+    if MAX_EPOCH <= 0:
+        raise ValueError("trainer.max_epoch must be greater than zero")
+    if cfg.trainer.early_stopping <= 0:
+        raise ValueError("trainer.early_stopping must be greater than zero")
 
     if is_blackwell_gpu(cfg):
         optimizer = torch.optim.Adam(
@@ -220,7 +222,13 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     with open(os.path.join(checkpoint_dir, "label_to_index.json"), "w") as f:
-        json.dump(label_to_index, f)
+        json.dump(
+            [
+                {"label": label, "index": index}
+                for label, index in label_to_index.items()
+            ],
+            f,
+        )
 
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):
