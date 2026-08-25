@@ -6,3 +6,11 @@ out_channels: 1 # Get from task
 dropout: 0.2
 batch_norm: True
 residuals: True
+
+# 'sum' keeps the readout extensive (targets that scale with the size
+# of the complex, e.g. the CY Hodge numbers).
+pool_method: mean
+
+# ReLU on the output head (historical classification behavior);
+# create_model forces this to False for regression tasks.
+readout_activation: True
