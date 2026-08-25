@@ -157,7 +157,7 @@ def make_labels(index_to_label, y, labels):
 
     for index, label in zip(indices, labels):
         previous_label = index_to_label.setdefault(index, label)
-        assert previous_label != label, f"There's a label mismatch in {label}"
+        assert previous_label == label, f"There's a label mismatch in {label}"
 
 def init_metrics(cfg: RootConfig):
     """ Initialize the metric classes
