@@ -10,7 +10,16 @@ train_parameters:
     test: 0.2
 
 transform: {}
-transform_order: []
+# Execution order of the entries in `transform`. Lives in the dataset
+# group (not the primary config body) so it survives composition:
+# `_self_` comes first in config.yaml, so group configs override the
+# body. The representation must run before the embedding, which needs
+# `edge_index`.
+transform_order:
+  - representation
+  - embedding
+  - create_labels
+  - select_features
 
 reload: False
 use_stratified: True
