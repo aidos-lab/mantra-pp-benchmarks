@@ -1,4 +1,5 @@
 defaults:
   - base_task
+  - /transform@_global_.dataset.transform.create_labels: name_labels
 name: Name
 target: name
