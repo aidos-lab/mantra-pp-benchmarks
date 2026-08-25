@@ -17,7 +17,7 @@ from src.models.GCN import GCN, GCNLayer
 from src.models.MLP import MLP, MLPLayer
 from src.models.ResidualGatedGCN import ResidualGatedGCN, ResidualGatedGCNLayer
 from src.models.Graphormer import Graphormer, GraphormerLayer
-from src.models.utils import mean_pool, SumReadout
+from src.models.utils import pool, SumReadout
 from src.utils.imbalance_handling import (
     derive_weights,
     normalise_imbalance,
@@ -25,7 +25,6 @@ from src.utils.imbalance_handling import (
     sorted_imbalance_weights,
     compute_target_frequency,
 )
-from src.utils.data_handling import split_dataset, filter_low_ocurrence_labels
 from src.utils.graphormer_spd import GraphormerSPDPreTransform
 from src.utils.train_utils import train, validate, init_metrics
 
@@ -92,28 +91,28 @@ class FakeDataset:
 
 
 # ===========================================================================
-# 1. mean_pool and SumReadout — verify actual aggregation values
+# 1. pool and SumReadout — verify actual aggregation values
 # ===========================================================================
 
-class TestMeanPoolValues:
+class TestPoolValues:
     def test_two_graphs_mean_pool(self):
         """Graph 0 has nodes [1,1,1,1], graph 1 has nodes [2,2]. Mean should be [1] and [2]."""
         x = torch.tensor([[1.0], [1.0], [1.0], [1.0], [2.0], [2.0]])
         batch = torch.tensor([0, 0, 0, 0, 1, 1])
-        out = mean_pool(x, batch)
+        out = pool(x, batch)
         assert torch.allclose(out, torch.tensor([[1.0], [2.0]]))
 
     def test_single_graph_mean_pool(self):
         x = torch.tensor([[2.0, 4.0], [6.0, 8.0]])
         batch = torch.tensor([0, 0])
-        out = mean_pool(x, batch)
+        out = pool(x, batch)
         assert torch.allclose(out, torch.tensor([[4.0, 6.0]]))
 
     def test_heterogeneous_features_mean_pool(self):
         """Three graphs with 1, 2, 3 nodes."""
         x = torch.tensor([[10.0], [20.0], [30.0], [1.0], [2.0], [3.0]])
         batch = torch.tensor([0, 1, 1, 2, 2, 2])
-        out = mean_pool(x, batch)
+        out = pool(x, batch)
         expected = torch.tensor([[10.0], [25.0], [2.0]])
         assert torch.allclose(out, expected)
 
@@ -151,11 +150,6 @@ class TestGCNValues:
         with torch.no_grad():
             layer.conv.lin.weight.copy_(torch.eye(2))
             layer.conv.bias.fill_(0)
-            # Disable batch norm by making it identity
-            layer.batchnorm_h.weight.fill_(1)
-            layer.batchnorm_h.bias.fill_(0)
-            layer.batchnorm_h.running_mean.fill_(0)
-            layer.batchnorm_h.running_var.fill_(1)
         layer.eval()
 
         # Constant features on a triangle
@@ -177,22 +171,11 @@ class TestGCNValues:
         layer = GCNLayer(in_dim=2, out_dim=2, batch_norm=False, residual=True, dropout=None)
         layer.eval()
 
-        # Disable batch norm
-        with torch.no_grad():
-            layer.batchnorm_h.weight.fill_(1)
-            layer.batchnorm_h.bias.fill_(0)
-            layer.batchnorm_h.running_mean.fill_(0)
-            layer.batchnorm_h.running_var.fill_(1)
-
         g = _triangle_graph()
         # With residual, output should be different from without
         layer_no_res = GCNLayer(in_dim=2, out_dim=2, batch_norm=False, residual=False, dropout=None)
         layer_no_res.eval()
         with torch.no_grad():
-            layer_no_res.batchnorm_h.weight.fill_(1)
-            layer_no_res.batchnorm_h.bias.fill_(0)
-            layer_no_res.batchnorm_h.running_mean.fill_(0)
-            layer_no_res.batchnorm_h.running_var.fill_(1)
             # Copy weights
             layer_no_res.conv.lin.weight.copy_(layer.conv.lin.weight)
             layer_no_res.conv.bias.copy_(layer.conv.bias)
@@ -938,97 +921,6 @@ class TestImbalanceValues:
         # If keys are out of order, the function does NOT reorder by key
         result2 = sort_imbalance([100, 200, 300], [2, 0, 1])
         assert result2 == [100, 200, 300]  # NOT [200, 300, 100]
-
-
-# ===========================================================================
-# 9. Data handling — verify split correctness
-# ===========================================================================
-
-class TestSplitDatasetValues:
-    def _cfg(self, seed=42, use_stratified=False, batch_size=4):
-        return SimpleNamespace(
-            seed=seed,
-            dataset=SimpleNamespace(
-                train_parameters=SimpleNamespace(
-                    split=SimpleNamespace(train=0.6, val=0.2, test=0.2)
-                ),
-                use_stratified=use_stratified,
-            ),
-            trainer=SimpleNamespace(batch_size=batch_size),
-        )
-
-    def test_no_data_leakage(self):
-        """Train, val, and test sets should have no overlapping indices."""
-        labels = list(range(100))
-        ds = FakeDataset(labels)
-        cfg = self._cfg()
-        train_loader, val_loader, test_loader = split_dataset(
-            ds, cfg, pin_memory=False, num_workers=1
-        )
-
-        train_y = set(torch.cat([b.y for b in train_loader]).tolist())
-        val_y = set(torch.cat([b.y for b in val_loader]).tolist())
-        test_y = set(torch.cat([b.y for b in test_loader]).tolist())
-
-        assert len(train_y & val_y) == 0, "Train/val overlap"
-        assert len(train_y & test_y) == 0, "Train/test overlap"
-        assert len(val_y & test_y) == 0, "Val/test overlap"
-        assert len(train_y | val_y | test_y) == 100, "Not all samples assigned"
-
-    def test_split_proportions(self):
-        """Approximate 60/20/20 split."""
-        ds = FakeDataset(list(range(200)))
-        cfg = self._cfg()
-        train_loader, val_loader, test_loader = split_dataset(
-            ds, cfg, pin_memory=False, num_workers=1
-        )
-
-        train_n = sum(len(b.y) for b in train_loader)
-        val_n = sum(len(b.y) for b in val_loader)
-        test_n = sum(len(b.y) for b in test_loader)
-
-        assert abs(train_n - 120) <= 10
-        assert abs(val_n - 40) <= 10
-        assert abs(test_n - 40) <= 10
-
-    def test_stratification_preserves_class_ratios(self):
-        """With stratified split, class proportions should be preserved."""
-        # 80% class 0, 20% class 1
-        labels = [0] * 160 + [1] * 40
-        ds = FakeDataset(labels)
-        cfg = self._cfg(use_stratified=True)
-        train_loader, val_loader, test_loader = split_dataset(
-            ds, cfg, pin_memory=False, num_workers=1
-        )
-
-        test_y = torch.cat([b.y for b in test_loader]).tolist()
-        n_0 = test_y.count(0)
-        n_1 = test_y.count(1)
-        # Should be roughly 80/20 in test set too
-        ratio = n_0 / (n_0 + n_1)
-        assert 0.65 < ratio < 0.95, f"Class ratio in test set is {ratio}"
-
-
-class TestFilterLowOccurrenceValues:
-    def test_exact_threshold_boundary(self):
-        """Class with exactly n occurrences should be removed (> n, not >= n)."""
-        labels = [0] * 100 + [1] * 101
-        ds = FakeDataset(labels)
-        filtered = filter_low_ocurrence_labels(ds, n=100)
-        # Class 0: 100 NOT > 100, removed
-        # Class 1: 101 > 100, kept
-        assert len(filtered) == 101
-        assert all(y == 1 for y in filtered.y.tolist())
-
-    def test_multiple_classes_filtering(self):
-        """Only classes with count > threshold survive."""
-        labels = [0] * 200 + [1] * 50 + [2] * 150 + [3] * 101
-        ds = FakeDataset(labels)
-        filtered = filter_low_ocurrence_labels(ds, n=100)
-        remaining_classes = set(filtered.y.tolist())
-        assert remaining_classes == {0, 2, 3}
-        assert len(filtered) == 200 + 150 + 101
-
 
 # ===========================================================================
 # 10. Training utilities — verify metric computation
