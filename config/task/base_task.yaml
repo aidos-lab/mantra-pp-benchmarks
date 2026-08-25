@@ -1,3 +1,6 @@
 name: Base
 task_type: classification # classification / regression
+# Regression only: z-score targets with train-split statistics and
+# invert before the metrics (see compute_target_scaler).
+standardize_targets: False
 metrics: {}

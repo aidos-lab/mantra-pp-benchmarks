@@ -9,9 +9,11 @@ defaults:
   # The label transform is task-specific; every task config selects its
   # own via `/transform@_global_.dataset.transform.create_labels`.
   - transform@dataset.transform.select_features: select_features
+  # The loss composes before the task so a task can override it in its
+  # own defaults list (e.g. regression tasks select mse).
+  - loss: cross_entropy
   - task: name
   - trainer: default
-  - loss: cross_entropy
 
 train: True
 seed: 42
