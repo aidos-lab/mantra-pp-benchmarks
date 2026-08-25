@@ -43,7 +43,6 @@ def create_dataset(cfg):
     transform_order = dataset_cfg.transform_order
 
     transforms = [None for _ in range(len(list(transform_cfg.items())))]
-    assert "SelectFeatures" in [v._target_.split('.')[-1] for k,v in transform_cfg.items()], "Missing `SelectFeatures` transform"
 
     for name, transform in transform_cfg.items():
         trans = hydra.utils.instantiate(transform)
@@ -98,10 +97,9 @@ def create_dataset(cfg):
 
 def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
     trainer_cfg = cfg.trainer
-    transform_cfg = cfg.dataset.transform
     persistent_workers = trainer_cfg.num_workers > 0
 
-    is_graph_representation = transform_cfg.select_features.representation == 'graph'
+    is_graph_representation = "x_0" not in train_dataset[0]
 
     # TODO: Fix this assignment
     if not is_graph_representation:
@@ -120,14 +118,7 @@ def create_model(cfg, num_features, label_to_index):
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
 
-    is_graph_representation = (
-        cfg.dataset.transform.select_features.representation == "graph"
-    )
-    if not is_graph_representation:
-        num_feature_channels = cfg.model.in_channels
-        in_channels = [num_features] * num_feature_channels # One for each i-simplex
-    else:
-        in_channels = num_features
+    in_channels = num_features
 
     # #TODO: Ugly fix, do something about this
     # # TODO Fix, this is only for the case of SCCNN
@@ -169,8 +160,14 @@ def main(cfg: RootConfig):
     train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
     train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
 
-    #NOTE: Is this the right way ?
-    num_features = train_ds[0]['x'].shape[1]
+    sample = train_ds[0]
+    if "x_0" in sample:
+        num_features = [
+            sample[f"x_{dim}"].shape[1]
+            for dim in range(int(sample.dimension.item()) + 1)
+        ]
+    else:
+        num_features = sample.x.shape[1]
 
     # ----- Model ----
     model = create_model(cfg, num_features, label_to_index)
