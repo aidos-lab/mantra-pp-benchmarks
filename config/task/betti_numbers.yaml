@@ -1,4 +1,6 @@
 defaults:
   - base_task
+  # Placeholder until the Betti task gets its own label transform.
+  - /transform@_global_.dataset.transform.create_labels: name_labels
 name: BettiNumbers
 target: betti_numbers
