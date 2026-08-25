@@ -1,0 +1,11 @@
+_target_: src.models.GIN.GIN
+
+n_layers: 3
+hidden_channels: 64
+out_channels: 1 # Get from task
+dropout: 0.2
+batch_norm: True
+residuals: True
+
+# sum keeps the readout extensive (CY targets scale with complex size)
+pool_method: mean
