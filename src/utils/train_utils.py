@@ -195,10 +195,11 @@ def init_metrics(cfg: RootConfig):
     accs = []
     is_classification = cfg.task.task_type == 'classification'
     for name, acc in cfg.task.metrics.items():
-        if 'accuracy' in acc._target_.lower():
-            assert cfg.task.task_type == 'classification', "Cannot assign accuracy for regression tasks"
+        if is_classification and 'accuracy' in acc._target_.lower():
             metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels)
         else:
+            # Regression metrics (MAE, rounded accuracies, ...) take no
+            # task wiring; instantiate them as configured.
             metric = hydra.utils.instantiate(acc)
         accs.append((name, metric.to(cfg.trainer.device)))
     return accs
