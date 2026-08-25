@@ -62,6 +62,9 @@ class ModelMeta:
     residuals: bool = True
     batch_norm: bool = True
     dropout: float = 0.2
+    # Graph readout: 'mean', or 'sum' to keep it extensive (targets
+    # that scale with the size of the complex).
+    pool_method: str = "mean"
 
 @dataclass
 class LoggerMeta:

@@ -3,7 +3,8 @@ Multi-Layer Perceptron implementation.
 """
 
 import torch.nn as nn
-from torch_geometric.utils import scatter
+
+from src.models.utils import pool
 
 
 class MLPLayer(nn.Module):
@@ -38,8 +39,9 @@ class MLPLayer(nn.Module):
         return h
 
 class MLP(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals, pool_method="mean", readout_activation=True):
         super().__init__()
+        self.pool_method = pool_method
 
         self.hidden_layers = nn.ModuleList()
 
@@ -50,8 +52,13 @@ class MLP(nn.Module):
         # Input layer
         self.hidden_layers.insert(0, MLPLayer(in_channels, hidden_channels, batch_norm=batch_norm, residuals=False, dropout=dropout))
 
-        # Readout layer
-        self.readout = MLPLayer(hidden_channels, out_channels, batch_norm=False, residuals=False, dropout=None)
+        # Readout layer. The MLPLayer head ends in a ReLU, which clamps
+        # the output to >= 0; regression tasks need the plain linear
+        # head (create_model forces readout_activation=False for them).
+        if readout_activation:
+            self.readout = MLPLayer(hidden_channels, out_channels, batch_norm=False, residuals=False, dropout=None)
+        else:
+            self.readout = nn.Linear(hidden_channels, out_channels)
 
 
 
@@ -60,5 +67,5 @@ class MLP(nn.Module):
         for layer in self.hidden_layers:
             x = layer(x)
         x = self.readout(x)
-        x = scatter(x, batch.batch, reduce='mean')
+        x = pool(x, batch.batch, self.pool_method)
         return x
