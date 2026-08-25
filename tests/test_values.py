@@ -491,6 +491,25 @@ class TestCWNValues:
         assert out.shape == (2, 5), f"Expected (2, 5), got {out.shape}"
         assert torch.isfinite(out).all()
 
+    def test_cwn_node_level_output_shape_is_per_node(self):
+        """task_level='node' should emit one output row per 0-cell."""
+        from src.models.cwn import CWN
+
+        model = CWN(
+            in_channels=[3, 3, 3],
+            hidden_channels=[4, 4, 4],
+            n_layers=1,
+            out_channels=1,
+            task_level='node',
+        )
+        model.eval()
+
+        batch = self._make_cwn_batch()
+        out = model(batch)
+
+        assert out.shape == (7, 1), f"Expected (7, 1), got {out.shape}"
+        assert torch.isfinite(out).all()
+
     def test_cwn_different_inputs_different_outputs(self):
         """Different input features should produce different outputs."""
         from src.models.cwn import CWN
@@ -609,6 +628,27 @@ class TestSCCNNValues:
         batch = self._make_sccnn_batch()
         out = model(batch)
         assert out.shape == (2, 5), f"Expected (2, 5), got {out.shape}"
+        assert torch.isfinite(out).all()
+
+    def test_sccnn_node_level_output_shape_is_per_node(self):
+        """task_level='node' should emit one output row per 0-cell."""
+        from src.models.sccnn import SCCNN
+
+        torch.manual_seed(42)
+        model = SCCNN(
+            in_channels=[3, 3, 3],
+            hidden_channels=[4, 4, 4],
+            out_channels=1,
+            conv_order=1,
+            sc_order=2,
+            n_layers=1,
+            task_level='node',
+        )
+        model.eval()
+
+        batch = self._make_sccnn_batch()
+        out = model(batch)
+        assert out.shape == (7, 1), f"Expected (7, 1), got {out.shape}"
         assert torch.isfinite(out).all()
 
     def test_sccnn_different_inputs_different_outputs(self):

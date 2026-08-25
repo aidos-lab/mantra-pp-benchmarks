@@ -9,14 +9,32 @@ from src.schema import RootConfig
 
 
 
+def select_supervised(y_hat, batch):
+    """ Restrict node-level predictions to the supervised nodes.
+
+    Node-level tasks carry a boolean `node_mask`; graph-level batches
+    have no mask and pass through unchanged.
+    """
+    mask = getattr(batch, 'node_mask', None)
+    if mask is not None and y_hat.shape[0] == mask.shape[0]:
+        return y_hat[mask], batch.y[mask]
+    return y_hat, batch.y
+
+
 def compute_target_scaler(train_dataloader):
-    """ (mean, std) of the regression targets, train split only.
+    """ (mean, std) of the supervised regression targets, train split only.
 
     The model is trained against `(y - mean) / std` and its predictions
     are mapped back with `y_hat * std + mean` before any metric, so the
     reported metrics stay in original label units.
     """
-    ys = [data.y.detach().float().reshape(-1) for data in train_dataloader.dataset]
+    ys = []
+    for data in train_dataloader.dataset:
+        y = data.y
+        mask = getattr(data, 'node_mask', None)
+        if mask is not None and y.shape[0] == mask.shape[0]:
+            y = y[mask]
+        ys.append(y.detach().float().reshape(-1))
     y = torch.cat(ys)
     std = y.std().item()
     if not (std > 1e-8):  # constant targets: fall back to a no-op scale
@@ -54,14 +72,14 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg, target_scal
         batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
         optimizer.zero_grad(set_to_none=True)
 
-        y_hat = model(batch)
+        y_hat, y = select_supervised(model(batch), batch)
 
-        loss = loss_fn(y_hat, scale_targets(batch.y, target_scaler))
+        loss = loss_fn(y_hat, scale_targets(y, target_scaler))
 
         losses.append(loss.detach())
 
         for _, acc in accuracies:
-            acc(unscale_predictions(y_hat.detach(), target_scaler), batch.y)
+            acc(unscale_predictions(y_hat.detach(), target_scaler), y)
 
         loss.backward()
         optimizer.step()
@@ -88,12 +106,12 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg, target_scaler=None):
         for batch in val_dataset:
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-            y_hat = model(batch)
+            y_hat, y = select_supervised(model(batch), batch)
 
-            loss = loss_fn(y_hat, scale_targets(batch.y, target_scaler))
+            loss = loss_fn(y_hat, scale_targets(y, target_scaler))
 
             for _, acc in accuracies:
-                acc(unscale_predictions(y_hat.detach(), target_scaler), batch.y)
+                acc(unscale_predictions(y_hat.detach(), target_scaler), y)
 
             losses.append(loss.detach())
         
@@ -172,10 +190,10 @@ def test_regression(model, test_dataset, accuracies, run, cfg, target_scaler=Non
         for batch in test_dataset:
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-            y_hat = model(batch)
+            y_hat, y = select_supervised(model(batch), batch)
 
             for _, acc in accuracies:
-                acc(unscale_predictions(y_hat.detach(), target_scaler), batch.y)
+                acc(unscale_predictions(y_hat.detach(), target_scaler), y)
 
         for name, acc in accuracies:
             metrics[f"test/{name}"] = acc.compute().item()

@@ -1,0 +1,9 @@
+_target_: mantra.transforms.AttributeToNodeRegressionTransform
+
+# Per-vertex attribute to regress; for task=chern_node this is `c2`,
+# the second Chern class paired with each prime toric divisor.
+source: ${task.target}
+
+# Vertex 0 is the origin of the polytope: no divisor, entry = -sum of
+# the rest. Masked out of the supervision via `node_mask`.
+mask_first: True

@@ -9,3 +9,4 @@ dropout: 0.5
 
 # sum keeps the readout extensive (CY targets scale with complex size)
 readout: mean
+task_level: graph  # 'node' emits one output per vertex
