@@ -1,4 +1,0 @@
-# Default label transform: homeomorphism type of a 2-manifold as a
-# class index. Override per task (see task/orientability.yaml); use
-# NameToClass3MTransform for dataset.dimension=3.
-_target_: mantra.transforms.NameToClass2MTransform

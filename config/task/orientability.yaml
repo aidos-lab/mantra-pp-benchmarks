@@ -1,5 +1,5 @@
 defaults:
   - base_task
-  - /transform@dataset.transform.create_labels: orientable_labels
+  - /transform@_global_.dataset.transform.create_labels: orientable_labels
 name: Orientability
 target: orientability
