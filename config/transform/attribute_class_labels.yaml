@@ -1,0 +1,7 @@
+_target_: mantra.transforms.AttributeToClassTransform
+
+source: ${task.target}
+
+# {attribute value: class index}. Left null, the mapping is built from
+# the full dataset in create_dataset (CY path).
+mapping: null

@@ -40,6 +40,11 @@ class TransformMeta:
 @dataclass
 class DatasetMeta:
     root: str
+    # 'mantra' (JSON manifold triangulations) or 'cy' (parquet
+    # Calabi-Yau star triangulations; requires the mantra cy branch).
+    type: str = "mantra"
+    # Only process the first `limit` samples (cy only).
+    limit: int | None = None
     version: str = "latest"
     dimension: int = 2
     local_path: str | None = None
