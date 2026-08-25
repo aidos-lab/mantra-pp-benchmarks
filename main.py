@@ -222,6 +222,12 @@ def create_model(cfg, num_features, label_to_index):
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
 
+    # A ReLU on the output head clamps predictions to >= 0, which
+    # cannot fit regression targets; force the plain linear head on
+    # models that expose the switch (MLP).
+    if cfg.task.task_type != "classification" and "readout_activation" in cfg.model:
+        cfg.model.readout_activation = False
+
     in_channels = num_features
 
     #NOTE: Model initialization
