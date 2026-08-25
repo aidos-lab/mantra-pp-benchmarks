@@ -1,0 +1,5 @@
+_target_: mantra.transforms.PropagateConvexComb
+
+# Writes barycentric features x_0 ... x_d for all simplex ranks; the
+# CY runs propagate the vertex coordinates.
+source: coords

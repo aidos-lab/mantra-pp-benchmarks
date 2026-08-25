@@ -182,8 +182,8 @@ Key Hydra groups:
 | `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `san`, `san_tmx`, `cwn`, `sccnn`                  |
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
-| `task`                                        | `name`, `orientability`, `betti_numbers`                                                            |
-| `loss`                                        | `cross_entropy`, `contrastive`                                                                      |
+| `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge`, `chern`, `hodge_class`              |
+| `loss`                                        | `cross_entropy`, `contrastive`, `mse`                                                               |
 | `trainer`                                     | `default`                                                                                           |
 | `logger`                                      | `wandb`                                                                                             |
 
@@ -196,6 +196,34 @@ Outputs:
 
 To turn off W&B sync, run with `WANDB_MODE=offline`. To override the
 project name use `logger.project=<name>` (and `logger.entity=<entity>`).
+
+## Calabi-Yau tasks
+
+The `cy` dataset serves Calabi-Yau star triangulations from a parquet
+file (`mantra.datasets.CalabiYau`, mantra `cy` branch) with the same
+native train/val/test splits as the MANTRA datasets. Downloading is not
+implemented yet, so point `dataset.local_path` at a local parquet file:
+
+```bash
+python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge
+```
+
+Tasks:
+
+- `task=hodge` — graph-level regression of `h11` (`task.target=h12`
+  for the other Hodge number), scored with MAE and rounded accuracy.
+- `task=chern` — graph-level regression of `c2_anticanonical` with
+  z-scored targets (`task.standardize_targets`) and an even-lattice
+  rounded accuracy.
+- `task=hodge_class` — classification of the target value; the class
+  mapping is built over the full dataset and saved next to the
+  checkpoint as `label_to_index.json`.
+
+The regression tasks select `loss=mse` themselves. For simplicial
+models, propagate the vertex coordinates to all simplex ranks with the
+`propagate_convex_comb` transform (`config/transform/`) instead of the
+random-walk embedding. `dataset.limit=<n>` processes only the first
+`n` triangulations for smoke tests.
 
 ## Reproducing the subdivision experiments
 

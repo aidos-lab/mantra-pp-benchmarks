@@ -1,0 +1,23 @@
+defaults:
+  - dataset
+
+# Calabi-Yau star triangulations from a parquet file. Requires the
+# mantra `cy` branch: `CalabiYau` is not part of mantra main.
+type: cy
+root: "./data/cy"
+local_path: null
+
+# Only process the first `limit` samples; limited variants get their
+# own processed directory, so they are cheap for smoke tests.
+limit: null
+
+# CalabiYau splits are plain seeded random splits; stratification is
+# not implemented for this dataset.
+use_stratified: False
+
+# 20% test split as in arXiv:2112.09117.
+train_parameters:
+  split:
+    train: 0.7
+    val: 0.1
+    test: 0.2
