@@ -7,8 +7,6 @@ import torch.nn.functional as F
 from pydantic import BaseModel
 from torch import nn
 
-from 
-from torch_geometric.utils import scatter
 from src.models.utils import pool
 
 
@@ -60,9 +58,6 @@ class ResidualGatedGCNLayer(nn.Module):
             out = out + h_in
         return out
 
-
-def mean_pool(x, batch):
-    return scatter(x, batch, dim=-2, reduce='mean')
 
 class ResidualGatedGCN(nn.Module):
     def __init__(
