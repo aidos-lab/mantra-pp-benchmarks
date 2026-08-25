@@ -12,6 +12,7 @@ class TrainerMeta:
     batch_size: int
     device: str
     num_workers: int = 0
+    pin_memory: bool = True
 
 @dataclass
 class MetricMeta:
@@ -33,6 +34,7 @@ class TaskMeta:
 @dataclass
 class TransformMeta:
     _target_: str
+    representation: str
 
 @dataclass
 class DatasetMeta:

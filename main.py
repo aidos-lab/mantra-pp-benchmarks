@@ -6,20 +6,24 @@ from omegaconf import OmegaConf
 import hydra
 from hydra.core.config_store import ConfigStore
 
-import numpy as np
-
 import torch
 import os
+from torch.utils.data import DataLoader
+from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.transforms import Compose
 
 
 from mantra.datasets import MantraDataset
+from mantra.representations.internal import SimplexTrie
+from mantra.representations.internal.simplex_trie import SimplexNode
 
 from src.schema import RootConfig
+from src.transforms import RemapLabels
 from src.utils.imbalance_handling import sorted_imbalance_weights
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
+from src.utils.gpu_utils import is_gpu, is_blackwell_gpu, set_gpu_configs
 
 from tqdm import tqdm
 from torch_geometric.profile import count_parameters
@@ -30,76 +34,38 @@ torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
 cs = ConfigStore().instance()
 cs.store(name="main_conf", node=RootConfig)
 
-def is_blackwell_gpu(cfg):
-    if cfg.trainer.device == 'cpu':
-        return False
-    if not torch.cuda.is_available():
-        return False
-    cap = torch.cuda.get_device_capability()
-    return cap[0] >= 10
-
-def is_gpu(cfg):
-    if cfg.trainer.device == 'cpu':
-        return False
-    if not torch.cuda.is_available():
-        return False
-    return True
 
 torch._dynamo.config.capture_scalar_outputs = True
 
+def create_dataset(cfg):
+    dataset_cfg = cfg.dataset
+    transform_cfg = dataset_cfg.transform
+    transform_order = dataset_cfg.transform_order
 
-def set_gpu_configs(cfg):
-    # Only set for CPU
-    if not is_gpu(cfg):
-        torch.set_num_threads(os.cpu_count())
+    transforms = [None for _ in range(len(list(transform_cfg.items())))]
+    assert "SelectFeatures" in [v._target_.split('.')[-1] for k,v in transform_cfg.items()], "Missing `SelectFeatures` transform"
 
-    # Set config GPU
-    if is_gpu(cfg):
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = True
-    if is_blackwell_gpu(cfg):
-        torch.backends.cuda.matmul.fp32_precision = 'tf32'
-        torch.backends.cudnn.conv.fp32_precision = 'tf32'
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-
-@hydra.main(version_base=None, config_path="config", config_name="config")
-def main(cfg: RootConfig):
-
-    dataset_config = cfg.dataset
-    transform_dict = dataset_config.transform
-    transform_order = dataset_config.transform_order
-
-    assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
-
-    transforms = [None for _ in range(len(list(transform_dict.items())))]
-
-    select_transform = None
-    for name, transform in transform_dict.items():
+    for name, transform in transform_cfg.items():
         trans = hydra.utils.instantiate(transform)
-        if name == 'select_features':
-            select_transform = trans
-
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
-
-    assert select_transform is not None, "Missing the `select_features` transform"
 
     transforms = Compose(transforms)
 
     dataset_parameters = {
-            "root": dataset_config.root,
-            "dimension": dataset_config.dimension,
-            "version": dataset_config.version,
-            "balanced": dataset_config.balanced,
-            "min_sample_per_class": 100,
-            "division_type": "none",
-            "stratified": dataset_config.use_stratified,
-            "max_vertices": 10,
-            "n_moves": 5,
-            "target_count": 100,
-            "use_surgery": True,
-            "max_ood_size_per_class": 100,
+            "root": dataset_cfg.root,
+            "dimension": dataset_cfg.dimension,
+            "version": dataset_cfg.version,
+            "balanced": dataset_cfg.balanced,
+            "min_sample_per_class": dataset_cfg.min_sample_per_class,
+            "division_type": dataset_cfg.division_type,
+            "stratified": dataset_cfg.use_stratified,
+            "max_vertices": dataset_cfg.max_vertices,
+            "n_moves": dataset_cfg.n_moves,
+            "target_count": dataset_cfg.target_count,
+            "use_surgery": dataset_cfg.use_surgery,
+            "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
+            "transform": transforms,
 
         }
 
@@ -116,52 +82,100 @@ def main(cfg: RootConfig):
             **dataset_parameters
     )
 
+    label_to_index = {}
 
-    #TODO: Re-asign labels 
+    # If we are doing classification perform a relabaling that
+    # enumerates correctly
+    if cfg.task.task_type == "classification":
+        labels = sorted({int(data.y.item()) for data in train_dataset})
+        label_to_index = {label: index for index, label in enumerate(labels)}
+        remap_labels = RemapLabels(label_to_index)
 
+        for dataset in (train_dataset, val_dataset, test_dataset):
+            dataset.transform = Compose([dataset.transform, remap_labels])
 
-    OmegaConf.resolve(cfg)
+    return train_dataset, val_dataset, test_dataset, label_to_index
 
-    #TODO: Ugly fix, do something about this
+def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
+    trainer_cfg = cfg.trainer
+    transform_cfg = cfg.dataset.transform
 
-    is_graph_representation =  cfg.dataset.transform.select_features.representation == 'graph'
-
+    is_graph_representation = transform_cfg.select_features.representation == 'graph'
 
     # TODO: Fix this assignment
-    if is not is_graph_representation:
-        train_loader = DataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
-        val_loader = DataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
-        test_loader = DataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
+    if not is_graph_representation:
+        train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
+        val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
+        test_loader = DataLoader(test_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
     else: # Graph
-        train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
-        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
-        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=num_workers, pin_memory=pin_memory, persistent_workers=True)
+        train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
+        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
+        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=True)
 
+    return train_loader, val_loader, test_loader
+
+def create_model(cfg, num_features, label_to_index):
     #TODO: Output classes for the final layer
     # Change the outputs based on classification task
+
+    out_channels = 1 # Default and for regression
     if cfg.task.task_type == 'classification':
-        num_classes = len(label_to_index) # This has to be the train classes
-        cfg.model.out_channels = num_classes
+        out_channels = len(label_to_index)
 
-
-    # TODO Fix, this is only for the case of SCCNN
-    if is_graph_representation or ("SCCNN" not in cfg.model._target_ and 'CWN' not in cfg.model._target_):
-        if cfg.dataset.num_features != 'auto':
-            in_channels = int(cfg.dataset.num_features)
-        else: #NOTE: Handles the case for SAN
-            in_channels = dataset[0]['x_1'].shape[1] if hasattr(dataset[0], 'x_1') else dataset[0].x.shape[1]
+    is_graph_representation = (
+        cfg.dataset.transform.select_features.representation == "graph"
+    )
+    if not is_graph_representation:
+        num_feature_channels = cfg.model.in_channels
+        in_channels = [num_features] * num_feature_channels # One for each i-simplex
     else:
-        feature_keys = [feat_key for feat_key in dataset[0].keys() if feat_key.split('_')[0] == "x" ]
-        in_channels = [dataset[0][feat_key].shape[1] for feat_key in feature_keys] if cfg.dataset.num_features == 'auto' else [int(cfg.dataset.num_features)] * len(list(dataset[0].x.keys()))
-        
+        in_channels = num_features
+
+    # #TODO: Ugly fix, do something about this
+    # # TODO Fix, this is only for the case of SCCNN
+    # if is_graph_representation or ("SCCNN" not in cfg.model._target_ and 'CWN' not in cfg.model._target_):
+    #     if cfg.dataset.num_features != 'auto':
+    #         in_channels = int(cfg.dataset.num_features)
+    #     else: #NOTE: Handles the case for SAN
+    #         in_channels = dataset[0]['x_1'].shape[1] if hasattr(dataset[0], 'x_1') else dataset[0].x.shape[1]
+    # else:
+    #     feature_keys = [feat_key for feat_key in dataset[0].keys() if feat_key.split('_')[0] == "x" ]
+    #     in_channels = [dataset[0][feat_key].shape[1] for feat_key in feature_keys] if cfg.dataset.num_features == 'auto' else [int(cfg.dataset.num_features)] * len(list(dataset[0].x.keys()))
+    #
 
     #NOTE: Model initialization
-    model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
+    model = hydra.utils.instantiate(cfg.model, in_channels=in_channels, out_channels=out_channels)
     model = model.to(cfg.trainer.device)
 
     # Only compile on GPU
     if is_blackwell_gpu(cfg) and cfg.compile:
         model = torch.compile(model, dynamic=True)
+
+    return model
+
+
+@hydra.main(version_base=None, config_path="config", config_name="config")
+def main(cfg: RootConfig):
+
+    OmegaConf.resolve(cfg)
+
+    dataset_cfg = cfg.dataset
+    trainer_cfg = cfg.trainer
+    transform_cfg = dataset_cfg.transform
+
+    assert not ((dataset_cfg.local_path is not None) ^ dataset_cfg.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
+
+
+    # ---- Dataset -----
+
+    train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
+    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
+
+    #NOTE: Is this the right way ?
+    num_features = train_ds[0]['x'].shape[1]
+
+    # ----- Model ----
+    model = create_model(cfg, num_features, label_to_index)
 
     print(f"Model parameters: {count_parameters(model)}")
 
@@ -176,11 +190,9 @@ def main(cfg: RootConfig):
         accuracies = init_metrics(cfg)
         last_epoch = 0
         if cfg.train:
-            model, last_epoch = training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index)
+            model, last_epoch = training_loop(train_dl, val_dl, model, accuracies, run, cfg, label_to_index)
 
-        test(model, test_dataloader, accuracies, label_to_index, run, cfg, epoch=last_epoch)
-
-
+        test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch)
 
 
 def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):
