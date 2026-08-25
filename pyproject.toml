@@ -77,7 +77,7 @@ explicit = true
 format = "flat"
 
 [tool.uv.sources]
-mantra-dataset = { path = "./mantra" , editable=true}
+mantra-dataset = { path = "../mantra" , editable=true}
 torch = [
     { index = "pytorch-all"},
 ]
