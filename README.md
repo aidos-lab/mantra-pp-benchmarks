@@ -171,7 +171,7 @@ example above):
     dataset.transform.select_features.src=random_features \
     dataset.transform_order=[representation,embedding,select_features,create_labels] \
     task=name \
-    +task/metrics@task.metrics.acc=accuracy \
+    +task/metrics@task.metrics.bal_acc=accuracy \
     trainer.device=cpu trainer.max_epoch=2
 ```
 
@@ -207,7 +207,7 @@ i.e. they must both be set or both be unset.
     dataset.transform.select_features.src=random_features \
     dataset.transform_order=[representation,embedding,select_features,create_labels] \
     task=name \
-    +task/metrics@task.metrics.acc=accuracy \
+    +task/metrics@task.metrics.bal_acc=accuracy \
     trainer.device=cpu trainer.max_epoch=2
 ```
 
@@ -284,7 +284,7 @@ Using the demo stellar level-1 JSON produced in step 1:
     dataset.transform.select_features.src=random_features \
     dataset.transform_order=[representation,embedding,select_features,create_labels] \
     task=name model=gcn trainer.device=cpu \
-    +task/metrics@task.metrics.acc=accuracy
+    +task/metrics@task.metrics.bal_acc=accuracy
 ```
 
 `precompute_barycentric.py` deliberately drops the
