@@ -16,6 +16,7 @@ from torch_geometric.transforms import Compose
 from mantra.datasets import MantraDataset
 from mantra.representations.internal import SimplexTrie
 from mantra.representations.internal.simplex_trie import SimplexNode
+from mantra.transforms.task_transforms import BettiToClassTransform, OrientableToClassTransform, NameToClass2MTransform, NameToClass3MTransform
 
 from src.schema import RootConfig
 from src.transforms import RemapLabels
@@ -36,17 +37,37 @@ cs.store(name="main_conf", node=RootConfig)
 
 torch._dynamo.config.capture_scalar_outputs = True
 
+def task_to_transform(cfg):
+    if cfg.task.name == "BettiNumbers":
+        return BettiToClassTransform()
+    elif cfg.task.name == "Orientability":
+        return OrientableToClassTransform()
+    elif cfg.task.name == "Name":
+        if cfg.dataset.dimension == 2:
+            return NameToClass2MTransform()
+        elif cfg.dataset.dimension == 3:
+            return NameToClass3MTransform()
+        else:
+            raise ValueError("Invalid dimension")
+    else:
+        raise ValueError("Invalid task")
+
+        
+
 def create_dataset(cfg):
     dataset_cfg = cfg.dataset
     transform_cfg = dataset_cfg.transform
     transform_order = dataset_cfg.transform_order
 
     transforms = [None for _ in range(len(list(transform_cfg.items())))]
+    task_transform = task_to_transform(cfg)
 
     for name, transform in transform_cfg.items():
         trans = hydra.utils.instantiate(transform)
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
+
+    transforms.insert(0, task_transform)
 
     transforms = Compose(transforms)
 
