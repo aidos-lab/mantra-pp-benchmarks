@@ -1,7 +1,6 @@
 defaults:
   - base_task
   - /loss: mse
-  - /transform@_global_.dataset.transform.create_labels: attribute_regression_labels
 
 name: Chern
 task_type: regression
