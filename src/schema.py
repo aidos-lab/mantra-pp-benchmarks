@@ -28,13 +28,11 @@ class TaskMeta:
     loss: LossMeta
     target: str
     task_type: str
-    imbalanced: bool = False
     metrics: Dict[str, MetricMeta] = field(default_factory=dict)
 
 @dataclass
 class TransformMeta:
     _target_: str
-    representation: str
 
 @dataclass
 class DatasetMeta:
@@ -50,8 +48,6 @@ class DatasetMeta:
 
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
-
-    num_features: int | str = 'auto'
 
 @dataclass
 class ModelMeta:
