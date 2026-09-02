@@ -12,6 +12,6 @@ defaults:
   - loss: cross_entropy
 
 train: True
-seed: 42
+torch_seed: 42
 compile: True
 checkpoint_path: checkpoints

@@ -55,6 +55,8 @@ def task_to_transform(cfg):
         
 
 def create_dataset(cfg):
+    torch.manual_seed(cfg.torch_seed)
+
     dataset_cfg = cfg.dataset
     transform_cfg = dataset_cfg.transform
     transform_order = dataset_cfg.transform_order
@@ -79,7 +81,7 @@ def create_dataset(cfg):
             "balanced": dataset_cfg.balanced,
             "local_path": dataset_cfg.local_path,
             "force_reload": dataset_cfg.reload,
-            "seed": cfg.seed,
+            "seed": dataset_cfg.seed,
             "split_proportions": [split.train, split.val, split.test],
             "min_sample_per_class": dataset_cfg.min_sample_per_class,
             "division_type": dataset_cfg.division_type,

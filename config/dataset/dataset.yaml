@@ -15,6 +15,7 @@ transform_order:
   - embedding
   - select_features
 
+seed: 40
 reload: False
 use_stratified: True
 max_vertices: null
