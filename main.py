@@ -236,6 +236,8 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
             ],
             f,
         )
+    with open(os.path.join(checkpoint_dir, "config.yaml"), "w") as f:
+        f.write(OmegaConf.to_yaml(cfg))
 
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):
@@ -272,16 +274,14 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
 
             # Save weights and config of the best model
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, "best_val.pt"))
-            with open(os.path.join(checkpoint_dir, "config.yaml"), "w") as f:
-                f.write(OmegaConf.to_yaml(cfg))
         else:
             early_stopping_cnt -= 1
 
     # Save model with best validation
     state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
+
     model.load_state_dict(state_dict)
     return model, last_epoch
-
 
 if __name__ == "__main__":
     main()
