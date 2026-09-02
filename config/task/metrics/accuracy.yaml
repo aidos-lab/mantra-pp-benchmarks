@@ -1,2 +1,0 @@
-_target_: torchmetrics.Accuracy
-average: macro
