@@ -117,9 +117,7 @@ def create_dataset(cfg):
     task_transform = task_to_transform(cfg)
 
     for name, transform in transform_cfg.items():
-        trans = hydra.utils.instantiate(
-            transform, **transform_overrides.get(name, {})
-        )
+        trans = hydra.utils.instantiate(transform)
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
@@ -206,13 +204,9 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
     trainer_cfg = cfg.trainer
     persistent_workers = trainer_cfg.num_workers > 0
 
-    # Graph chains produce an edge_index for the PyG loader; simplicial
-    # chains carry per-rank tensors (x_0, laplacians, ...) instead and
-    # need the simplicial collate. Keying on x_0 alone is not enough:
-    # propagated simplex features (x_0 ... x_k) also feed graph
-    # representations such as the Hasse diagram.
-    is_graph_representation = "edge_index" in train_dataset[0]
+    is_graph_representation = "x_0" not in train_dataset[0]
 
+    # TODO: Fix this assignment
     if not is_graph_representation:
         train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
         val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
@@ -228,12 +222,6 @@ def create_model(cfg, num_features, label_to_index):
     cfg.model.out_channels = (
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
-
-    # A ReLU on the output head clamps predictions to >= 0, which
-    # cannot fit regression targets; force the plain linear head on
-    # models that expose the switch (MLP).
-    if cfg.task.task_type != "classification" and "readout_activation" in cfg.model:
-        cfg.model.readout_activation = False
 
     in_channels = num_features
 
@@ -253,13 +241,6 @@ def main(cfg: RootConfig):
 
     OmegaConf.resolve(cfg)
 
-    if cfg.task.task_type == "regression" and "CrossEntropy" in cfg.task.loss._target_:
-        raise RuntimeError(
-            "task_type=regression combined with CrossEntropyLoss: the "
-            "default loss config is still active and would silently "
-            "produce a meaningless loss. Add `loss=mse` to the overrides."
-        )
-
     set_gpu_configs(cfg)
 
     # ---- Dataset -----
@@ -268,13 +249,13 @@ def main(cfg: RootConfig):
     train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
 
     sample = train_ds[0]
-    if "edge_index" in sample:
-        num_features = sample.x.shape[1]
-    else:
+    if "x_0" in sample:
         num_features = [
             sample[f"x_{dim}"].shape[1]
             for dim in range(int(sample.dimension.item()) + 1)
         ]
+    else:
+        num_features = sample.x.shape[1]
 
     # ----- Model ----
     model = create_model(cfg, num_features, label_to_index)
