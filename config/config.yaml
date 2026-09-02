@@ -7,9 +7,6 @@ defaults:
   - representation@dataset.transform.representation: dual_graph
   - transform@dataset.transform.embedding: random_walk_pe
   - transform@dataset.transform.select_features: select_features
-  # The loss composes before the task so a task can override it in its
-  # own defaults list (e.g. regression tasks select mse).
-  - loss: cross_entropy
   - task: name
   - trainer: default
 
