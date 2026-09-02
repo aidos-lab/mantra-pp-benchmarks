@@ -147,3 +147,4 @@ class GraphormerSPDPreTransform(BaseTransform):
         # Promote to SPDData so PyG batching uses the right __cat_dim__/__inc__.
         object.__setattr__(data, "__class__", SPDData)
         return data
+

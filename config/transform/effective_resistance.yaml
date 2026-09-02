@@ -1,4 +1,4 @@
-_target_: mantra.transforms.EffectiveResistance
+_target_: mantra.transforms.EffectiveResistanceEmbedding
 
 
 statistics:

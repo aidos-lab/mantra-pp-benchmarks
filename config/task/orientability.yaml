@@ -1,5 +1,4 @@
 defaults:
   - base_task
 name: Orientability
-target: orientability
-imbalanced: True
+target: orientable

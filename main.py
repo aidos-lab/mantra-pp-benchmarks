@@ -6,22 +6,24 @@ from omegaconf import OmegaConf
 import hydra
 from hydra.core.config_store import ConfigStore
 
-import numpy as np
-
 import torch
 import os
+from torch.utils.data import DataLoader
+from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.transforms import Compose
 
 
-from mantra.datasets import ManifoldTriangulations
-from mantra.representations.internal.simplex_trie import SimplexNode, SimplexTrie
+from mantra.datasets import MantraDataset
+from mantra.representations.internal import SimplexTrie
+from mantra.representations.internal.simplex_trie import SimplexNode
+from mantra.transforms.task_transforms import BettiToClassTransform, OrientableToClassTransform, NameToClass2MTransform, NameToClass3MTransform
 
 from src.schema import RootConfig
-from src.utils.imbalance_handling import sorted_imbalance_weights
+from src.transforms import RemapLabels
 from src.utils.logging import log_metrics
-from src.utils.data_handling import split_dataset, filter_low_ocurrence_labels
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
+from src.utils.gpu_utils import is_blackwell_gpu, set_gpu_configs
 
 from tqdm import tqdm
 from torch_geometric.profile import count_parameters
@@ -32,118 +34,118 @@ torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
 cs = ConfigStore().instance()
 cs.store(name="main_conf", node=RootConfig)
 
-def is_blackwell_gpu(cfg):
-    if cfg.trainer.device == 'cpu':
-        return False
-    if not torch.cuda.is_available():
-        return False
-    cap = torch.cuda.get_device_capability()
-    return cap[0] >= 10
-
-def is_gpu(cfg):
-    if cfg.trainer.device == 'cpu':
-        return False
-    if not torch.cuda.is_available():
-        return False
-    return True
 
 torch._dynamo.config.capture_scalar_outputs = True
 
+def task_to_transform(cfg):
+    if cfg.task.name == "BettiNumbers":
+        return BettiToClassTransform()
+    elif cfg.task.name == "Orientability":
+        return OrientableToClassTransform()
+    elif cfg.task.name == "Name":
+        if cfg.dataset.dimension == 2:
+            return NameToClass2MTransform()
+        elif cfg.dataset.dimension == 3:
+            return NameToClass3MTransform()
+        else:
+            raise ValueError("Invalid dimension")
+    else:
+        raise ValueError("Invalid task")
 
-@hydra.main(version_base=None, config_path="config", config_name="config")
-def main(cfg: RootConfig):
+        
 
-    dataset_config = cfg.dataset
-    transform_dict = dataset_config.transform
-    transform_order = dataset_config.transform_order
+def create_dataset(cfg):
+    torch.manual_seed(cfg.torch_seed)
 
-    assert not ((dataset_config.local_path is not None) ^ dataset_config.balanced), "For the balanced dataset, only a local version is supported, while the original dataset always needs to be downloaded."
+    dataset_cfg = cfg.dataset
+    transform_cfg = dataset_cfg.transform
+    transform_order = dataset_cfg.transform_order
 
-    if cfg.task.imbalanced:
-        raise RuntimeError(
-            "cfg.task.imbalanced=True is a legacy option and is not supported: "
-            "filter_low_ocurrence_labels drops classes after label_to_index is "
-            "built, so the class-weight tensor and model.out_channels disagree "
-            "and cross-entropy crashes. All published models were trained with "
-            "imbalanced=False; set it to False (the new default for task=name)."
-        )
+    transforms = [None for _ in range(len(list(transform_cfg.items())))]
+    task_transform = task_to_transform(cfg)
 
-    # Only set for CPU
-    if not is_gpu(cfg):
-        torch.set_num_threads(os.cpu_count())
-
-    # Set config GPU
-    if is_gpu(cfg):
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = True
-    if is_blackwell_gpu(cfg):
-        torch.backends.cuda.matmul.fp32_precision = 'tf32'
-        torch.backends.cudnn.conv.fp32_precision = 'tf32'
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-
-
-    transforms = [None for _ in range(len(list(transform_dict.items())))]
-
-    label_transform = None
-    select_transform = None
-    for name, transform in transform_dict.items():
+    for name, transform in transform_cfg.items():
         trans = hydra.utils.instantiate(transform)
-        if name == 'create_labels':
-            label_transform = trans
-        elif name == 'select_features':
-            select_transform = trans
-
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
-    assert label_transform is not None, "Missing the `create_labels` transform"
-    assert select_transform is not None, "Missing the `select_features` transform"
+    transforms.insert(0, task_transform)
 
     transforms = Compose(transforms)
 
-    dataset = ManifoldTriangulations(
-        balanced=dataset_config.balanced,
-        root=dataset_config.root,
-        dimension=dataset_config.dimension,
-        version=dataset_config.version,
-        local_path=dataset_config.local_path,
-        pre_transform=transforms,
-        force_reload=dataset_config.reload,
-        transform=label_transform
+    split = dataset_cfg.train_parameters.split
+    dataset_parameters = {
+            "root": dataset_cfg.root,
+            "dimension": dataset_cfg.dimension,
+            "version": dataset_cfg.version,
+            "balanced": dataset_cfg.balanced,
+            "local_path": dataset_cfg.local_path,
+            "force_reload": dataset_cfg.reload,
+            "seed": dataset_cfg.seed,
+            "split_proportions": [split.train, split.val, split.test],
+            "min_sample_per_class": dataset_cfg.min_sample_per_class,
+            "division_type": dataset_cfg.division_type,
+            "stratified": dataset_cfg.use_stratified,
+            "max_vertices": dataset_cfg.max_vertices,
+            "n_moves": dataset_cfg.n_moves,
+            "target_count": dataset_cfg.target_count,
+            "use_surgery": dataset_cfg.use_surgery,
+            "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
+            "transform": transforms,
+
+        }
+
+    train_dataset = MantraDataset(
+        split_type="train",
+        **dataset_parameters
+    )
+    val_dataset = MantraDataset(
+            split_type="val",
+            **dataset_parameters
+    )
+    test_dataset = MantraDataset(
+            split_type="test",
+            **dataset_parameters
     )
 
-    dataset = filter_low_ocurrence_labels(dataset)
+    label_to_index = {}
 
+    # If we are doing classification perform a relabaling that
+    # enumerates correctly
+    if cfg.task.task_type == "classification":
+        labels = sorted({int(data.y.item()) for data in train_dataset})
+        label_to_index = {label: index for index, label in enumerate(labels)}
+        remap_labels = RemapLabels(label_to_index)
 
-    for data in dataset:
-        pass
+        for dataset in (train_dataset, val_dataset, test_dataset):
+            dataset.transform = Compose([dataset.transform, remap_labels])
 
+    return train_dataset, val_dataset, test_dataset, label_to_index
 
-    label_to_index = label_transform.label_to_index
+def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
+    trainer_cfg = cfg.trainer
+    persistent_workers = trainer_cfg.num_workers > 0
 
-    # Change the outputs based on classification task
-    if cfg.task.task_type == 'classification':
-        num_classes = len(label_to_index)
-        cfg.model.out_channels = num_classes
+    is_graph_representation = "x_0" not in train_dataset[0]
 
+    # TODO: Fix this assignment
+    if not is_graph_representation:
+        train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        test_loader = DataLoader(test_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+    else: # Graph
+        train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
 
-    OmegaConf.resolve(cfg)
+    return train_loader, val_loader, test_loader
 
-    #TODO: Ugly fix, do something about this
+def create_model(cfg, num_features, label_to_index):
+    cfg.model.out_channels = (
+        len(label_to_index) if cfg.task.task_type == "classification" else 1
+    )
 
-    is_graph_representation =  cfg.dataset.transform.select_features.representation == 'graph'
-
-    # TODO Fix, this is only for the case of SCCNN
-    if is_graph_representation or ("SCCNN" not in cfg.model._target_ and 'CWN' not in cfg.model._target_):
-        if cfg.dataset.num_features != 'auto':
-            in_channels = int(cfg.dataset.num_features)
-        else: #NOTE: Handles the case for SAN
-            in_channels = dataset[0]['x_1'].shape[1] if hasattr(dataset[0], 'x_1') else dataset[0].x.shape[1]
-    else:
-        feature_keys = [feat_key for feat_key in dataset[0].keys() if feat_key.split('_')[0] == "x" ]
-        in_channels = [dataset[0][feat_key].shape[1] for feat_key in feature_keys] if cfg.dataset.num_features == 'auto' else [int(cfg.dataset.num_features)] * len(list(dataset[0].x.keys()))
-        
+    in_channels = num_features
 
     #NOTE: Model initialization
     model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
@@ -153,44 +155,57 @@ def main(cfg: RootConfig):
     if is_blackwell_gpu(cfg) and cfg.compile:
         model = torch.compile(model, dynamic=True)
 
+    return model
+
+
+@hydra.main(version_base=None, config_path="config", config_name="config")
+def main(cfg: RootConfig):
+
+    OmegaConf.resolve(cfg)
+
+    set_gpu_configs(cfg)
+
+    # ---- Dataset -----
+
+    train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
+    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
+
+    sample = train_ds[0]
+    if "x_0" in sample:
+        num_features = [
+            sample[f"x_{dim}"].shape[1]
+            for dim in range(int(sample.dimension.item()) + 1)
+        ]
+    else:
+        num_features = sample.x.shape[1]
+
+    # ----- Model ----
+    model = create_model(cfg, num_features, label_to_index)
 
     print(f"Model parameters: {count_parameters(model)}")
-
-    collate_fn = None if is_graph_representation else collate_simplicial
 
     #NOTE: Create checkpoint directory
     if not os.path.exists(cfg.checkpoint_path):
         os.makedirs(cfg.checkpoint_path)
 
-    #NOTE: Dataset initialization
-    train_dataloader, val_dataloader, test_dataloader = split_dataset(dataset, cfg, pin_memory= (cfg.trainer.device != 'cpu'), collate_fn=collate_fn)
-
-    imbalance = None
-    if cfg.task.imbalanced:
-        imbalance = sorted_imbalance_weights(
-            dataset
-        )
-        imbalance = np.array(list(imbalance))
-        imbalance = imbalance / np.sum(imbalance)
-
     conf_dict = OmegaConf.to_container(cfg, resolve=True)
-    print("DEBUG")
-    print(len(label_to_index))
-    print(label_to_index)
 
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})
         accuracies = init_metrics(cfg)
+        last_epoch = 0
         if cfg.train:
-            model = training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index)
+            model, last_epoch = training_loop(train_dl, val_dl, model, accuracies, run, cfg, label_to_index)
 
-        test(model, test_dataloader, accuracies, label_to_index, run, cfg)
-
-
+        test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch)
 
 
-def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies, run, cfg, label_to_index):
+def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):
     MAX_EPOCH = cfg.trainer.max_epoch
+    if MAX_EPOCH <= 0:
+        raise ValueError("trainer.max_epoch must be greater than zero")
+    if cfg.trainer.early_stopping <= 0:
+        raise ValueError("trainer.early_stopping must be greater than zero")
 
     if is_blackwell_gpu(cfg):
         optimizer = torch.optim.Adam(
@@ -204,31 +219,25 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
 
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
-
-    # TODO: Should this be like this ?
-
-    imbalance = (
-        torch.tensor(
-            imbalance, device=cfg.trainer.device, dtype=torch.float32
-        )
-        if imbalance is not None
-        else None
-    )
-
-    #TODO: Maybe this should change ?
-    if imbalance is not None:
-        loss_fn = hydra.utils.instantiate(cfg.task.loss, weight=imbalance)
-    else:
-        loss_fn = hydra.utils.instantiate(cfg.task.loss)
+    loss_fn = hydra.utils.instantiate(cfg.task.loss)
 
     early_stopping_cnt = cfg.trainer.early_stopping
     last_val_loss = None
+    last_epoch = 0
 
     checkpoint_dir = os.path.join(cfg.checkpoint_path, run.name or run.id)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     with open(os.path.join(checkpoint_dir, "label_to_index.json"), "w") as f:
-        json.dump(label_to_index, f)
+        json.dump(
+            [
+                {"label": label, "index": index}
+                for label, index in label_to_index.items()
+            ],
+            f,
+        )
+    with open(os.path.join(checkpoint_dir, "config.yaml"), "w") as f:
+        f.write(OmegaConf.to_yaml(cfg))
 
     # Go over each epoch
     for epoch in (pbar := tqdm(range(MAX_EPOCH))):
@@ -236,6 +245,8 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
         if early_stopping_cnt == 0:
             print("Early stopping...")
             break
+
+        last_epoch = epoch
 
         # Train
         train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
@@ -263,16 +274,14 @@ def training_loop(train_dataloader, val_dataloader, imbalance, model, accuracies
 
             # Save weights and config of the best model
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, "best_val.pt"))
-            with open(os.path.join(checkpoint_dir, "config.yaml"), "w") as f:
-                f.write(OmegaConf.to_yaml(cfg))
-
-        early_stopping_cnt -= 1
+        else:
+            early_stopping_cnt -= 1
 
     # Save model with best validation
     state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
-    model.load_state_dict(state_dict)
-    return model
 
+    model.load_state_dict(state_dict)
+    return model, last_epoch
 
 if __name__ == "__main__":
     main()
