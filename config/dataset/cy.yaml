@@ -13,7 +13,7 @@ limit: null
 
 # CalabiYau splits are plain seeded random splits; stratification is
 # not implemented for this dataset.
-use_stratified: False
+use_stratified: True
 
 # 20% test split as in arXiv:2112.09117.
 train_parameters:
