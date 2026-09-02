@@ -1,5 +1,3 @@
-# 'mantra' (JSON manifold triangulations) or 'cy' (parquet
-# Calabi-Yau star triangulations, see dataset/cy.yaml).
 type: "mantra"
 root: "./data"
 version: latest
