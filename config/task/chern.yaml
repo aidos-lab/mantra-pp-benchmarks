@@ -1,6 +1,8 @@
 defaults:
   - base_task
-  - /loss: mse
+
+loss: 
+  _target_: torch.nn.MSELoss
 
 name: Chern
 task_type: regression
@@ -9,11 +11,6 @@ task_type: regression
 # second Chern class integrated against the anticanonical divisor
 # (e.g. 50 for the quintic).
 target: c2_anticanonical
-
-# The label scale is far from the models' output at init;
-# standardization lets the optimizer reach it without pushing
-# everything through the output bias.
-standardize_targets: True
 
 metrics:
   mae:

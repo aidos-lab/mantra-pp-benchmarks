@@ -1,7 +1,8 @@
 defaults:
   - base_task
-  - /loss: mse
 
+loss: 
+  _target_: torch.nn.MSELoss
 name: Hodge
 task_type: regression
 
