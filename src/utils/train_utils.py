@@ -164,7 +164,8 @@ def init_metrics(cfg: RootConfig):
     """
     accs = []
     for name, acc in cfg.task.metrics.items():
-        if 'accuracy' in acc._target_.lower():
+        # torchmetrics' Accuracy needs the task wiring; other metrics take none.
+        if acc._target_ == 'torchmetrics.Accuracy':
             assert cfg.task.task_type == 'classification', "Cannot assign accuracy for regression tasks"
             metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels)
         else:

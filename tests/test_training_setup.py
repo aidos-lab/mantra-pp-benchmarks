@@ -22,9 +22,15 @@ def test_create_loaders_disables_persistence_without_workers():
             )
         ),
     )
-    dataset = [Data(x=torch.ones(1, 1), y=torch.tensor(0))]
+    dataset = [
+        Data(
+            x=torch.ones(1, 1),
+            y=torch.tensor(0),
+            edge_index=torch.empty((2, 0), dtype=torch.long),
+        )
+    ]
 
-    loaders = create_loaders(cfg, dataset, dataset, dataset)
+    loaders = create_loaders(cfg, dataset, dataset, dataset, is_graph_representation=True)
 
     assert all(not loader.persistent_workers for loader in loaders)
 

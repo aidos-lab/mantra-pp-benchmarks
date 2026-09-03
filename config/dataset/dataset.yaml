@@ -1,3 +1,4 @@
+type: "mantra"
 root: "./data"
 version: latest
 dimension: 2

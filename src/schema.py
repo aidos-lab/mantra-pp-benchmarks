@@ -37,6 +37,11 @@ class TransformMeta:
 @dataclass
 class DatasetMeta:
     root: str
+    # 'mantra' (JSON manifold triangulations) or 'cy' (parquet
+    # Calabi-Yau star triangulations; requires the mantra cy branch).
+    type: str = "mantra"
+    # Only process the first `limit` samples (cy only).
+    limit: int | None = None
     version: str = "latest"
     dimension: int = 2
     local_path: str | None = None
@@ -45,6 +50,8 @@ class DatasetMeta:
     reload: bool = False
     balanced: bool = False
     use_stratified: bool = True
+    # Attribute whose values stratify / filter the splits (cy only).
+    label_source: str | None = None
 
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
@@ -59,6 +66,9 @@ class ModelMeta:
     residuals: bool = True
     batch_norm: bool = True
     dropout: float = 0.2
+    # Graph readout: 'mean', or 'sum' to keep it extensive (targets
+    # that scale with the size of the complex).
+    pool_method: str = "mean"
 
 @dataclass
 class LoggerMeta:

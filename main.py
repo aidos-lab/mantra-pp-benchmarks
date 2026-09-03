@@ -1,4 +1,5 @@
 import json
+import time
 
 import wandb
 from omegaconf import OmegaConf
@@ -16,7 +17,14 @@ from torch_geometric.transforms import Compose
 from mantra.datasets import MantraDataset
 from mantra.representations.internal import SimplexTrie
 from mantra.representations.internal.simplex_trie import SimplexNode
-from mantra.transforms.task_transforms import BettiToClassTransform, OrientableToClassTransform, NameToClass2MTransform, NameToClass3MTransform
+from mantra.transforms.task_transforms import (
+    AttributeToClassTransform,
+    AttributeToRegressionTransform,
+    BettiToClassTransform,
+    NameToClass2MTransform,
+    NameToClass3MTransform,
+    OrientableToClassTransform,
+)
 
 from src.schema import RootConfig
 from src.transforms import RemapLabels
@@ -37,7 +45,15 @@ cs.store(name="main_conf", node=RootConfig)
 
 torch._dynamo.config.capture_scalar_outputs = True
 
-def task_to_transform(cfg):
+def task_to_transform(cfg, mapping=None):
+    """Label transform of the task, i.e. the transform writing `data.y`.
+
+    The MANTRA tasks are keyed by name. Every other task reads the raw
+    attribute `task.target` verbatim (the Calabi-Yau tasks hodge, chern
+    and hodge_class): regression targets are used as they are, while
+    classification needs `mapping` ({attribute value: class index}),
+    built over the full dataset (see `_cy_class_mapping`).
+    """
     if cfg.task.name == "BettiNumbers":
         return BettiToClassTransform()
     elif cfg.task.name == "Orientability":
@@ -49,10 +65,43 @@ def task_to_transform(cfg):
             return NameToClass3MTransform()
         else:
             raise ValueError("Invalid dimension")
+    elif cfg.task.task_type == "regression":
+        return AttributeToRegressionTransform(cfg.task.target)
+    elif cfg.task.task_type == "classification":
+        return AttributeToClassTransform(cfg.task.target, None)
     else:
         raise ValueError("Invalid task")
 
         
+def _cy_class_mapping(cfg):
+    """Class mapping {attribute value: output neuron} for CY classification.
+
+    Built from the raw label attribute over the *full* dataset (sorted
+    values), so the neuron assignment is independent of the split and
+    the seed, and values that only occur in val or test still get an
+    output neuron.
+    """
+    from mantra.datasets import CalabiYau
+
+    dataset_cfg = cfg.dataset
+    source = cfg.task.target
+    dataset = CalabiYau(
+        root=dataset_cfg.root,
+        version=dataset_cfg.version,
+        local_path=dataset_cfg.local_path,
+        limit=dataset_cfg.limit,
+        force_reload=dataset_cfg.reload,
+    )
+
+    values = set()
+    for data in dataset:
+        value = data[source]
+        if isinstance(value, torch.Tensor):
+            value = value.item()
+        values.add(int(value))
+
+    return {value: index for index, value in enumerate(sorted(values))}
+
 
 def create_dataset(cfg):
     torch.manual_seed(cfg.torch_seed)
@@ -60,53 +109,83 @@ def create_dataset(cfg):
     dataset_cfg = cfg.dataset
     transform_cfg = dataset_cfg.transform
     transform_order = dataset_cfg.transform_order
+    is_cy = dataset_cfg.type == "cy"
+
 
     transforms = [None for _ in range(len(list(transform_cfg.items())))]
-    task_transform = task_to_transform(cfg)
 
     for name, transform in transform_cfg.items():
         trans = hydra.utils.instantiate(transform)
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
+    task_transform = task_to_transform(cfg)
     transforms.insert(0, task_transform)
 
     transforms = Compose(transforms)
 
     split = dataset_cfg.train_parameters.split
-    dataset_parameters = {
+
+    if is_cy:
+        # The CY classes only exist on the mantra `cy` branch; import
+        # lazily so the MANTRA tasks keep working against mantra main.
+        from mantra.datasets import CalabiYauDataset
+
+        dataset_parameters = {
             "root": dataset_cfg.root,
-            "dimension": dataset_cfg.dimension,
             "version": dataset_cfg.version,
-            "balanced": dataset_cfg.balanced,
             "local_path": dataset_cfg.local_path,
+            "limit": dataset_cfg.limit,
             "force_reload": dataset_cfg.reload,
             "seed": dataset_cfg.seed,
             "split_proportions": [split.train, split.val, split.test],
-            "min_sample_per_class": dataset_cfg.min_sample_per_class,
-            "division_type": dataset_cfg.division_type,
             "stratified": dataset_cfg.use_stratified,
-            "max_vertices": dataset_cfg.max_vertices,
-            "n_moves": dataset_cfg.n_moves,
-            "target_count": dataset_cfg.target_count,
-            "use_surgery": dataset_cfg.use_surgery,
-            "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
+            "label_source": dataset_cfg.label_source,
             "transform": transforms,
-
         }
 
-    train_dataset = MantraDataset(
-        split_type="train",
-        **dataset_parameters
-    )
-    val_dataset = MantraDataset(
-            split_type="val",
+        train_dataset = CalabiYauDataset(split_type="train", **dataset_parameters)
+        val_dataset = CalabiYauDataset(split_type="val", **dataset_parameters)
+        test_dataset = CalabiYauDataset(split_type="test", **dataset_parameters)
+
+        # The class mapping already spans the full dataset, so `y` is
+        # contiguous by construction; the train-split remapping below
+        # is only needed for the MANTRA datasets.
+    else:
+
+        dataset_parameters = {
+                "root": dataset_cfg.root,
+                "dimension": dataset_cfg.dimension,
+                "version": dataset_cfg.version,
+                "balanced": dataset_cfg.balanced,
+                "local_path": dataset_cfg.local_path,
+                "force_reload": dataset_cfg.reload,
+                "seed": dataset_cfg.seed,
+                "split_proportions": [split.train, split.val, split.test],
+                "min_sample_per_class": dataset_cfg.min_sample_per_class,
+                "division_type": dataset_cfg.division_type,
+                "stratified": dataset_cfg.use_stratified,
+                "max_vertices": dataset_cfg.max_vertices,
+                "n_moves": dataset_cfg.n_moves,
+                "target_count": dataset_cfg.target_count,
+                "use_surgery": dataset_cfg.use_surgery,
+                "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
+                "transform": transforms,
+
+            }
+
+        train_dataset = MantraDataset(
+            split_type="train",
             **dataset_parameters
-    )
-    test_dataset = MantraDataset(
-            split_type="test",
-            **dataset_parameters
-    )
+        )
+        val_dataset = MantraDataset(
+                split_type="val",
+                **dataset_parameters
+        )
+        test_dataset = MantraDataset(
+                split_type="test",
+                **dataset_parameters
+        )
 
     label_to_index = {}
 
@@ -122,13 +201,10 @@ def create_dataset(cfg):
 
     return train_dataset, val_dataset, test_dataset, label_to_index
 
-def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
+def create_loaders(cfg, train_dataset, val_dataset, test_dataset, is_graph_representation):
     trainer_cfg = cfg.trainer
     persistent_workers = trainer_cfg.num_workers > 0
 
-    is_graph_representation = "x_0" not in train_dataset[0]
-
-    # TODO: Fix this assignment
     if not is_graph_representation:
         train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
         val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
@@ -168,16 +244,18 @@ def main(cfg: RootConfig):
     # ---- Dataset -----
 
     train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
-    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
-
     sample = train_ds[0]
-    if "x_0" in sample:
+    is_graph_representation = bool("x_0" in sample.__dict__)
+    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds, is_graph_representation)
+
+
+    if is_graph_representation:
+        num_features = sample.x.shape[1]
+    else:
         num_features = [
             sample[f"x_{dim}"].shape[1]
             for dim in range(int(sample.dimension.item()) + 1)
         ]
-    else:
-        num_features = sample.x.shape[1]
 
     # ----- Model ----
     model = create_model(cfg, num_features, label_to_index)
@@ -249,7 +327,9 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
         last_epoch = epoch
 
         # Train
+        epoch_start = time.perf_counter()
         train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
+        train_metrics['train/epoch_time_s'] = time.perf_counter() - epoch_start
 
         # Validation
         val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg)
