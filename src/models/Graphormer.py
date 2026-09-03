@@ -167,7 +167,7 @@ class Graphormer(nn.Module):
             raise ValueError(
                 "hidden_channels must be divisible by num_heads for Graphormer."
             )
-        assert pool_method in ('mean', 'sum'), " Unknwon pooling methods"
+        assert pool_method in ('mean', 'sum'), "Unknown pooling method"
         self.pool_method = pool_method
         self.hidden_dim = hidden_channels
         self.num_heads = num_heads

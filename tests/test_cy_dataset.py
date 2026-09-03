@@ -1,24 +1,19 @@
 """Tests for the Calabi-Yau dataset path of main.create_dataset.
 
-Skipped when the installed mantra does not ship CalabiYau with split
-support (both only exist on the mantra cy branch)."""
+Skipped when the installed mantra does not ship CalabiYauDataset (the
+mantra cy branch with its split support)."""
 
-import inspect
 import os
+from collections import Counter
 
 import pytest
 import torch
 
 try:
-    from mantra.datasets import CalabiYau
+    from mantra.datasets import CalabiYauDataset  # noqa: F401
 except ImportError:
-    CalabiYau = None
-
-if CalabiYau is None or (
-    "split_type" not in inspect.signature(CalabiYau).parameters
-):
     pytest.skip(
-        "requires the mantra cy branch with CalabiYau split support",
+        "requires the mantra cy branch with CalabiYauDataset",
         allow_module_level=True,
     )
 
@@ -40,10 +35,10 @@ CONFIG_DIR = os.path.abspath(
 N_ROWS = 30
 
 
-def _write_parquet(tmp_path):
+def _rows(n=N_ROWS):
     simplices = [[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1]]
     vertices = [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1]]
-    rows = [
+    return [
         {
             "simplices": simplices,
             "vertices": vertices,
@@ -51,21 +46,25 @@ def _write_parquet(tmp_path):
             "h12": i % 3,
             "c2_anticanonical": 2 * i - 10,
         }
-        for i in range(N_ROWS)
+        for i in range(n)
     ]
+
+
+def _write_parquet(tmp_path, rows=None):
+    rows = rows or _rows()
     df = pd.DataFrame({key: [r[key] for r in rows] for key in rows[0]})
     path = tmp_path / "manifolds.parquet"
     pq.write_table(pa.Table.from_pandas(df), str(path))
     return str(path)
 
 
-def _cfg(tmp_path, *overrides):
+def _cfg(tmp_path, *overrides, rows=None):
     with initialize_config_dir(version_base=None, config_dir=CONFIG_DIR):
         cfg = compose(
             config_name="config",
             overrides=[
                 "dataset=cy",
-                f"dataset.local_path={_write_parquet(tmp_path)}",
+                f"dataset.local_path={_write_parquet(tmp_path, rows)}",
                 f"dataset.root={tmp_path / 'root'}",
                 *overrides,
             ],
@@ -114,6 +113,12 @@ class TestCYRegression:
         for data in train:
             assert data.y.item() == float(data.h12)
 
+    def test_chern_targets_c2_anticanonical(self, tmp_path):
+        cfg = _cfg(tmp_path, "task=chern")
+        train, _, _, _ = main.create_dataset(cfg)
+        for data in train:
+            assert data.y.item() == float(data.c2_anticanonical)
+
 
 class TestCYClassification:
     def test_mapping_spans_the_full_dataset(self, tmp_path):
@@ -143,3 +148,34 @@ class TestCYClassification:
         _, _, _, first = main.create_dataset(cfg)
         _, _, _, again = main.create_dataset(cfg)
         assert first == again
+
+
+class TestCYSplitOptions:
+    def test_stratified_split_balances_label_source(self, tmp_path):
+        cfg = _cfg(
+            tmp_path,
+            "task=hodge",
+            "dataset.use_stratified=True",
+            "dataset.label_source=h12",
+        )
+        splits = main.create_dataset(cfg)[:3]
+        assert sum(len(ds) for ds in splits) == N_ROWS
+        for dataset in splits:
+            counts = Counter(int(data.h12) for data in dataset)
+            assert set(counts) == {0, 1, 2}
+            assert max(counts.values()) - min(counts.values()) <= 1
+
+    def test_min_sample_per_class_drops_rare_values(self, tmp_path):
+        rows = _rows(N_ROWS + 2)
+        for row in rows[N_ROWS:]:
+            row["h12"] = 3
+        cfg = _cfg(
+            tmp_path,
+            "task=hodge",
+            "dataset.label_source=h12",
+            "dataset.min_sample_per_class=2",
+            rows=rows,
+        )
+        splits = main.create_dataset(cfg)[:3]
+        seen = sorted(int(data.h11) for ds in splits for data in ds)
+        assert seen == list(range(N_ROWS))

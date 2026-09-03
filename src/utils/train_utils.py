@@ -9,36 +9,7 @@ from src.schema import RootConfig
 
 
 
-def compute_target_scaler(train_dataloader):
-    """ (mean, std) of the regression targets, train split only.
-
-    The model is trained against `(y - mean) / std` and its predictions
-    are mapped back with `y_hat * std + mean` before any metric, so the
-    reported metrics stay in original label units.
-    """
-    ys = [data.y.detach().float().reshape(-1) for data in train_dataloader.dataset]
-    y = torch.cat(ys)
-    std = y.std().item()
-    if not (std > 1e-8):  # constant targets: fall back to a no-op scale
-        std = 1.0
-    return y.mean().item(), std
-
-
-def scale_targets(y, scaler):
-    if scaler is None:
-        return y
-    mean, std = scaler
-    return (y.float() - mean) / std
-
-
-def unscale_predictions(y_hat, scaler):
-    if scaler is None:
-        return y_hat
-    mean, std = scaler
-    return y_hat * std + mean
-
-
-def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg, target_scaler=None):
+def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
     """ Run the training 
 
 
@@ -59,14 +30,14 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg, target_scal
 
         loss = loss_fn(
             y_hat,
-            scale_targets(y, target_scaler),
+            y,
         )
 
         losses.append(loss.detach())
         batch_sizes.append(y.shape[0])
 
         for _, acc in accuracies:
-            acc(unscale_predictions(y_hat.detach(), target_scaler), y)
+            acc(y_hat.detach(), y)
 
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -82,7 +53,7 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg, target_scal
 
     return metrics
 
-def validate(model,  val_dataset, loss_fn, accuracies, cfg, target_scaler=None):
+def validate(model,  val_dataset, loss_fn, accuracies, cfg):
     """ Run the validation evaluation
 
     """
@@ -100,10 +71,10 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg, target_scaler=None):
             y_hat = model(batch)
             y = batch.y
 
-            loss = loss_fn(y_hat, scale_targets(y, target_scaler))
+            loss = loss_fn(y_hat, y)
 
             for _, acc in accuracies:
-                acc(unscale_predictions(y_hat.detach(), target_scaler), y)
+                acc(y_hat.detach(), y)
 
             losses.append(loss.detach())
             batch_sizes.append(y.shape[0])
@@ -118,7 +89,7 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg, target_scaler=None):
 
     return metrics
 
-def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, target_scaler=None):
+def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
     """ Run the test evaluation
     """
 
@@ -138,7 +109,6 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, targe
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
             predictions = model(batch)
-            predictions = unscale_predictions(predictions, target_scaler)
             y = batch.y.long() if is_classification else batch.y
 
             if is_classification:
@@ -193,9 +163,9 @@ def init_metrics(cfg: RootConfig):
     """ Initialize the metric classes
     """
     accs = []
-    is_classification = cfg.task.task_type == 'classification'
     for name, acc in cfg.task.metrics.items():
-        if 'accuracy' in acc._target_.lower():
+        # torchmetrics' Accuracy needs the task wiring; other metrics take none.
+        if acc._target_ == 'torchmetrics.Accuracy':
             assert cfg.task.task_type == 'classification', "Cannot assign accuracy for regression tasks"
             metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels)
         else:

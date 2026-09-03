@@ -66,7 +66,7 @@ All commands below assume `.venv/bin/python` (or `uv run python …`).
 
 > **zsh users:** the bracketed Hydra list overrides
 > (e.g. `dataset.transform_order=[representation,…]`) need to be quoted —
-> `'dataset.transform_order=[representation,embedding,select_features,create_labels]'`
+> `'dataset.transform_order=[representation,embedding,select_features]'`
 > — because zsh treats `[…]` as a glob. In bash they work either way.
 
 ### Datasets
@@ -128,9 +128,7 @@ example above):
     representation@dataset.transform.representation=one_skeleton \
     transform@dataset.transform.embedding=random_features \
     dataset.transform.select_features.src=random_features \
-    dataset.transform_order=[representation,embedding,select_features,create_labels] \
     task=name \
-    +task/metrics@task.metrics.bal_acc=accuracy \
     trainer.device=cpu trainer.max_epoch=2
 ```
 
@@ -164,9 +162,7 @@ i.e. they must both be set or both be unset.
     representation@dataset.transform.representation=one_skeleton \
     transform@dataset.transform.embedding=random_features \
     dataset.transform.select_features.src=random_features \
-    dataset.transform_order=[representation,embedding,select_features,create_labels] \
     task=name \
-    +task/metrics@task.metrics.bal_acc=accuracy \
     trainer.device=cpu trainer.max_epoch=2
 ```
 
@@ -183,9 +179,12 @@ Key Hydra groups:
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
 | `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge`, `chern`, `hodge_class`              |
-| `loss`                                        | `cross_entropy`, `contrastive`, `mse`                                                               |
 | `trainer`                                     | `default`                                                                                           |
 | `logger`                                      | `wandb`                                                                                             |
+
+Losses are not a Hydra group: every `config/task/*.yaml` carries its own
+`loss:` block (cross-entropy for the MANTRA tasks and `hodge_class`, MSE
+for `hodge` and `chern`).
 
 Outputs:
 
@@ -200,9 +199,11 @@ project name use `logger.project=<name>` (and `logger.entity=<entity>`).
 ## Calabi-Yau tasks
 
 The `cy` dataset serves Calabi-Yau star triangulations from a parquet
-file (`mantra.datasets.CalabiYau`, mantra `cy` branch) with the same
-native train/val/test splits as the MANTRA datasets. Downloading is not
-implemented yet, so point `dataset.local_path` at a local parquet file:
+file through `mantra.datasets.CalabiYauDataset` (mantra `cy` branch with
+aidos-lab/mantra#105), which splits the full `CalabiYau` data into
+seeded train/val/test parts the way `MantraDataset` splits the MANTRA
+data. Downloading is not implemented yet, so point `dataset.local_path`
+at a local parquet file:
 
 ```bash
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge
@@ -212,18 +213,47 @@ Tasks:
 
 - `task=hodge` — graph-level regression of `h11` (`task.target=h12`
   for the other Hodge number), scored with MAE and rounded accuracy.
-- `task=chern` — graph-level regression of `c2_anticanonical` with
-  z-scored targets (`task.standardize_targets`) and an even-lattice
-  rounded accuracy.
-- `task=hodge_class` — classification of the target value; the class
-  mapping is built over the full dataset and saved next to the
+- `task=chern` — graph-level regression of `c2_anticanonical` with the
+  same metrics; the targets are used as they are.
+- `task=hodge_class` — classification of the target value. The class
+  mapping is built over the full dataset, so every value keeps its
+  output neuron independent of the split, and it is saved next to the
   checkpoint as `label_to_index.json`.
 
-The regression tasks select `loss=mse` themselves. For simplicial
-models, propagate the vertex coordinates to all simplex ranks with the
-`propagate_convex_comb` transform (`config/transform/`) instead of the
-random-walk embedding. `dataset.limit=<n>` processes only the first
-`n` triangulations for smoke tests.
+Splits are seeded with `dataset.seed` and sized by
+`dataset.train_parameters.split` (0.7/0.1/0.2); the split files encode
+both, so variants coexist under `dataset.root`. Stratification mirrors
+the MANTRA path: `dataset.use_stratified=True` stratifies on the values
+of `dataset.label_source` (`h11` by default) and
+`dataset.min_sample_per_class=<n>` first drops the values with at most
+`n` samples. Every kept value needs a sample in each split, so choose
+`n` for the data size, e.g. on the small `ks_n05` file:
+
+```bash
+python main.py dataset=cy dataset.local_path=/path/to/ks_n05_cylabels.parquet \
+    task=hodge_class task.target=h12 \
+    dataset.use_stratified=True dataset.label_source=h12 dataset.min_sample_per_class=8
+```
+
+`dataset.limit=<n>` processes only the first `n` triangulations for
+smoke tests; the limit applies before the class filter.
+
+To feed the vertex coordinates instead of the random-walk embedding,
+propagate them to all simplex ranks with `propagate_convex_comb` before
+the representation and let the representation read them (works for
+`hasse_diagram` and `dual_graph`):
+
+```bash
+python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge \
+    representation@dataset.transform.representation=hasse_diagram \
+    dataset.transform.representation.feature_propagation=x \
+    transform@dataset.transform.embedding=propagate_convex_comb \
+    '~dataset.transform.select_features' \
+    'dataset.transform_order=[embedding,representation]'
+```
+
+The tests in `tests/test_cy_dataset.py` skip unless the installed
+mantra ships `CalabiYauDataset`.
 
 ## Reproducing the subdivision experiments
 
@@ -269,9 +299,7 @@ Using the demo stellar level-1 JSON produced in step 1:
     representation@dataset.transform.representation=dual_graph \
     transform@dataset.transform.embedding=random_features \
     dataset.transform.select_features.src=random_features \
-    dataset.transform_order=[representation,embedding,select_features,create_labels] \
-    task=name model=gcn trainer.device=cpu \
-    +task/metrics@task.metrics.bal_acc=accuracy
+    task=name model=gcn trainer.device=cpu
 ```
 
 `precompute_barycentric.py` deliberately drops the

@@ -1,6 +1,5 @@
-"""Tests for the pure regression helpers in src/utils/train_utils.py:
-the target scaler, the regression branches of init_metrics and
-test/validate, and the scaling round trip.
+"""Tests for the pure helpers in src/utils/train_utils.py: init_metrics
+and the regression branches of validate and test.
 """
 
 import pytest
@@ -9,47 +8,10 @@ from types import SimpleNamespace
 from torch_geometric.data import Data
 
 from src.utils.train_utils import (
-    compute_target_scaler,
     init_metrics,
-    scale_targets,
     test as _test_entrypoint,
-    unscale_predictions,
     validate,
 )
-
-
-class TestTargetScaler:
-    def test_mean_and_std_exact_values(self):
-        """std is the unbiased (ddof=1) torch default:
-        values [1,2,3,4] -> mean 2.5, std sqrt(5/3)."""
-        loader = SimpleNamespace(dataset=[
-            Data(y=torch.tensor([[1.0], [2.0]])),
-            Data(y=torch.tensor([[3.0], [4.0]])),
-        ])
-        mean, std = compute_target_scaler(loader)
-        assert mean == pytest.approx(2.5)
-        assert std == pytest.approx((5.0 / 3.0) ** 0.5)
-
-    def test_constant_targets_fall_back_to_unit_std(self):
-        loader = SimpleNamespace(dataset=[
-            Data(y=torch.tensor([[5.0], [5.0]])),
-            Data(y=torch.tensor([[5.0]])),
-        ])
-        mean, std = compute_target_scaler(loader)
-        assert mean == pytest.approx(5.0)
-        assert std == 1.0
-
-    def test_scale_and_unscale_roundtrip(self):
-        scaler = (2.5, 1.5)
-        y = torch.tensor([1.0, 2.5, 4.0])
-        scaled = scale_targets(y, scaler)
-        assert torch.allclose(scaled, torch.tensor([-1.0, 0.0, 1.0]))
-        assert torch.allclose(unscale_predictions(scaled, scaler), y)
-
-    def test_none_scaler_is_identity(self):
-        y = torch.tensor([1.0, 2.0])
-        assert scale_targets(y, None) is y
-        assert unscale_predictions(y, None) is y
 
 
 class TestInitMetrics:
@@ -70,6 +32,28 @@ class TestInitMetrics:
         assert [name for name, _ in accs] == ["mae"]
         import torchmetrics
         assert isinstance(accs[0][1], torchmetrics.MeanAbsoluteError)
+
+    def test_regression_rounded_accuracy_instantiates(self):
+        """RoundedAccuracy is a regression metric; it must not receive
+        the classification wiring of torchmetrics.Accuracy."""
+        from omegaconf import OmegaConf
+        from src.metrics.regression import RoundedAccuracy
+
+        cfg = OmegaConf.create({
+            "task": {
+                "task_type": "regression",
+                "metrics": {
+                    "rounded_accuracy": {
+                        "_target_": "src.metrics.regression.RoundedAccuracy"
+                    },
+                },
+            },
+            "trainer": {"device": "cpu"},
+            "model": {"out_channels": 1},
+        })
+        (name, metric), = init_metrics(cfg)
+        assert name == "rounded_accuracy"
+        assert isinstance(metric, RoundedAccuracy)
 
     def test_classification_accuracy_gets_multiclass_wiring(self):
         from omegaconf import OmegaConf
@@ -97,16 +81,17 @@ class _FakeRun:
         self.logged.append(payload)
 
 
-class _EchoScaledModel(torch.nn.Module):
-    """Predicts the z-scored ground truth exactly: after unscaling,
-    every metric must report a perfect score."""
-
-    def __init__(self, scaler):
-        super().__init__()
-        self.scaler = scaler
+class _EchoModel(torch.nn.Module):
+    """Predicts the ground truth exactly: every metric must report a
+    perfect score."""
 
     def forward(self, batch):
-        return scale_targets(batch.y, self.scaler)
+        return batch.y
+
+
+class _OffByOne(torch.nn.Module):
+    def forward(self, batch):
+        return batch.y + 1.0
 
 
 def _regression_cfg():
@@ -125,50 +110,40 @@ def _batches():
 
 
 class TestRegressionEvaluation:
-    def test_validate_scales_loss_and_unscales_metrics(self):
+    def test_validate_reports_loss_and_metrics(self):
         import torchmetrics
 
-        scaler = (5.0, 2.0)
-        model = _EchoScaledModel(scaler)
         metrics = validate(
-            model, _batches(), torch.nn.MSELoss(),
+            _EchoModel(), _batches(), torch.nn.MSELoss(),
             [("mae", torchmetrics.MeanAbsoluteError())],
-            _regression_cfg(), target_scaler=scaler,
+            _regression_cfg(),
         )
         assert metrics["val/loss"] == pytest.approx(0.0)
         assert metrics["val/mae"] == pytest.approx(0.0)
 
-    def test_test_reports_metrics_in_original_units(self):
+    def test_test_logs_epoch_and_metrics(self):
         import torchmetrics
 
-        scaler = (5.0, 2.0)
-        model = _EchoScaledModel(scaler)
         run = _FakeRun()
         _test_entrypoint(
-            model, _batches(),
+            _EchoModel(), _batches(),
             [("mae", torchmetrics.MeanAbsoluteError())],
             label_to_index={}, run=run, cfg=_regression_cfg(),
-            epoch=3, target_scaler=scaler,
+            epoch=3,
         )
         assert len(run.logged) == 1
         payload = run.logged[0]
         assert payload["epoch"] == 3
         assert payload["test/mae"] == pytest.approx(0.0)
 
-    def test_off_by_one_predictions_keep_their_distance(self):
-        """Without unscaling in place a (mean, std) scaler would shrink
-        the reported error; the MAE must stay exactly 1."""
+    def test_off_by_one_predictions_score_mae_one(self):
         import torchmetrics
-
-        class OffByOne(torch.nn.Module):
-            def forward(self, batch):
-                return scale_targets(batch.y, (5.0, 2.0)) + 0.5
 
         run = _FakeRun()
         _test_entrypoint(
-            OffByOne(), _batches(),
+            _OffByOne(), _batches(),
             [("mae", torchmetrics.MeanAbsoluteError())],
             label_to_index={}, run=run, cfg=_regression_cfg(),
-            epoch=0, target_scaler=(5.0, 2.0),
+            epoch=0,
         )
         assert run.logged[0]["test/mae"] == pytest.approx(1.0)

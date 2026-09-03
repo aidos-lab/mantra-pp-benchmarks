@@ -1,7 +1,7 @@
 defaults:
   - base_task
 
-loss: 
+loss:
   _target_: torch.nn.MSELoss
 
 name: Chern
@@ -17,8 +17,3 @@ metrics:
     _target_: torchmetrics.MeanAbsoluteError
   rounded_accuracy:
     _target_: src.metrics.regression.RoundedAccuracy
-  # c2_anticanonical is even on every sample; also score against the
-  # even lattice so odd roundings are not counted as misses.
-  lattice_accuracy:
-    _target_: src.metrics.regression.LatticeRoundedAccuracy
-    spacing: 2

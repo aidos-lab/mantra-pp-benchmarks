@@ -1,6 +1,9 @@
 defaults:
   - base_task
 
+loss:
+  _target_: torch.nn.CrossEntropyLoss
+
 name: HodgeClass
 task_type: classification
 
@@ -10,5 +13,7 @@ target: h11
 
 metrics:
   accuracy:
+    _target_: torchmetrics.Accuracy
+  balanced_accuracy:
     _target_: torchmetrics.Accuracy
     average: macro

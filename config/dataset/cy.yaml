@@ -11,9 +11,12 @@ local_path: null
 # own processed directory, so they are cheap for smoke tests.
 limit: null
 
-# CalabiYau splits are plain seeded random splits; stratification is
-# not implemented for this dataset.
-use_stratified: True
+# Splits stratify on / filter by the values of `label_source`.
+# Stratifying needs every kept value in each split, so switch it on
+# together with a `min_sample_per_class` that drops the rare values.
+use_stratified: False
+label_source: h11
+min_sample_per_class: null
 
 # 20% test split as in arXiv:2112.09117.
 train_parameters:
