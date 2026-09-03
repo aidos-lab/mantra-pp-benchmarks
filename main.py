@@ -30,13 +30,7 @@ from src.schema import RootConfig
 from src.transforms import RemapLabels
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
-from src.utils.train_utils import (
-    train,
-    validate,
-    test,
-    init_metrics,
-    compute_target_scaler,
-)
+from src.utils.train_utils import train, validate, test, init_metrics
 from src.utils.gpu_utils import is_blackwell_gpu, set_gpu_configs
 
 from tqdm import tqdm
@@ -284,24 +278,17 @@ def main(cfg: RootConfig):
 
     conf_dict = OmegaConf.to_container(cfg, resolve=True)
 
-    # z-score regression targets with train-split statistics; metrics
-    # are computed in original units (see compute_target_scaler).
-    target_scaler = None
-    if cfg.task.task_type == "regression" and cfg.task.get("standardize_targets", False):
-        target_scaler = compute_target_scaler(train_dl)
-        print(f"Target scaler: mean={target_scaler[0]:.4f} std={target_scaler[1]:.4f}")
-
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})
         accuracies = init_metrics(cfg)
         last_epoch = 0
         if cfg.train:
-            model, last_epoch = training_loop(train_dl, val_dl, model, accuracies, run, cfg, label_to_index, target_scaler)
+            model, last_epoch = training_loop(train_dl, val_dl, model, accuracies, run, cfg, label_to_index)
 
-        test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch, target_scaler=target_scaler)
+        test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch)
 
 
-def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index, target_scaler=None):
+def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):
     MAX_EPOCH = cfg.trainer.max_epoch
     if MAX_EPOCH <= 0:
         raise ValueError("trainer.max_epoch must be greater than zero")
@@ -351,11 +338,11 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
 
         # Train
         epoch_start = time.perf_counter()
-        train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg, target_scaler)
+        train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
         train_metrics['train/epoch_time_s'] = time.perf_counter() - epoch_start
 
         # Validation
-        val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg, target_scaler)
+        val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg)
 
         # Construct the progress bar
         pbar_str = ""

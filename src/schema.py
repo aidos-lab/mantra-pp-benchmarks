@@ -28,9 +28,6 @@ class TaskMeta:
     loss: LossMeta
     target: str
     task_type: str
-    # Regression only: z-score targets with train-split statistics and
-    # invert before the metrics (see compute_target_scaler).
-    standardize_targets: bool = False
     metrics: Dict[str, MetricMeta] = field(default_factory=dict)
 
 @dataclass
