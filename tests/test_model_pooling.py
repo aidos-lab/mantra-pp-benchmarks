@@ -1,6 +1,5 @@
-"""Value-level tests for the pool_method and readout_activation knobs
-of MLP and Graphormer (GCN and ResidualGatedGCN already route through
-src.models.utils.pool)."""
+"""Value-level tests for the pool_method knob of MLP and Graphormer
+(GCN and ResidualGatedGCN already route through src.models.utils.pool)."""
 
 import pytest
 import torch
@@ -11,11 +10,10 @@ from src.models.MLP import MLP
 from src.utils.graphormer_spd import GraphormerSPDPreTransform
 
 
-def _mlp(pool_method="mean", readout_activation=True, out_channels=3):
+def _mlp(pool_method="mean", out_channels=3):
     torch.manual_seed(0)
     return MLP(2, 8, out_channels, n_layers=2, dropout=0.0,
-               batch_norm=True, residuals=False, pool_method=pool_method,
-               readout_activation=readout_activation)
+               batch_norm=True, residuals=False, pool_method=pool_method)
 
 
 def _graphs():
@@ -50,27 +48,21 @@ class TestMLPPooling:
         with pytest.raises(AssertionError):
             model(batch)
 
-    def test_linear_head_can_predict_negative_values(self):
-        """readout_activation=False replaces the ReLU-clamped head with
-        a plain Linear: outputs must not be clamped to >= 0 (regression
-        targets like c2_anticanonical ~ -98 need the lower half)."""
-        clamped = _mlp(readout_activation=True, out_channels=1)
-        linear = _mlp(readout_activation=False, out_channels=1)
-        assert isinstance(linear.readout, torch.nn.Linear)
-        clamped.eval()
-        linear.eval()
-
+    def test_readout_is_linear(self):
+        """The readout is a plain Linear layer, so regression outputs
+        are not clamped to >= 0 (c2_anticanonical can be negative)."""
+        model = _mlp(out_channels=1)
+        assert isinstance(model.readout, torch.nn.Linear)
+        model.eval()
+        with torch.no_grad():
+            model.readout.weight.fill_(-1.0)
+            model.readout.bias.fill_(-1.0)
         graphs = [
             Data(x=torch.randn(4, 2),
                  edge_index=torch.empty((2, 0), dtype=torch.long))
             for _ in range(8)
         ]
-        batch = Batch.from_data_list(graphs)
-        assert (clamped(batch) >= 0).all()
-        with torch.no_grad():
-            linear.readout.weight.fill_(-1.0)
-            linear.readout.bias.fill_(-1.0)
-        assert (linear(batch) < 0).all()
+        assert (model(Batch.from_data_list(graphs)) < 0).all()
 
 
 class TestGraphormerPooling:
