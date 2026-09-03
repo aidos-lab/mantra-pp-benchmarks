@@ -2,7 +2,7 @@ defaults:
   - base_task
 name: Orientability
 target: orientable
-loss: 
+loss:
   _target_: torch.nn.CrossEntropyLoss
 
 metrics:

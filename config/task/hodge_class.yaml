@@ -14,4 +14,6 @@ target: h11
 metrics:
   accuracy:
     _target_: torchmetrics.Accuracy
+  balanced_accuracy:
+    _target_: torchmetrics.Accuracy
     average: macro

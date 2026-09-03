@@ -2,7 +2,7 @@ defaults:
   - base_task
 name: BettiNumbers
 target: betti_numbers
-loss: 
+loss:
   _target_: torch.nn.CrossEntropyLoss
 
 metrics:
