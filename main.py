@@ -17,7 +17,14 @@ from torch_geometric.transforms import Compose
 from mantra.datasets import MantraDataset
 from mantra.representations.internal import SimplexTrie
 from mantra.representations.internal.simplex_trie import SimplexNode
-from mantra.transforms.task_transforms import BettiToClassTransform, OrientableToClassTransform, NameToClass2MTransform, NameToClass3MTransform
+from mantra.transforms.task_transforms import (
+    AttributeToClassTransform,
+    AttributeToRegressionTransform,
+    BettiToClassTransform,
+    NameToClass2MTransform,
+    NameToClass3MTransform,
+    OrientableToClassTransform,
+)
 
 from src.schema import RootConfig
 from src.transforms import RemapLabels
@@ -44,7 +51,15 @@ cs.store(name="main_conf", node=RootConfig)
 
 torch._dynamo.config.capture_scalar_outputs = True
 
-def task_to_transform(cfg):
+def task_to_transform(cfg, mapping=None):
+    """Label transform of the task, i.e. the transform writing `data.y`.
+
+    The MANTRA tasks are keyed by name. Every other task reads the raw
+    attribute `task.target` verbatim (the Calabi-Yau tasks hodge, chern
+    and hodge_class): regression targets are used as they are, while
+    classification needs `mapping` ({attribute value: class index}),
+    built over the full dataset (see `_cy_class_mapping`).
+    """
     if cfg.task.name == "BettiNumbers":
         return BettiToClassTransform()
     elif cfg.task.name == "Orientability":
@@ -56,6 +71,15 @@ def task_to_transform(cfg):
             return NameToClass3MTransform()
         else:
             raise ValueError("Invalid dimension")
+    elif cfg.task.task_type == "regression":
+        return AttributeToRegressionTransform(cfg.task.target)
+    elif cfg.task.task_type == "classification":
+        if not mapping:
+            raise ValueError(
+                "Attribute classification needs the {value: class index} "
+                "mapping of the full dataset"
+            )
+        return AttributeToClassTransform(cfg.task.target, mapping)
     else:
         raise ValueError("Invalid task")
 
@@ -71,7 +95,7 @@ def _cy_class_mapping(cfg):
     from mantra.datasets import CalabiYau
 
     dataset_cfg = cfg.dataset
-    source = dataset_cfg.transform.create_labels.source
+    source = cfg.task.target
     dataset = CalabiYau(
         root=dataset_cfg.root,
         version=dataset_cfg.version,
@@ -99,22 +123,14 @@ def create_dataset(cfg):
 
     is_cy = dataset_cfg.type == "cy"
 
-    # For CY classification the label transform (an
-    # AttributeToClassTransform) needs its mapping at instantiation.
-    transform_overrides = {}
+    # CY classification maps attribute values to output neurons; the
+    # mapping spans the full dataset so it is independent of the split.
     cy_label_to_index = {}
     if is_cy and cfg.task.task_type == "classification":
-        mapping = transform_cfg.create_labels.get("mapping")
-        if mapping is None:
-            cy_label_to_index = _cy_class_mapping(cfg)
-            transform_overrides["create_labels"] = {
-                "mapping": cy_label_to_index
-            }
-        else:
-            cy_label_to_index = dict(mapping)
+        cy_label_to_index = _cy_class_mapping(cfg)
 
     transforms = [None for _ in range(len(list(transform_cfg.items())))]
-    task_transform = task_to_transform(cfg)
+    task_transform = task_to_transform(cfg, mapping=cy_label_to_index)
 
     for name, transform in transform_cfg.items():
         trans = hydra.utils.instantiate(transform)
@@ -138,7 +154,7 @@ def create_dataset(cfg):
             "local_path": dataset_cfg.local_path,
             "limit": dataset_cfg.limit,
             "force_reload": dataset_cfg.reload,
-            "seed": cfg.seed,
+            "seed": dataset_cfg.seed,
             "split_proportions": [split.train, split.val, split.test],
             "transform": transforms,
         }
@@ -271,7 +287,7 @@ def main(cfg: RootConfig):
     # z-score regression targets with train-split statistics; metrics
     # are computed in original units (see compute_target_scaler).
     target_scaler = None
-    if cfg.task.task_type == "regression" and cfg.task.standardize_targets:
+    if cfg.task.task_type == "regression" and cfg.task.get("standardize_targets", False):
         target_scaler = compute_target_scaler(train_dl)
         print(f"Target scaler: mean={target_scaler[0]:.4f} std={target_scaler[1]:.4f}")
 
