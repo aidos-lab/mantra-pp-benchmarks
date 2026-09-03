@@ -2,7 +2,7 @@ defaults:
   - base_task
 name: Name
 target: name
-loss:
+loss: 
   _target_: torch.nn.CrossEntropyLoss
 
 metrics:
