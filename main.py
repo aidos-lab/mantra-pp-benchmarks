@@ -114,24 +114,19 @@ def create_dataset(cfg):
     dataset_cfg = cfg.dataset
     transform_cfg = dataset_cfg.transform
     transform_order = dataset_cfg.transform_order
-
     is_cy = dataset_cfg.type == "cy"
 
-    # CY classification maps attribute values to output neurons; the
-    # mapping spans the full dataset so it is independent of the split.
-    cy_label_to_index = {}
-    if is_cy and cfg.task.task_type == "classification":
-        cy_label_to_index = _cy_class_mapping(cfg)
 
     transforms = [None for _ in range(len(list(transform_cfg.items())))]
-    task_transform = task_to_transform(cfg, mapping=cy_label_to_index)
 
     for name, transform in transform_cfg.items():
         trans = hydra.utils.instantiate(transform)
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
-    transforms.insert(0, task_transform)
+    if not is_cy:
+        task_transform = task_to_transform(cfg)
+        transforms.insert(0, task_transform)
 
     transforms = Compose(transforms)
 
@@ -152,7 +147,6 @@ def create_dataset(cfg):
             "split_proportions": [split.train, split.val, split.test],
             "stratified": dataset_cfg.use_stratified,
             "label_source": dataset_cfg.label_source,
-            "min_sample_per_class": dataset_cfg.min_sample_per_class,
             "transform": transforms,
         }
 
@@ -163,41 +157,41 @@ def create_dataset(cfg):
         # The class mapping already spans the full dataset, so `y` is
         # contiguous by construction; the train-split remapping below
         # is only needed for the MANTRA datasets.
-        return train_dataset, val_dataset, test_dataset, cy_label_to_index
+    else:
 
-    dataset_parameters = {
-            "root": dataset_cfg.root,
-            "dimension": dataset_cfg.dimension,
-            "version": dataset_cfg.version,
-            "balanced": dataset_cfg.balanced,
-            "local_path": dataset_cfg.local_path,
-            "force_reload": dataset_cfg.reload,
-            "seed": dataset_cfg.seed,
-            "split_proportions": [split.train, split.val, split.test],
-            "min_sample_per_class": dataset_cfg.min_sample_per_class,
-            "division_type": dataset_cfg.division_type,
-            "stratified": dataset_cfg.use_stratified,
-            "max_vertices": dataset_cfg.max_vertices,
-            "n_moves": dataset_cfg.n_moves,
-            "target_count": dataset_cfg.target_count,
-            "use_surgery": dataset_cfg.use_surgery,
-            "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
-            "transform": transforms,
+        dataset_parameters = {
+                "root": dataset_cfg.root,
+                "dimension": dataset_cfg.dimension,
+                "version": dataset_cfg.version,
+                "balanced": dataset_cfg.balanced,
+                "local_path": dataset_cfg.local_path,
+                "force_reload": dataset_cfg.reload,
+                "seed": dataset_cfg.seed,
+                "split_proportions": [split.train, split.val, split.test],
+                "min_sample_per_class": dataset_cfg.min_sample_per_class,
+                "division_type": dataset_cfg.division_type,
+                "stratified": dataset_cfg.use_stratified,
+                "max_vertices": dataset_cfg.max_vertices,
+                "n_moves": dataset_cfg.n_moves,
+                "target_count": dataset_cfg.target_count,
+                "use_surgery": dataset_cfg.use_surgery,
+                "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
+                "transform": transforms,
 
-        }
+            }
 
-    train_dataset = MantraDataset(
-        split_type="train",
-        **dataset_parameters
-    )
-    val_dataset = MantraDataset(
-            split_type="val",
+        train_dataset = MantraDataset(
+            split_type="train",
             **dataset_parameters
-    )
-    test_dataset = MantraDataset(
-            split_type="test",
-            **dataset_parameters
-    )
+        )
+        val_dataset = MantraDataset(
+                split_type="val",
+                **dataset_parameters
+        )
+        test_dataset = MantraDataset(
+                split_type="test",
+                **dataset_parameters
+        )
 
     label_to_index = {}
 
@@ -213,11 +207,9 @@ def create_dataset(cfg):
 
     return train_dataset, val_dataset, test_dataset, label_to_index
 
-def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
+def create_loaders(cfg, train_dataset, val_dataset, test_dataset, is_graph_representation):
     trainer_cfg = cfg.trainer
     persistent_workers = trainer_cfg.num_workers > 0
-
-    is_graph_representation = "edge_index" in train_dataset[0]
 
     if not is_graph_representation:
         train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
@@ -258,10 +250,12 @@ def main(cfg: RootConfig):
     # ---- Dataset -----
 
     train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
-    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
-
     sample = train_ds[0]
-    if "edge_index" in sample:
+    is_graph_representation = bool("x_0" in sample.__dict__)
+    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds, is_graph_representation)
+
+
+    if is_graph_representation:
         num_features = sample.x.shape[1]
     else:
         num_features = [
