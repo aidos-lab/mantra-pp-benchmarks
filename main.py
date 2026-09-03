@@ -68,12 +68,7 @@ def task_to_transform(cfg, mapping=None):
     elif cfg.task.task_type == "regression":
         return AttributeToRegressionTransform(cfg.task.target)
     elif cfg.task.task_type == "classification":
-        if not mapping:
-            raise ValueError(
-                "Attribute classification needs the {value: class index} "
-                "mapping of the full dataset"
-            )
-        return AttributeToClassTransform(cfg.task.target, mapping)
+        return AttributeToClassTransform(cfg.task.target, None)
     else:
         raise ValueError("Invalid task")
 
@@ -124,9 +119,8 @@ def create_dataset(cfg):
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
-    if not is_cy:
-        task_transform = task_to_transform(cfg)
-        transforms.insert(0, task_transform)
+    task_transform = task_to_transform(cfg)
+    transforms.insert(0, task_transform)
 
     transforms = Compose(transforms)
 
