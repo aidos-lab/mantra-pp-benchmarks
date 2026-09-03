@@ -1,0 +1,27 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.MSELoss
+
+name: ChernNode
+task_type: regression
+task_level: node
+
+# Node-level regression of the `c2` column: one value per vertex, the
+# second Chern class paired with the vertex's prime toric divisor
+# (c2 . D_i). Vertex 0 is the origin of the polytope and carries no
+# divisor (its entry is minus the sum of the others); mask_first drops
+# it from the loss and the metrics through `node_mask`.
+target: c2
+mask_first: True
+
+# The graph nodes must be the triangulation vertices, e.g.
+#   representation@dataset.transform.representation=one_skeleton
+# (the default dual graph has one node per top simplex).
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError
+  rounded_accuracy:
+    _target_: src.metrics.regression.RoundedAccuracy

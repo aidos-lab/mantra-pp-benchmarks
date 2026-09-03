@@ -69,10 +69,13 @@ class ResidualGatedGCN(nn.Module):
         batch_norm: bool = True,
         residuals: bool = True,
         dropout: float = 0.5,
-        pool_method: str = "mean"
+        pool_method: str = "mean",
+        task_level: str = "graph",
     ):
         super().__init__()
+        assert task_level in ("graph", "node"), f"Unknown task_level {task_level!r}"
         self.pool_method = pool_method
+        self.task_level = task_level
         self.input_proj = nn.Linear(
             in_channels, hidden_channels
         )
@@ -97,7 +100,9 @@ class ResidualGatedGCN(nn.Module):
         x = self.input_proj(x)
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
-        x = pool(x, batch_idx, self.pool_method)
+        # Node-level tasks keep one embedding per node
+        if self.task_level == "graph":
+            x = pool(x, batch_idx, self.pool_method)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.final_linear(x)
         return x

@@ -51,6 +51,21 @@ cs.store(name="main_conf", node=RootConfig)
 
 torch._dynamo.config.capture_scalar_outputs = True
 
+def _node_task_transforms():
+    """The node-level task transforms of mantra (aidos-lab/mantra#96)."""
+    try:
+        from mantra.transforms import (
+            AttributeToNodeClassTransform,
+            AttributeToNodeRegressionTransform,
+        )
+    except ImportError as error:
+        raise ImportError(
+            "Node-level tasks need a mantra with the node-level task "
+            "transforms (aidos-lab/mantra#96)"
+        ) from error
+    return AttributeToNodeRegressionTransform, AttributeToNodeClassTransform
+
+
 def task_to_transform(cfg, mapping=None):
     """Label transform of the task, i.e. the transform writing `data.y`.
 
@@ -59,7 +74,15 @@ def task_to_transform(cfg, mapping=None):
     and hodge_class): regression targets are used as they are, while
     classification needs `mapping` ({attribute value: class index}),
     built over the full dataset (see `_cy_class_mapping`).
+
+    With `task.task_level=node` the attribute holds one value per
+    vertex and the node-level transforms are used instead; they also
+    store `data.node_mask`, from which `task.mask_first` removes the
+    first vertex.
     """
+    task_level = getattr(cfg.task, "task_level", "graph")
+    mask_first = getattr(cfg.task, "mask_first", False)
+
     if cfg.task.name == "BettiNumbers":
         return BettiToClassTransform()
     elif cfg.task.name == "Orientability":
@@ -72,12 +95,20 @@ def task_to_transform(cfg, mapping=None):
         else:
             raise ValueError("Invalid dimension")
     elif cfg.task.task_type == "regression":
+        if task_level == "node":
+            node_regression, _ = _node_task_transforms()
+            return node_regression(cfg.task.target, mask_first=mask_first)
         return AttributeToRegressionTransform(cfg.task.target)
     elif cfg.task.task_type == "classification":
         if not mapping:
             raise ValueError(
                 "Attribute classification needs the {value: class index} "
                 "mapping of the full dataset"
+            )
+        if task_level == "node":
+            _, node_classification = _node_task_transforms()
+            return node_classification(
+                cfg.task.target, mapping, mask_first=mask_first
             )
         return AttributeToClassTransform(cfg.task.target, mapping)
     else:
@@ -104,12 +135,16 @@ def _cy_class_mapping(cfg):
         force_reload=dataset_cfg.reload,
     )
 
+    # Scalar attributes (graph-level) and per-vertex attributes
+    # (node-level) alike. Every vertex value needs a class, masked
+    # vertices included: the node transform maps all of them and only
+    # the loss and the metrics honor the mask.
     values = set()
     for data in dataset:
-        value = data[source]
-        if isinstance(value, torch.Tensor):
-            value = value.item()
-        values.add(int(value))
+        values.update(
+            int(value)
+            for value in torch.as_tensor(data[source]).reshape(-1).tolist()
+        )
 
     return {value: index for index, value in enumerate(sorted(values))}
 
@@ -234,10 +269,44 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
 
     return train_loader, val_loader, test_loader
 
+def check_node_level_sample(cfg, sample):
+    """Node-level targets must line up with the nodes the model sees.
+
+    `data.y` has one row per triangulation vertex, so the representation
+    has to use the vertices as its nodes: the one-skeleton, or the
+    0-cells (`x_0`) of a simplicial complex. The dual graph (one node
+    per top simplex) and the Hasse diagram (one node per simplex)
+    cannot serve node-level tasks.
+    """
+    if getattr(cfg.task, "task_level", "graph") != "node":
+        return
+
+    n_nodes = sample.x_0.shape[0] if "x_0" in sample else sample.num_nodes
+    if sample.y.shape[0] != n_nodes:
+        raise ValueError(
+            f"Node-level task: data.y has {sample.y.shape[0]} rows (one per "
+            f"vertex) but the representation has {n_nodes} nodes. Use "
+            "representation@dataset.transform.representation=one_skeleton "
+            "or a simplicial representation."
+        )
+
+
 def create_model(cfg, num_features, label_to_index):
     cfg.model.out_channels = (
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
+
+    # Node-level tasks need one prediction per vertex: the model's
+    # task_level switch is set from the task, like out_channels.
+    task_level = getattr(cfg.task, "task_level", "graph")
+    if hasattr(cfg.model, "task_level"):
+        cfg.model.task_level = task_level
+    elif task_level != "graph":
+        raise ValueError(
+            f"task.task_level={task_level!r}, but the model config has no "
+            "task_level: use a model with a node-level head (gcn, mlp, "
+            "graphormer, residual_gated_gcn, cwn, sccnn)"
+        )
 
     in_channels = num_features
 
@@ -265,6 +334,7 @@ def main(cfg: RootConfig):
     train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
 
     sample = train_ds[0]
+    check_node_level_sample(cfg, sample)
     if "x_0" in sample:
         num_features = [
             sample[f"x_{dim}"].shape[1]

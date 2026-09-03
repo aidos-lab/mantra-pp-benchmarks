@@ -161,6 +161,7 @@ class Graphormer(nn.Module):
             ffn_expansion_ratio: int = 4,
             spd_undirected: bool = True,
             pool_method: str = 'mean',
+            task_level: str = 'graph',
     ):
         super().__init__()
         if hidden_channels % num_heads != 0:
@@ -168,7 +169,9 @@ class Graphormer(nn.Module):
                 "hidden_channels must be divisible by num_heads for Graphormer."
             )
         assert pool_method in ('mean', 'sum'), " Unknwon pooling methods"
+        assert task_level in ('graph', 'node'), f"Unknown task_level {task_level!r}"
         self.pool_method = pool_method
+        self.task_level = task_level
         self.hidden_dim = hidden_channels
         self.num_heads = num_heads
         self.use_spatial_encoding = use_spatial_encoding
@@ -294,10 +297,16 @@ class Graphormer(nn.Module):
             x_dense = layer(x_dense, node_mask, attn_bias)
 
         valid_nodes = ~node_mask
-        out = (x_dense * valid_nodes.unsqueeze(-1)).sum(dim=1)
-        if self.pool_method == 'mean':
-            denom = valid_nodes.sum(dim=1).clamp(min=1).unsqueeze(-1)
-            out = out / denom
+        if self.task_level == 'node':
+            # Drop the padding: the row-major order of the dense batch
+            # is the node order of the sparse batch, so this yields one
+            # row per node of `batch.x`.
+            out = x_dense[valid_nodes]
+        else:
+            out = (x_dense * valid_nodes.unsqueeze(-1)).sum(dim=1)
+            if self.pool_method == 'mean':
+                denom = valid_nodes.sum(dim=1).clamp(min=1).unsqueeze(-1)
+                out = out / denom
 
         out = self.dropout(out)
         out = self.final_linear(out)

@@ -45,9 +45,11 @@ class GCNLayer(nn.Module):
 
 
 class GCN(nn.Module):
-    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,  n_layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5, pool_method: str = "mean"):
+    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,  n_layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5, pool_method: str = "mean", task_level: str = "graph"):
         super().__init__()
+        assert task_level in ("graph", "node"), f"Unknown task_level {task_level!r}"
         self.pool_method = pool_method
+        self.task_level = task_level
 
         self.hidden_layers = nn.ModuleList(
             [
@@ -68,8 +70,9 @@ class GCN(nn.Module):
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
 
-        # 2. Readout layer
-        x = pool(x, batch, self.pool_method)  # [batch_size, hidden_channels]
+        # 2. Readout layer; node-level tasks keep one embedding per node
+        if self.task_level == "graph":
+            x = pool(x, batch, self.pool_method)  # [batch_size, hidden_channels]
         # 3. Apply a final classifier
         x = self.final_linear(x)
         return x

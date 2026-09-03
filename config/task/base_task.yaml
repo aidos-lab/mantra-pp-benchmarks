@@ -1,3 +1,11 @@
 name: Base
 task_type: classification # classification / regression
+# graph: one target per sample. node: one target per triangulation
+# vertex; `data.y` then has a row per vertex and `data.node_mask`
+# selects the supervised ones. Node-level tasks need a representation
+# whose nodes are the vertices (one_skeleton, or a simplicial complex)
+# and a model with a task_level switch (see create_model).
+task_level: graph # graph / node
+# Node-level only: exclude the first vertex from the supervision.
+mask_first: False
 metrics: {}

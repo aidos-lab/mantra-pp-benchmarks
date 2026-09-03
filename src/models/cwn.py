@@ -378,9 +378,12 @@ class CWN(torch.nn.Module):
         in_channels: List[int],
         hidden_channels: List[int],
         n_layers,
+        task_level: str = 'graph',
         **kwargs,
     ):
         super().__init__()
+        assert task_level in ('graph', 'node'), f"Unknown task_level {task_level!r}"
+        self.task_level = task_level
 
         self.proj_0 = torch.nn.Linear(in_channels[0], hidden_channels[0])
         self.proj_1 = torch.nn.Linear(in_channels[1], hidden_channels[1])
@@ -479,7 +482,13 @@ class CWN(torch.nn.Module):
         }
         out = self.readout(model_out, incidence_map)
         out = self.graph_readout(out['x_0'])
-        
+
+        # Node-level tasks keep the per-0-cell predictions; the
+        # PropagateSignalDown readout has already pulled the edge and
+        # face states into the 0-cells.
+        if self.task_level == 'node':
+            return out
+
         out = scatter_add(out, batch['batch_0'], dim=-2)
 
-        return out 
+        return out

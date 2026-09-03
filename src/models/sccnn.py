@@ -509,9 +509,11 @@ class SCCNN(nn.Module):
          Number of layers (default: 2).
     """
 
-    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2):
+    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2, task_level: str = 'graph'):
         super().__init__()
+        assert task_level in ('graph', 'node'), f"Unknown task_level {task_level!r}"
         self.sc_order = sc_order
+        self.task_level = task_level
 
         self.sccnn_backbone = SCCNNBackbone(
             in_channels,
@@ -522,15 +524,21 @@ class SCCNN(nn.Module):
             n_layers,
         )
 
-        self.readout_0 = SumReadout(
-            hidden_channels[0], out_channels
-        )
-        self.readout_1 = SumReadout(
-            hidden_channels[1], out_channels
-        )
-        self.readout_2 = SumReadout(
-            hidden_channels[2], out_channels
-        )
+        if task_level == 'node':
+            # Per-vertex head on the rank-0 states; edge and face
+            # information reaches them through the backbone's
+            # inter-rank convolutions.
+            self.node_readout = nn.Linear(hidden_channels[0], out_channels)
+        else:
+            self.readout_0 = SumReadout(
+                hidden_channels[0], out_channels
+            )
+            self.readout_1 = SumReadout(
+                hidden_channels[1], out_channels
+            )
+            self.readout_2 = SumReadout(
+                hidden_channels[2], out_channels
+            )
 
     def _reconstruct(self, batch, name):
         idx = batch[f"{name}_idx"]
@@ -596,6 +604,9 @@ class SCCNN(nn.Module):
         x_0, x_1, x_2 = self.sccnn_backbone(
             x_all, laplacian_all, incidence_all
         )
+
+        if self.task_level == 'node':
+            return self.node_readout(x_0)
 
         #TODO: Figure out what to do about this readout
         out_0 = self.readout_0(x_0, x_bel_0)

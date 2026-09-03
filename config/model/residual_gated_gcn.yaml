@@ -7,3 +7,4 @@ batch_norm: true
 residuals: true
 dropout: 0.5
 pool_method: mean
+task_level: graph # Get from task

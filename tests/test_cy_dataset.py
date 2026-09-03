@@ -36,8 +36,14 @@ CONFIG_DIR = os.path.abspath(
 
 # 30 star triangulations of the cone over a square boundary; h11
 # enumerates the samples, h12 cycles through three values, and the
-# even c2_anticanonical column covers both signs.
+# even c2_anticanonical column covers both signs. The per-vertex `c2`
+# column mimics c2 . D_i: vertex 0 is the origin and holds minus the
+# sum of the other entries.
 N_ROWS = 30
+
+
+def _c2(i):
+    return [-(20 + 2 * (i % 3)), 2 + 2 * (i % 3), 4, 6, 8]
 
 
 def _write_parquet(tmp_path):
@@ -50,6 +56,7 @@ def _write_parquet(tmp_path):
             "h11": i,
             "h12": i % 3,
             "c2_anticanonical": 2 * i - 10,
+            "c2": _c2(i),
         }
         for i in range(N_ROWS)
     ]
@@ -143,3 +150,109 @@ class TestCYClassification:
         _, _, _, first = main.create_dataset(cfg)
         _, _, _, again = main.create_dataset(cfg)
         assert first == again
+
+
+try:
+    from mantra.transforms import AttributeToNodeRegressionTransform
+except ImportError:  # mantra without aidos-lab/mantra#96
+    AttributeToNodeRegressionTransform = None
+
+ONE_SKELETON = "representation@dataset.transform.representation=one_skeleton"
+
+
+@pytest.mark.skipif(
+    AttributeToNodeRegressionTransform is None,
+    reason="requires mantra with the node-level task transforms (#96)",
+)
+class TestCYNodeLevel:
+    def test_regression_targets_per_vertex(self, tmp_path):
+        cfg = _cfg(tmp_path, "task=chern_node", ONE_SKELETON)
+        train, val, test, label_to_index = main.create_dataset(cfg)
+
+        assert label_to_index == {}
+        for dataset in (train, val, test):
+            for data in dataset:
+                assert data.y.shape == (5, 1)
+                assert data.y.dtype == torch.float32
+                assert data.y.flatten().tolist() == _c2(int(data.h11))
+                assert data.node_mask.tolist() == [False] + [True] * 4
+                # one_skeleton: node k is vertex k
+                assert data.num_nodes == 5
+
+    def test_dual_graph_is_rejected(self, tmp_path):
+        """The default dual graph has one node per top simplex (4),
+        which cannot carry the 5 per-vertex targets."""
+        cfg = _cfg(tmp_path, "task=chern_node")
+        train, _, _, _ = main.create_dataset(cfg)
+        with pytest.raises(ValueError, match="one_skeleton"):
+            main.check_node_level_sample(cfg, train[0])
+
+        cfg = _cfg(tmp_path, "task=chern_node", ONE_SKELETON)
+        train, _, _, _ = main.create_dataset(cfg)
+        main.check_node_level_sample(cfg, train[0])
+
+    def test_loaders_batch_per_vertex(self, tmp_path):
+        cfg = _cfg(tmp_path, "task=chern_node", ONE_SKELETON,
+                   "trainer.batch_size=3")
+        train, val, test, _ = main.create_dataset(cfg)
+        _, val_loader, _ = main.create_loaders(cfg, train, val, test)
+
+        batch = next(iter(val_loader))
+        n_graphs = batch.num_graphs
+        assert batch.y.shape == (5 * n_graphs, 1)
+        assert batch.node_mask.shape == (5 * n_graphs,)
+        assert batch.num_nodes == 5 * n_graphs
+        assert batch.node_mask.sum().item() == 4 * n_graphs
+
+        # The rows of `y` follow the node order of the batch.
+        for g in range(n_graphs):
+            rows = batch.y[batch.batch == g].flatten().tolist()
+            assert rows == val[g].y.flatten().tolist()
+
+    def test_node_classification_maps_every_vertex_value(self, tmp_path):
+        cfg = _cfg(
+            tmp_path, "task=hodge_class", "task.target=c2",
+            "task.task_level=node", "task.mask_first=True", ONE_SKELETON,
+        )
+        train, val, test, label_to_index = main.create_dataset(cfg)
+
+        values = sorted({v for i in range(N_ROWS) for v in _c2(i)})
+        assert label_to_index == {v: k for k, v in enumerate(values)}
+        for dataset in (train, val, test):
+            for data in dataset:
+                assert data.y.dtype == torch.long
+                assert data.y.tolist() == [
+                    label_to_index[v] for v in _c2(int(data.h11))
+                ]
+                assert data.node_mask.tolist() == [False] + [True] * 4
+
+    def test_train_and_validate_end_to_end(self, tmp_path):
+        import torch.nn as nn
+        import torchmetrics
+
+        from src.utils.train_utils import train as _train, validate
+
+        cfg = _cfg(tmp_path, "task=chern_node", ONE_SKELETON, "model=gcn",
+                   "trainer.batch_size=8")
+        train, val, test, label_to_index = main.create_dataset(cfg)
+        train_loader, val_loader, _ = main.create_loaders(
+            cfg, train, val, test
+        )
+        main.check_node_level_sample(cfg, train[0])
+
+        model = main.create_model(cfg, train[0].x.shape[1], label_to_index)
+        assert cfg.model.task_level == "node"
+        assert model.task_level == "node"
+
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        metrics = _train(
+            model, optimizer, train_loader, nn.MSELoss(),
+            [("mae", torchmetrics.MeanAbsoluteError())], cfg,
+        )
+        assert torch.isfinite(torch.tensor(metrics["train/loss"]))
+        metrics = validate(
+            model, val_loader, nn.MSELoss(),
+            [("mae", torchmetrics.MeanAbsoluteError())], cfg,
+        )
+        assert torch.isfinite(torch.tensor(metrics["val/loss"]))
+

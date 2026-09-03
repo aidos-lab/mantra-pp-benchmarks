@@ -31,6 +31,11 @@ class TaskMeta:
     # Regression only: z-score targets with train-split statistics and
     # invert before the metrics (see compute_target_scaler).
     standardize_targets: bool = False
+    # 'graph': one target per sample; 'node': one target per vertex,
+    # supervised where data.node_mask is set (see select_supervised).
+    task_level: str = "graph"
+    # Node-level only: exclude the first vertex from the supervision.
+    mask_first: bool = False
     metrics: Dict[str, MetricMeta] = field(default_factory=dict)
 
 @dataclass
@@ -70,6 +75,9 @@ class ModelMeta:
     # Graph readout: 'mean', or 'sum' to keep it extensive (targets
     # that scale with the size of the complex).
     pool_method: str = "mean"
+    # Set from task.task_level by create_model; 'node' skips the graph
+    # readout and emits one output per vertex.
+    task_level: str = "graph"
 
 @dataclass
 class LoggerMeta:
