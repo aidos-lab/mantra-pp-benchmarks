@@ -138,9 +138,9 @@ def create_dataset(cfg):
     split = dataset_cfg.train_parameters.split
 
     if is_cy:
-        # CalabiYau only exists on the mantra `cy` branch; import
+        # The CY classes only exist on the mantra `cy` branch; import
         # lazily so the MANTRA tasks keep working against mantra main.
-        from mantra.datasets import CalabiYau
+        from mantra.datasets import CalabiYauDataset
 
         dataset_parameters = {
             "root": dataset_cfg.root,
@@ -150,12 +150,15 @@ def create_dataset(cfg):
             "force_reload": dataset_cfg.reload,
             "seed": dataset_cfg.seed,
             "split_proportions": [split.train, split.val, split.test],
+            "stratified": dataset_cfg.use_stratified,
+            "label_source": dataset_cfg.label_source,
+            "min_sample_per_class": dataset_cfg.min_sample_per_class,
             "transform": transforms,
         }
 
-        train_dataset = CalabiYau(split_type="train", **dataset_parameters)
-        val_dataset = CalabiYau(split_type="val", **dataset_parameters)
-        test_dataset = CalabiYau(split_type="test", **dataset_parameters)
+        train_dataset = CalabiYauDataset(split_type="train", **dataset_parameters)
+        val_dataset = CalabiYauDataset(split_type="val", **dataset_parameters)
+        test_dataset = CalabiYauDataset(split_type="test", **dataset_parameters)
 
         # The class mapping already spans the full dataset, so `y` is
         # contiguous by construction; the train-split remapping below

@@ -50,6 +50,8 @@ class DatasetMeta:
     reload: bool = False
     balanced: bool = False
     use_stratified: bool = True
+    # Attribute whose values stratify / filter the splits (cy only).
+    label_source: str | None = None
 
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
