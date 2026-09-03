@@ -1,0 +1,22 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.MSELoss
+
+name: ChernNode
+task_type: regression
+task_level: node
+
+# c2 . D_i per vertex; vertex 0 is the origin and carries no divisor.
+target: c2
+mask_first: True
+
+# Needs a representation whose nodes are the vertices, e.g.
+# representation@dataset.transform.representation=one_skeleton.
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError
+  rounded_accuracy:
+    _target_: src.metrics.regression.RoundedAccuracy

@@ -6,4 +6,4 @@ out_channels: 1 # Get from task
 batch_norm: True
 residuals: True
 pool_method: mean
-
+task_level: graph # Get from task

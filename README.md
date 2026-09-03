@@ -178,7 +178,7 @@ Key Hydra groups:
 | `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `san`, `san_tmx`, `cwn`, `sccnn`                  |
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
-| `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge_reg`, `hodge_class`                   |
+| `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge_reg`, `hodge_class`, `chern_node`     |
 | `trainer`                                     | `default`                                                                                           |
 | `logger`                                      | `wandb`                                                                                             |
 
@@ -219,6 +219,10 @@ Tasks:
   of the train split become the classes, remapped to contiguous
   indices like the MANTRA tasks and saved next to the checkpoint as
   `label_to_index.json`.
+- `task=chern_node` — node-level regression of `c2`, the second Chern
+  class paired with each vertex's prime toric divisor (c2 . D_i). The
+  origin vertex carries no divisor and is masked out
+  (`task.mask_first`); see below.
 
 Splits are seeded with `dataset.seed` and sized by
 `dataset.train_parameters.split` (0.7/0.1/0.2); the split files encode
@@ -254,6 +258,35 @@ python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hod
 
 The tests in `tests/test_cy_dataset.py` skip unless the installed
 mantra ships `CalabiYauDataset`.
+
+### Node-level tasks
+
+`task.task_level=node` predicts one value per triangulation vertex:
+the label transform (`mantra.transforms.AttributeToNodeRegressionTransform`
+/ `AttributeToNodeClassTransform`, mantra PR #96) writes a row of
+`data.y` per vertex plus a boolean `data.node_mask` selecting the
+supervised vertices, and the training loop restricts the loss and the
+metrics to the masked rows. Two things must line up with that:
+
+- the graph nodes have to be the vertices, so pick the one-skeleton
+  (or a simplicial representation) instead of the default dual graph;
+- the model needs a node-level head: `create_model` sets
+  `model.task_level` from the task for `gcn`, `mlp`,
+  `residual_gated_gcn`, `graphormer` (no pooling, one output per
+  node) and for `cwn`, `sccnn` (per-0-cell outputs).
+
+```bash
+python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet \
+    task=chern_node model=gcn \
+    representation@dataset.transform.representation=one_skeleton
+```
+
+Any attribute task can be run per vertex, e.g. node-level
+classification with `task=hodge_class task.target=c2
+task.task_level=node task.mask_first=True`. Unlike graph-level
+classification, the class mapping then spans every vertex value of the
+full dataset (masked vertices included), because the train-split remap
+handles scalar targets only.
 
 ## Reproducing the subdivision experiments
 

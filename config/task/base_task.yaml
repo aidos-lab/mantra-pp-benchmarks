@@ -1,3 +1,8 @@
 name: Base
 task_type: classification # classification / regression
+# graph: one target per sample; node: one target per vertex, with
+# data.node_mask selecting the supervised ones (see README).
+task_level: graph # graph / node
+# Node-level only: exclude the first vertex from the supervision.
+mask_first: False
 metrics: {}
