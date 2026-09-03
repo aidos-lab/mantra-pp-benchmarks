@@ -214,9 +214,8 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
     trainer_cfg = cfg.trainer
     persistent_workers = trainer_cfg.num_workers > 0
 
-    is_graph_representation = "x_0" not in train_dataset[0]
+    is_graph_representation = "edge_index" in train_dataset[0]
 
-    # TODO: Fix this assignment
     if not is_graph_representation:
         train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
         val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
@@ -259,13 +258,13 @@ def main(cfg: RootConfig):
     train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
 
     sample = train_ds[0]
-    if "x_0" in sample:
+    if "edge_index" in sample:
+        num_features = sample.x.shape[1]
+    else:
         num_features = [
             sample[f"x_{dim}"].shape[1]
             for dim in range(int(sample.dimension.item()) + 1)
         ]
-    else:
-        num_features = sample.x.shape[1]
 
     # ----- Model ----
     model = create_model(cfg, num_features, label_to_index)
