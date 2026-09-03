@@ -66,6 +66,6 @@ class MLP(nn.Module):
         x = batch.x
         for layer in self.hidden_layers:
             x = layer(x)
-        x = self.readout(x)
         x = pool(x, batch.batch, self.pool_method)
+        x = self.readout(x)
         return x
