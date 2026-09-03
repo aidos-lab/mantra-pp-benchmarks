@@ -30,7 +30,7 @@ def test_create_loaders_disables_persistence_without_workers():
         )
     ]
 
-    loaders = create_loaders(cfg, dataset, dataset, dataset)
+    loaders = create_loaders(cfg, dataset, dataset, dataset, is_graph_representation=True)
 
     assert all(not loader.persistent_workers for loader in loaders)
 

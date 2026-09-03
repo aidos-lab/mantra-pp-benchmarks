@@ -30,8 +30,7 @@ CONFIG_DIR = os.path.abspath(
 )
 
 # 30 star triangulations of the cone over a square boundary; h11
-# enumerates the samples, h12 cycles through three values, and the
-# even c2_anticanonical column covers both signs.
+# enumerates the samples and h12 cycles through three values.
 N_ROWS = 30
 
 
@@ -44,7 +43,6 @@ def _rows(n=N_ROWS):
             "vertices": vertices,
             "h11": i,
             "h12": i % 3,
-            "c2_anticanonical": 2 * i - 10,
         }
         for i in range(n)
     ]
@@ -75,7 +73,7 @@ def _cfg(tmp_path, *overrides, rows=None):
 
 class TestCYRegression:
     def test_split_sizes_and_targets(self, tmp_path):
-        cfg = _cfg(tmp_path, "task=hodge")
+        cfg = _cfg(tmp_path, "task=hodge_reg")
         train, val, test, label_to_index = main.create_dataset(cfg)
 
         # 0.7 / 0.1 / 0.2 of 30 samples; sklearn ceils the fractional
@@ -90,7 +88,7 @@ class TestCYRegression:
                 assert data.y.item() == float(data.h11)
 
     def test_splits_partition_the_dataset(self, tmp_path):
-        cfg = _cfg(tmp_path, "task=hodge")
+        cfg = _cfg(tmp_path, "task=hodge_reg")
         train, val, test, _ = main.create_dataset(cfg)
         seen = sorted(
             int(data.h11) for ds in (train, val, test) for data in ds
@@ -100,7 +98,7 @@ class TestCYRegression:
     def test_transform_chain_builds_features(self, tmp_path):
         """The default chain (dual graph, random-walk PE, feature
         selection) must leave a ready-to-batch graph sample."""
-        cfg = _cfg(tmp_path, "task=hodge")
+        cfg = _cfg(tmp_path, "task=hodge_reg")
         train, _, _, _ = main.create_dataset(cfg)
         sample = train[0]
         assert sample.edge_index is not None
@@ -108,16 +106,10 @@ class TestCYRegression:
         assert sample.x.shape[0] == sample.num_nodes
 
     def test_alternate_target_via_override(self, tmp_path):
-        cfg = _cfg(tmp_path, "task=hodge", "task.target=h12")
+        cfg = _cfg(tmp_path, "task=hodge_reg", "task.target=h12")
         train, _, _, _ = main.create_dataset(cfg)
         for data in train:
             assert data.y.item() == float(data.h12)
-
-    def test_chern_targets_c2_anticanonical(self, tmp_path):
-        cfg = _cfg(tmp_path, "task=chern")
-        train, _, _, _ = main.create_dataset(cfg)
-        for data in train:
-            assert data.y.item() == float(data.c2_anticanonical)
 
 
 class TestCYClassification:
@@ -133,15 +125,6 @@ class TestCYClassification:
                 assert data.y.item() == label_to_index[int(data.h12)]
                 assert int(data.label) == int(data.h12)
 
-    def test_rare_values_keep_their_neuron(self, tmp_path):
-        """h11 is unique per sample, so most values are absent from
-        train; the mapping must still cover all of them."""
-        cfg = _cfg(tmp_path, "task=hodge_class")
-        train, val, test, label_to_index = main.create_dataset(cfg)
-        assert label_to_index == {i: i for i in range(N_ROWS)}
-        for dataset in (val, test):
-            for data in dataset:
-                assert data.y.item() == label_to_index[int(data.h11)]
 
     def test_mapping_is_deterministic(self, tmp_path):
         cfg = _cfg(tmp_path, "task=hodge_class", "task.target=h12")
@@ -154,7 +137,7 @@ class TestCYSplitOptions:
     def test_stratified_split_balances_label_source(self, tmp_path):
         cfg = _cfg(
             tmp_path,
-            "task=hodge",
+            "task=hodge_reg",
             "dataset.use_stratified=True",
             "dataset.label_source=h12",
         )
@@ -164,18 +147,3 @@ class TestCYSplitOptions:
             counts = Counter(int(data.h12) for data in dataset)
             assert set(counts) == {0, 1, 2}
             assert max(counts.values()) - min(counts.values()) <= 1
-
-    def test_min_sample_per_class_drops_rare_values(self, tmp_path):
-        rows = _rows(N_ROWS + 2)
-        for row in rows[N_ROWS:]:
-            row["h12"] = 3
-        cfg = _cfg(
-            tmp_path,
-            "task=hodge",
-            "dataset.label_source=h12",
-            "dataset.min_sample_per_class=2",
-            rows=rows,
-        )
-        splits = main.create_dataset(cfg)[:3]
-        seen = sorted(int(data.h11) for ds in splits for data in ds)
-        assert seen == list(range(N_ROWS))

@@ -28,11 +28,15 @@ def _graphs():
 
 class TestMLPPooling:
     def test_sum_readout_is_n_times_mean(self):
-        """The scatter runs after the per-node readout, so per graph
-        out_sum = n * out_mean exactly (no bias after pooling)."""
+        """The scatter runs before the readout, so the pooled features
+        (not the final output) scale by n; zero the shared readout
+        bias to isolate that relationship from the one-time offset it
+        adds after pooling."""
         model_mean = _mlp("mean")
         model_sum = _mlp("sum")
         model_sum.load_state_dict(model_mean.state_dict())
+        model_mean.readout.bias.data.zero_()
+        model_sum.readout.bias.data.zero_()
         model_mean.eval()
         model_sum.eval()
 
