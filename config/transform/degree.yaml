@@ -1,2 +1,2 @@
-_target_: mantra.transforms.attribute_transform.NodeDegreeTransform
+_target_: mantra.transforms.NodeDegreeTransform
 

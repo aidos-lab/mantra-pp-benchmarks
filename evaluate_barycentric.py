@@ -31,6 +31,7 @@ from torch_geometric.transforms import Compose
 from mantra.datasets import ManifoldTriangulations
 
 from src.schema import EvalBarycentricConfig
+from src.utils.data_handling import filter_low_ocurrence_labels
 from src.utils.train_utils import init_metrics, test
 
 
@@ -280,8 +281,7 @@ def main(eval_cfg: EvalBarycentricConfig):
     with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
         run.summary.update(train_meta)
         test(
-            model, test_loader, accuracies, correct_label_to_index, run, train_cfg,
-            epoch=train_cfg.trainer.max_epoch,
+            model, test_loader, accuracies, correct_label_to_index, run, train_cfg
         )
 
     result = {

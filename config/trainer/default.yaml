@@ -4,5 +4,3 @@ max_epoch: 2
 batch_size: 256
 early_stopping: 10
 device: cpu
-num_workers: 0
-pin_memory: True

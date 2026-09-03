@@ -1,3 +1,0 @@
-# Homeomorphism type of a 2-manifold as a class index; use
-# NameToClass3MTransform for dataset.dimension=3.
-_target_: mantra.transforms.NameToClass2MTransform

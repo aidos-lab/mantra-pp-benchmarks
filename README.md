@@ -8,23 +8,31 @@ This repository contains:
 - Implementation of Pachner moves, rebalancing and duplication checks of topological datasets
 - Training and evaluation pipeline for graph- and simplicial / cell-complex
   models on the (extended) MANTRA manifold-triangulation classification benchmarks.
-- Out-of-distribution evaluation on subdivided triangulations (full
-  barycentric, *stellar*, and *graded*); the subdivision machinery itself
-  lives in the MANTRA library, which serves the subdivided test set as the
-  `ood` split of `MantraDataset`.
+- A subdivision pipeline (full barycentric, *stellar*, and *graded*) used to
+  generate out-of-distribution test sets from the original triangulations,
+  together with the corresponding precompute and evaluation scripts.
 
-## MANTRA dependency
+## Anonymity note (double-blind submission)
 
-The `mantra-dataset` dependency is the upstream MANTRA dataset library
-(<https://github.com/aidos-lab/mantra>) and is installed as an editable
-package from a sibling checkout expected at `../mantra` (see
-`pyproject.toml` / `uv.lock`).
+To preserve double-blind review, the [`mantra/`](./mantra) subdirectory
+contains a vendored snapshot of the development state of the upstream
+MANTRA dataset library
+(<https://github.com/aidos-lab/mantra>, third-party authors), so this
+repository can be built and run without referencing any author-specific
+fork or local checkout. Original third-party authorship of the MANTRA
+package is preserved in `mantra/pyproject.toml`, `mantra/LICENSE.md`, and
+`mantra/README.md`.
+
+Modifications we made to the MANTRA library while developing this paper
+are included in the vendored copy and will be made available after review period ends.
 
 ## Repository layout
 
 ```
 .
 ├── main.py                      # Hydra entry point: train + test a model
+├── precompute_barycentric.py    # Build pre_transform cache for a subdivided dataset (no training)
+├── generate_barycentric_data.py # Subdivide a raw MANTRA JSON into level-k JSONs
 ├── evaluate_barycentric.py      # Load a checkpoint, evaluate on a subdivided cache
 ├── config/                      # Hydra config groups (model, dataset, transform, task, …)
 ├── src/
@@ -32,7 +40,14 @@ package from a sibling checkout expected at `../mantra` (see
 │   ├── utils/                   # data loading, train loop, metrics, barycentric helpers
 │   ├── metrics/                 # loss + task metrics
 │   └── schema.py                # OmegaConf dataclasses for Hydra structured configs
-└── tests/                       # pytest suite (math utils, transforms, models, losses, …)
+├── tests/                       # pytest suite (math utils, transforms, models, losses, …)
+└── mantra/                      # Vendored MANTRA dataset library (see note above)
+    └── mantra/                  # Python package
+        ├── augmentations/       # Pachner moves + balancing logic
+        ├── datasets/            # ManifoldTriangulations (PyG InMemoryDataset)
+        ├── representations/     # Dual graph, Hasse diagram, simplicial connectivity, …
+        ├── transforms/          # Embeddings, label/feature selection
+        └── generate_balanced.py # CLI for producing the balanced dataset variant
 ```
 
 ## Installation
@@ -57,9 +72,9 @@ uv sync --extra cu130
 This will:
 
 1. Create `.venv/` with Python ≥ 3.12 and install all pinned dependencies.
-2. Install the MANTRA library from the sibling checkout `../mantra` as
-   an editable `mantra-dataset` package, so all `from mantra.…` imports
-   resolve to that checkout.
+2. Install the vendored `mantra/` directory as an editable
+   `mantra-dataset==0.0.19` package, so all `from mantra.…` imports
+   resolve to `mantra/mantra/`.
 3. Install this repository as `mantra-pp-benchmarks==0.1.0`.
 
 All commands below assume `.venv/bin/python` (or `uv run python …`).
@@ -82,9 +97,9 @@ upstream MANTRA release:
    `${dataset.root}/mantra/${dim}D/raw/${dim}_manifolds.json` and is
    reused in subsequent runs (see [Running a single training run](#running-a-single-training-run)).
 2. **Balanced MANTRA.** Produced by Pachner-move augmentation +
-   deduplication, applied on the fly by the MANTRA library
-   (`MantraDataset(balanced=True)`; see
-   [Generating the balanced dataset](#generating-the-balanced-dataset)).
+   deduplication on the unbalanced JSON via
+   [`mantra/mantra/generate_balanced.py`](./mantra/mantra/generate_balanced.py)
+   (see [Generating the balanced dataset](#generating-the-balanced-dataset)).
 3. **Subdivided MANTRA.** Full-barycentric / stellar / graded
    subdivisions of the unbalanced or balanced JSONs, produced by
    `generate_barycentric_data.py` (see
@@ -94,24 +109,50 @@ upstream MANTRA release:
 ### Generating the balanced dataset
 
 The balanced variant is produced by Pachner-move augmentation +
-deduplication on the unbalanced JSON. The balancing logic lives in the
-MANTRA library (`mantra/utils/balancing.py` upstream) and is applied on
-the fly by `MantraDataset(balanced=True)`.
+deduplication on the unbalanced JSON. Source code:
+[`mantra/mantra/augmentations/balancing.py`](./mantra/mantra/augmentations/balancing.py);
+CLI: [`mantra/mantra/generate_balanced.py`](mantra/mantra/generate_balanced.py).
 
 A reduced version can be generated and run locally on a CPU in a reasonable time; the full version is best run on a cluster. The unbalanced source JSON has to be on disk first — trigger the
 auto-download by running `main.py` once with `dataset.balanced=False`,
 or load it explicitly via `ManifoldTriangulations(root='data', balanced=False)`.
 
-Enable it through the dataset config, e.g. for a quick CPU run:
+For the 2-manifolds (small target count for a quick CPU run):
 
 ```bash
-.venv/bin/python main.py dataset.balanced=True dataset.target_count=200
+.venv/bin/python mantra/mantra/generate_balanced.py \
+    data/mantra/2D/raw/2_manifolds.json \
+    /tmp/2_manifolds_balanced_demo.json \
+    --dimension 2 \
+    --target-count 200 \
+    --dedup-max-rounds 5
 ```
 
-The relevant knobs (`target_count`, `n_moves`, `max_vertices`, and the
-split seed) live in `config/dataset/dataset.yaml` and are forwarded to
-`MantraDataset`. The paper runs use `dataset.target_count=2500` (2D) and
-`dataset.target_count=5000` (3D).
+For the 3-manifolds:
+
+```bash
+.venv/bin/python mantra/mantra/generate_balanced.py \
+    data/mantra/3D/raw/3_manifolds.json \
+    /tmp/3_manifolds_balanced_demo.json \
+    --dimension 3 \
+    --target-count 100 \
+    --dedup-max-rounds 5
+```
+
+The full-target-count used in the paper are produced by the same command 
+with `--target-count 2500` and `--target-count 5000` for 2D and 3D respectively.
+
+Useful flags:
+
+| Flag                     | Default | Effect                                                                                       |
+| ------------------------ |---------| -------------------------------------------------------------------------------------------- |
+| `--target-count`         | 1000    | Target number of triangulations per class (over- and under-sampled symmetrically).           |
+| `--n-moves`              | 5       | Number of random Pachner moves applied to each augmented sample.                             |
+| `--seed`                 | 42      | RNG seed.                                                                                    |
+| `--max-vertices`         | none    | Drop entries (original or augmented) with more than this many vertices.                      |
+| `--no-topology-changes`  | off     | Disable torus / cross-cap gluing (2D only). With this flag, deficits are filled by Pachner moves alone. |
+| `--no-dedup`             | off     | Skip the post-augmentation isomorphic-duplicate removal ().                |
+| `--dedup-max-rounds`     | 5       | Number of dedup-and-regenerate rounds before falling back to "remove only".                  |
 
 #### Loading a locally generated balanced JSON in training
 
@@ -179,11 +220,11 @@ Key Hydra groups:
 
 | Group                                         | Options                                                                                             |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `gin`, `pointnet`, `pointnetpp`, `san`, `san_tmx`, `cwn`, `sccnn` |
+| `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `san`, `san_tmx`, `cwn`, `sccnn`                  |
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
-| `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge`, `chern`, `hodge_class`              |
-| `loss`                                        | `cross_entropy`, `contrastive`, `mse`                                                               |
+| `task`                                        | `name`, `orientability`, `betti_numbers`                                                            |
+| `loss`                                        | `cross_entropy`, `contrastive`                                                                      |
 | `trainer`                                     | `default`                                                                                           |
 | `logger`                                      | `wandb`                                                                                             |
 
@@ -196,34 +237,6 @@ Outputs:
 
 To turn off W&B sync, run with `WANDB_MODE=offline`. To override the
 project name use `logger.project=<name>` (and `logger.entity=<entity>`).
-
-## Calabi-Yau tasks
-
-The `cy` dataset serves Calabi-Yau star triangulations from a parquet
-file (`mantra.datasets.CalabiYau`, mantra `cy` branch) with the same
-native train/val/test splits as the MANTRA datasets. Downloading is not
-implemented yet, so point `dataset.local_path` at a local parquet file:
-
-```bash
-python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge
-```
-
-Tasks:
-
-- `task=hodge` — graph-level regression of `h11` (`task.target=h12`
-  for the other Hodge number), scored with MAE and rounded accuracy.
-- `task=chern` — graph-level regression of `c2_anticanonical` with
-  z-scored targets (`task.standardize_targets`) and an even-lattice
-  rounded accuracy.
-- `task=hodge_class` — classification of the target value; the class
-  mapping is built over the full dataset and saved next to the
-  checkpoint as `label_to_index.json`.
-
-The regression tasks select `loss=mse` themselves. For simplicial
-models, propagate the vertex coordinates to all simplex ranks with the
-`propagate_convex_comb` transform (`config/transform/`) instead of the
-random-walk embedding. `dataset.limit=<n>` processes only the first
-`n` triangulations for smoke tests.
 
 ## Reproducing the subdivision experiments
 

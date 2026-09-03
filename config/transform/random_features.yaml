@@ -1,4 +1,3 @@
-_target_: mantra.transforms.attribute_transform.NodeRandomTransform
+_target_: mantra.transforms.NodeRandomTransform
 
 dim: 8
-propagate: False

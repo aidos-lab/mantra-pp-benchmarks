@@ -1,4 +1,5 @@
 _target_: mantra.transforms.SelectFeatures
-src: random_walk_pe
+src: moment_curve_embedding
 dst: null
 representation: graph
+arg: ""

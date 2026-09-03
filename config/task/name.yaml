@@ -1,5 +1,5 @@
 defaults:
   - base_task
-  - /transform@_global_.dataset.transform.create_labels: name_labels
 name: Name
 target: name
+imbalanced: False #this is a legacy flag, it should be set to False
