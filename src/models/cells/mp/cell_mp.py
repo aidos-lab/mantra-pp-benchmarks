@@ -27,14 +27,14 @@ THE SOFTWARE.
 
 from inspect import Parameter
 from typing import List, Optional, Set, Tuple
-from torch_geometric.typing import Adj, Size
 
 import torch
 from torch import Tensor
-from torch_sparse import SparseTensor
-from torch_scatter import gather_csr, scatter, segment_csr
-
 from torch_geometric.nn.aggr.base import expand_left
+from torch_geometric.typing import Adj, Size
+from torch_scatter import gather_csr, scatter, segment_csr
+from torch_sparse import SparseTensor
+
 from .cell_mp_inspector import CellularInspector
 
 

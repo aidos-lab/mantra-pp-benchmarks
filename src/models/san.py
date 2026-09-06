@@ -8,8 +8,9 @@ Created on Fri Feb  4 20:00:00 2022
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_sparse import SparseTensor, spmm
 from torch_geometric.utils import softmax as sparse_softmax
+from torch_sparse import SparseTensor, spmm
+
 from src.models.utils import SumReadout
 
 

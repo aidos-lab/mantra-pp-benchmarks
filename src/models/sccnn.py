@@ -1,12 +1,9 @@
-from typing import Optional, List
+from typing import List
 
-from pydantic import BaseModel
-from torch import nn
 import torch
-
+from torch import nn
 from torch_sparse import SparseTensor
 
-from torch_geometric.utils import coalesce, scatter, to_dense_adj
 from src.models.utils import SumReadout
 
 

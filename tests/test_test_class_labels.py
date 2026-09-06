@@ -1,9 +1,11 @@
+from types import SimpleNamespace
+
 import pytest
 import torch
-from types import SimpleNamespace
 from torch_geometric.data import Data
 
-from src.utils.train_utils import make_labels, test as run_test
+from src.utils.train_utils import make_labels
+from src.utils.train_utils import test as run_test
 
 
 def test_record_class_labels_uses_labels_paired_with_targets():

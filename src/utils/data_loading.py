@@ -1,13 +1,11 @@
+from collections import defaultdict
+from typing import Any
+
+import numpy as np
 import torch
-from torch.utils.data import DataLoader
 import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import is_sparse
-
-from collections import defaultdict
-import numpy as np
-
-from typing import List, Dict, Any
 from torch_sparse import SparseTensor
 
 

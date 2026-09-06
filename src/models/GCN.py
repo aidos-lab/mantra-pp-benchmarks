@@ -5,9 +5,8 @@ Implementation for Graph Convolutional Neural Network.
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import GCNConv
+
 from src.models.utils import pool
-
-
 
 
 class GCNLayer(nn.Module):

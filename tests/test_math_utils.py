@@ -5,7 +5,6 @@ eigenvectors_smallest_k_eigenvalues by importing its logic directly.
 """
 
 import numpy as np
-import pytest
 import scipy.sparse as sp
 
 

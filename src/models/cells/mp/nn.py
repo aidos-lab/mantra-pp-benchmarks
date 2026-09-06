@@ -1,7 +1,9 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import global_mean_pool, global_add_pool
-from torch.nn import BatchNorm1d as BN, LayerNorm as LN, Identity
+from torch.nn import BatchNorm1d as BN
+from torch.nn import Identity
+from torch.nn import LayerNorm as LN
+from torch_geometric.nn import global_add_pool, global_mean_pool
 
 
 def get_nonlinearity(nonlinearity, return_module=True):

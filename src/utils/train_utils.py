@@ -1,12 +1,11 @@
-import torch
-import wandb
-import hydra
-
 from collections import defaultdict
 
-from src.utils.logging import log_metrics
-from src.schema import RootConfig
+import hydra
+import torch
+import wandb
 
+from src.schema import RootConfig
+from src.utils.logging import log_metrics
 
 
 def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):

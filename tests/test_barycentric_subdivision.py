@@ -1,11 +1,10 @@
 """Tests for the barycentric subdivision implementation."""
 
-import pytest
 
 from src.utils.barycentric_utils import (
+    barycentric_stellar_graded,
     barycentric_subdivision_raw,
     subdivide_dataset_json,
-    barycentric_stellar_graded
 )
 
 

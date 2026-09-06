@@ -22,17 +22,15 @@ import os
 import sys
 
 import hydra
-import wandb
 import torch
+import wandb
 from hydra.core.config_store import ConfigStore
+from mantra.datasets import ManifoldTriangulations
 from omegaconf import OmegaConf, read_write
 from torch_geometric.transforms import Compose
 
-from mantra.datasets import ManifoldTriangulations
-
 from src.schema import EvalBarycentricConfig
 from src.utils.train_utils import init_metrics, test
-
 
 cs = ConfigStore.instance()
 cs.store(name="eval_barycentric_conf", node=EvalBarycentricConfig)
@@ -156,8 +154,8 @@ def apply_main_cfg_mutations(train_cfg, dataset, label_transform):
 
 
 def get_test_loader(dataset, train_cfg, collate_fn=None):
-    from torch_geometric.loader import DataLoader as PyGDataLoader
     from torch.utils.data import DataLoader
+    from torch_geometric.loader import DataLoader as PyGDataLoader
 
     if collate_fn is not None:
         return DataLoader(

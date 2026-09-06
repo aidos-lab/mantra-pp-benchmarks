@@ -21,15 +21,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import torch
-import logging
 import copy
-
-from torch import Tensor
-from torch_sparse import SparseTensor
-from .cell_mp import CochainMessagePassingParams
-from torch_geometric.typing import Adj
+import logging
 from typing import List
+
+import torch
+from torch import Tensor
+from torch_geometric.typing import Adj
+from torch_sparse import SparseTensor
+
+from .cell_mp import CochainMessagePassingParams
 
 
 class Cochain(object):

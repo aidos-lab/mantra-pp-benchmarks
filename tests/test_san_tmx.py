@@ -2,12 +2,11 @@
 
 import pytest
 import torch
-from torch_sparse import SparseTensor
 from torch_geometric.data import Data
+from torch_sparse import SparseTensor
 
-from src.models.san_tmx import SANConv, SANTMXLayer, SANTMX
+from src.models.san_tmx import SANTMX, SANConv, SANTMXLayer
 from src.utils.data_loading import collate_simplicial
-
 
 # ---------------------------------------------------------------------------
 # Helpers — build minimal simplicial complex data

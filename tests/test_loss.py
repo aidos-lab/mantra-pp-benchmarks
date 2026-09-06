@@ -1,9 +1,8 @@
 """Tests for src/metrics/loss.py."""
 
-import pytest
 import torch
 
-from src.metrics.loss import LossType, BaseLoss, Contrastive
+from src.metrics.loss import BaseLoss, Contrastive, LossType
 
 
 class TestLossType:

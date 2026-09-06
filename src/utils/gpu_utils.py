@@ -1,5 +1,7 @@
-import torch
 import os
+
+import torch
+
 
 def is_blackwell_gpu(cfg):
     if cfg.trainer.device == 'cpu':

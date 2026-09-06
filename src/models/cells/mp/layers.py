@@ -1,14 +1,16 @@
-import torch
-
-from typing import Any, Callable, Optional
-from torch import Tensor
-from .cell_mp import CochainMessagePassing, CochainMessagePassingParams
-from torch_geometric.nn.inits import reset
-from torch.nn import Linear, Sequential, BatchNorm1d as BN, Identity
-from .complex import Cochain
-from torch_scatter import scatter
-from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
 from abc import ABC, abstractmethod
+from typing import Any, Callable, Optional
+
+import torch
+from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
+from torch import Tensor
+from torch.nn import BatchNorm1d as BN
+from torch.nn import Linear, Sequential
+from torch_geometric.nn.inits import reset
+from torch_scatter import scatter
+
+from .cell_mp import CochainMessagePassing, CochainMessagePassingParams
+from .complex import Cochain
 
 
 class DummyCochainMessagePassing(CochainMessagePassing):

@@ -5,21 +5,20 @@ They cover: models (GCN, MLP, ResidualGatedGCN, Graphormer),
 collation, the training loop, and SPD.
 """
 
+from types import SimpleNamespace
+
 import numpy as np
-import pytest
 import torch
 import torch.nn as nn
-from types import SimpleNamespace
 from torch_geometric.data import Batch, Data
 
 from src.models.GCN import GCN, GCNLayer
+from src.models.Graphormer import Graphormer, GraphormerLayer
 from src.models.MLP import MLP, MLPLayer
 from src.models.ResidualGatedGCN import ResidualGatedGCN, ResidualGatedGCNLayer
-from src.models.Graphormer import Graphormer, GraphormerLayer
-from src.models.utils import pool, SumReadout
+from src.models.utils import SumReadout, pool
 from src.utils.graphormer_spd import GraphormerSPDPreTransform
-from src.utils.train_utils import train, validate, init_metrics
-
+from src.utils.train_utils import train, validate
 
 # ---------------------------------------------------------------------------
 # Fixtures and helpers

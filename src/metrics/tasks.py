@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class TaskType(Enum):
     NAME = "name"
     ORIENTABILITY = "orientability"

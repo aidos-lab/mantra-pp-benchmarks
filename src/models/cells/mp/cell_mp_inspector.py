@@ -27,7 +27,8 @@ THE SOFTWARE.
 
 import inspect
 from collections import OrderedDict
-from typing import Dict, Any, Callable
+from typing import Any, Callable, Dict
+
 from .inspector import Inspector
 
 

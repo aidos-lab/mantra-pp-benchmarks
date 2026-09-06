@@ -1,13 +1,9 @@
-import re
 import inspect
+import re
 from collections import OrderedDict
-from typing import Dict, List, Any, Optional, Callable, Set
-import re
-import inspect
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+
 import pyparsing as pp
-from itertools import product
-from collections import OrderedDict
-from typing import Callable, Tuple, Dict, List
 
 
 def split_types_repr(types_repr: str) -> List[str]:

@@ -1,14 +1,14 @@
 import torch
 import torch.nn.functional as F
-
-from torch.nn import Linear, Sequential, BatchNorm1d as BN
-from torch_geometric.nn import JumpingKnowledge
-from .layers import CINConv, SparseCINConv
-from .nn import get_nonlinearity, get_pooling_fn, get_graph_norm
-from .complex import ComplexBatch
-
 from models.model_types import ModelType
 from pydantic import BaseModel
+from torch.nn import BatchNorm1d as BN
+from torch.nn import Linear, Sequential
+from torch_geometric.nn import JumpingKnowledge
+
+from .complex import ComplexBatch
+from .layers import CINConv, SparseCINConv
+from .nn import get_graph_norm, get_nonlinearity, get_pooling_fn
 
 
 class CellMPConfig(BaseModel):

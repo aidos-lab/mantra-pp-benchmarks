@@ -1,12 +1,18 @@
-import torch
-from torch import Tensor
-import torch.nn.functional as F
-from typing import Any, Callable, Optional
+from typing import Callable
 
-from torch.nn import Linear, Sequential, BatchNorm1d as BN
+import torch
+import torch.nn.functional as F
+from torch import Tensor
+from torch.nn import BatchNorm1d as BN
+from torch.nn import Linear, Sequential
 from torch_geometric.nn import JumpingKnowledge, global_add_pool
 from torch_geometric.nn.inits import reset
-from src.models.cells.mp.cell_mp import CochainMessagePassing, CochainMessagePassingParams
+
+from src.models.cells.mp.cell_mp import (
+    CochainMessagePassing,
+    CochainMessagePassingParams,
+)
+
 
 class CINCochainConv(CochainMessagePassing):
     """This is a dummy parameter-free message passing model used for testing."""

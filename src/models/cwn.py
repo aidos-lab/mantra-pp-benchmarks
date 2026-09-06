@@ -1,13 +1,13 @@
 """CWN class."""
 
-import torch
+from typing import List
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import List
-from torch_sparse import SparseTensor
-from torch_scatter import scatter_add
 from torch_geometric.nn import MLP
+from torch_scatter import scatter_add
+from torch_sparse import SparseTensor
 
 from src.models.conv_down import Conv, PropagateSignalDown
 

@@ -16,11 +16,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
-from torch_sparse import SparseTensor, spmm
 from torch_geometric.utils import softmax as sparse_softmax
+from torch_sparse import SparseTensor, spmm
 
-from src.models.utils import SumReadout
 from src.models.conv_down import Conv
+from src.models.utils import SumReadout
 
 
 class SANConv(nn.Module):

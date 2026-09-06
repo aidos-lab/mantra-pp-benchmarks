@@ -1,10 +1,10 @@
 """Readout layer that propagates the signal from cells of a certain order to the cells of the lower order."""
 
 import torch
-from torch import nn
-import torch_geometric
-from torch_sparse import SparseTensor
 import torch_sparse
+from torch import nn
+from torch_sparse import SparseTensor
+
 
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels):

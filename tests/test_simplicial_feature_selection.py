@@ -1,6 +1,5 @@
-from torch_geometric.data import Data
-
 from mantra.transforms import MomentCurveEmbedding, PropagateConvexComb
+from torch_geometric.data import Data
 
 
 def test_moment_curve_features_are_propagated_to_simplices():

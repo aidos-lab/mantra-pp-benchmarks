@@ -1,9 +1,7 @@
 import numpy as np
 import scipy
-import torch
-from toponetx import SimplicialComplex, CellComplex
-
 from CellComplexCombinatorics import hodge_laplacian_matrix
+from toponetx import CellComplex, SimplicialComplex
 
 
 def eigenvectors_smallest_k_eigenvalues(L, k):

@@ -1,32 +1,32 @@
 import json
-
-import wandb
-from omegaconf import OmegaConf
+import os
 
 import hydra
-from hydra.core.config_store import ConfigStore
-
 import torch
-import os
-from torch.utils.data import DataLoader
-from torch_geometric.loader import DataLoader as PyGDataLoader
-from torch_geometric.transforms import Compose
-
-
+import wandb
+from hydra.core.config_store import ConfigStore
 from mantra.datasets import MantraDataset
 from mantra.representations.internal import SimplexTrie
 from mantra.representations.internal.simplex_trie import SimplexNode
-from mantra.transforms.task_transforms import BettiToClassTransform, OrientableToClassTransform, NameToClass2MTransform, NameToClass3MTransform
+from mantra.transforms.task_transforms import (
+    BettiToClassTransform,
+    NameToClass2MTransform,
+    NameToClass3MTransform,
+    OrientableToClassTransform,
+)
+from omegaconf import OmegaConf
+from torch.utils.data import DataLoader
+from torch_geometric.loader import DataLoader as PyGDataLoader
+from torch_geometric.profile import count_parameters
+from torch_geometric.transforms import Compose
+from tqdm import tqdm
 
 from src.schema import RootConfig
 from src.transforms import RemapLabels
-from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
-from src.utils.train_utils import train, validate, test, init_metrics
 from src.utils.gpu_utils import is_blackwell_gpu, set_gpu_configs
-
-from tqdm import tqdm
-from torch_geometric.profile import count_parameters
+from src.utils.logging import log_metrics
+from src.utils.train_utils import init_metrics, test, train, validate
 
 torch.serialization.add_safe_globals([SimplexNode, SimplexTrie])
 

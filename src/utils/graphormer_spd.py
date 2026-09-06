@@ -26,7 +26,6 @@ Compute: scipy.sparse.csgraph.shortest_path with unweighted=True. It runs
 in C and is dramatically faster than networkx's per-source BFS loop.
 """
 
-from typing import Tuple
 
 import numpy as np
 import torch

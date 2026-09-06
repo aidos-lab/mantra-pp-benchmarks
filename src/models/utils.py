@@ -1,5 +1,6 @@
-from torch import nn 
+from torch import nn
 from torch_geometric.utils import scatter
+
 
 def pool(x, batch, reduce="mean"):
     assert reduce in ['mean', 'sum'], " Unknwon pooling methods"
