@@ -210,11 +210,11 @@ class SCCNNLayer(nn.Module):
                 laplacian_down_2,
             ) = laplacian_all
             device = laplacian_down_2.device()
-            laplacian_up_2 =  SparseTensor(
+            laplacian_up_2 = SparseTensor(
                 row=torch.empty(0, dtype=torch.long, device=device),
                 col=torch.empty(0, dtype=torch.long, device=device),
                 value=torch.empty(0, device=device),
-                sparse_sizes=laplacian_down_2.sparse_sizes()
+                sparse_sizes=laplacian_down_2.sparse_sizes(),
             )
         elif self.sc_order > 2:
             (
@@ -387,10 +387,10 @@ class SCCNNLayer(nn.Module):
         y_1 = torch.einsum("nik,iok->no", x_1_all, self.weight_1)
         y_2 = torch.einsum("nik,iok->no", x_2_all, self.weight_2)
 
-
         # Perform activations
 
         return self.update(y_0), self.update(y_1), self.update(y_2)
+
 
 class SCCNNBackbone(nn.Module):
     """SCCNN implementation for complex classification.
@@ -479,7 +479,6 @@ class SCCNNBackbone(nn.Module):
         return x_all
 
 
-
 class SCCNN(nn.Module):
     """SCCNN implementation for complex classification.
 
@@ -506,7 +505,16 @@ class SCCNN(nn.Module):
          Number of layers (default: 2).
     """
 
-    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2):
+    def __init__(
+        self,
+        in_channels: List[int],
+        hidden_channels: List[int],
+        out_channels: int = 3,
+        conv_order: int = 1,
+        sc_order: int = 3,
+        aggr_norm: bool = True,
+        n_layers: int = 2,
+    ):
         super().__init__()
         self.sc_order = sc_order
 
@@ -519,40 +527,39 @@ class SCCNN(nn.Module):
             n_layers,
         )
 
-        self.readout_0 = SumReadout(
-            hidden_channels[0], out_channels
-        )
-        self.readout_1 = SumReadout(
-            hidden_channels[1], out_channels
-        )
-        self.readout_2 = SumReadout(
-            hidden_channels[2], out_channels
-        )
+        self.readout_0 = SumReadout(hidden_channels[0], out_channels)
+        self.readout_1 = SumReadout(hidden_channels[1], out_channels)
+        self.readout_2 = SumReadout(hidden_channels[2], out_channels)
 
     def _reconstruct(self, batch, name):
         idx = batch[f"{name}_idx"]
         val = batch[f"{name}_val"]
-        if 'incidence' in name:
-            r_to = int(name.split('_')[-1])
+        if "incidence" in name:
+            r_to = int(name.split("_")[-1])
             r_from = r_to - 1
         else:
-            r_from = r_to = int(name.split('_')[-1])
+            r_from = r_to = int(name.split("_")[-1])
 
         n_rows = batch[f"x_{r_from}"].size(0)
         n_cols = batch[f"x_{r_to}"].size(0)
         return SparseTensor(
-            row=idx[0], col=idx[1], value=val,
-            sparse_sizes=(n_rows, n_cols)
+            row=idx[0], col=idx[1], value=val, sparse_sizes=(n_rows, n_cols)
         )
 
     def forward(self, batch):
         x = {
-            int(x_key.split('_')[-1]): batch[x_key]
-            for x_key in batch.keys() if isinstance(x_key, str) and x_key.split('_')[0] == 'x' and x_key.split('_')[1].isdigit()
+            int(x_key.split("_")[-1]): batch[x_key]
+            for x_key in batch.keys()
+            if isinstance(x_key, str)
+            and x_key.split("_")[0] == "x"
+            and x_key.split("_")[1].isdigit()
         }
         batches = {
-            int(x_key.split('_')[-1]): batch[x_key]
-            for x_key in batch.keys() if isinstance(x_key, str) and x_key.split('_')[0] == 'batch' and x_key.split('_')[1].isdigit()
+            int(x_key.split("_")[-1]): batch[x_key]
+            for x_key in batch.keys()
+            if isinstance(x_key, str)
+            and x_key.split("_")[0] == "batch"
+            and x_key.split("_")[1].isdigit()
         }
 
         x_0, x_1, x_2 = x[0], x[1], x[2]
@@ -564,7 +571,9 @@ class SCCNN(nn.Module):
         )
 
         # Make sure there are the same number of SCs for each batch
-        assert x_bel_0.max() == x_bel_1.max() and x_bel_1.max() == x_bel_2.max(), f"{x_bel_0.max().item()}, {x_bel_1.max().item()}, {x_bel_2.max().item()}" 
+        assert (
+            x_bel_0.max() == x_bel_1.max() and x_bel_1.max() == x_bel_2.max()
+        ), f"{x_bel_0.max().item()}, {x_bel_1.max().item()}, {x_bel_2.max().item()}"
 
         x_all = (x_0, x_1, x_2)
 
@@ -587,17 +596,17 @@ class SCCNN(nn.Module):
             self._reconstruct(batch, name) for name in laplacian_names
         )
         incidence_all = tuple(
-            self._reconstruct(batch, name) for name in ['incidence_1', 'incidence_2'] 
+            self._reconstruct(batch, name)
+            for name in ["incidence_1", "incidence_2"]
         )
 
         x_0, x_1, x_2 = self.sccnn_backbone(
             x_all, laplacian_all, incidence_all
         )
 
-        #TODO: Figure out what to do about this readout
+        # TODO: Figure out what to do about this readout
         out_0 = self.readout_0(x_0, x_bel_0)
         out_1 = self.readout_1(x_1, x_bel_1)
         out_2 = self.readout_2(x_2, x_bel_2)
-
 
         return out_0 + out_1 + out_2

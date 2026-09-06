@@ -1,6 +1,5 @@
 """Tests for the barycentric subdivision implementation."""
 
-
 from src.utils.barycentric_utils import (
     barycentric_stellar_graded,
     barycentric_subdivision_raw,
@@ -12,28 +11,28 @@ class TestBarycentricSubdivisionRaw:
     """Tests for barycentric_subdivision_raw on individual triangulations."""
 
     def test_graded(self):
-        tri = [[1,2,3]]
-        new_tri, n_v  = barycentric_stellar_graded(tri, 5)
+        tri = [[1, 2, 3]]
+        new_tri, n_v = barycentric_stellar_graded(tri, 5)
         assert n_v == 5
-        assert len(new_tri) == 5 
+        assert len(new_tri) == 5
 
     def test_graded_2(self):
-        tri = [[1,2,3],[1,2,4]]
-        new_tri, n_v  = barycentric_stellar_graded(tri, 7)
+        tri = [[1, 2, 3], [1, 2, 4]]
+        new_tri, n_v = barycentric_stellar_graded(tri, 7)
         print(new_tri)
         assert n_v == 7
         assert len(new_tri) == 8
-        
+
     def test_graded_3d(self):
-        tri = [[1,2,3,4]]
-        new_tri, n_v  = barycentric_stellar_graded(tri, 6)
+        tri = [[1, 2, 3, 4]]
+        new_tri, n_v = barycentric_stellar_graded(tri, 6)
         print(new_tri)
         assert n_v == 6
         assert len(new_tri) == 7
 
     def test_graded_3d_2(self):
-        tri = [[1,2,3,4], [1,2,3,5]]
-        new_tri, n_v  = barycentric_stellar_graded(tri, 8)
+        tri = [[1, 2, 3, 4], [1, 2, 3, 5]]
+        new_tri, n_v = barycentric_stellar_graded(tri, 8)
         assert n_v == 8
         assert len(new_tri) == 11
 
@@ -121,7 +120,6 @@ class TestBarycentricSubdivisionRaw:
         assert n_v == 14
         # 4 * 6 = 24 new triangles
         assert len(new_tri) == 24
-
 
     def test_euler_characteristic_preserved_2d(self):
         """Barycentric subdivision should preserve the Euler characteristic for 2-manifolds."""

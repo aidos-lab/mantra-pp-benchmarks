@@ -38,17 +38,23 @@ class ResidualGatedGCNLayer(nn.Module):
         self.gate_dst = nn.Linear(in_dim, out_dim, bias=False)
         self.bn = nn.BatchNorm1d(out_dim)
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:
         src, dst = edge_index
         h_in = x
 
         src_feat = x[src]
         dst_feat = x[dst]
-        gates = torch.sigmoid(self.gate_src(src_feat) + self.gate_dst(dst_feat))
+        gates = torch.sigmoid(
+            self.gate_src(src_feat) + self.gate_dst(dst_feat)
+        )
         messages = gates * self.msg_lin(src_feat)
 
         aggregated = x.new_zeros((x.size(0), messages.size(1)))
-        aggregated.scatter_add_(0, dst.unsqueeze(-1).expand_as(messages), messages)
+        aggregated.scatter_add_(
+            0, dst.unsqueeze(-1).expand_as(messages), messages
+        )
 
         out = self.self_lin(x) + aggregated
         if self.batch_norm:
@@ -69,13 +75,11 @@ class ResidualGatedGCN(nn.Module):
         batch_norm: bool = True,
         residuals: bool = True,
         dropout: float = 0.5,
-        pool_method: str = "mean"
+        pool_method: str = "mean",
     ):
         super().__init__()
         self.pool_method = pool_method
-        self.input_proj = nn.Linear(
-            in_channels, hidden_channels
-        )
+        self.input_proj = nn.Linear(in_channels, hidden_channels)
         self.hidden_layers = nn.ModuleList(
             [
                 ResidualGatedGCNLayer(
@@ -87,9 +91,7 @@ class ResidualGatedGCN(nn.Module):
                 for _ in range(n_layers)
             ]
         )
-        self.final_linear = nn.Linear(
-            hidden_channels, out_channels
-        )
+        self.final_linear = nn.Linear(hidden_channels, out_channels)
         self.dropout = dropout
 
     def forward(self, batch):

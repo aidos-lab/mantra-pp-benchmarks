@@ -406,7 +406,7 @@ class SparseCINConv(torch.nn.Module):
         max_dim: int = 2,
         graph_norm=BN,
         use_coboundaries=False,
-        **kwargs
+        **kwargs,
     ):
         super(SparseCINConv, self).__init__()
         self.max_dim = max_dim
@@ -502,7 +502,7 @@ class CINppConv(SparseCINConv):
         max_dim: int = 2,
         graph_norm=BN,
         use_coboundaries=False,
-        **kwargs
+        **kwargs,
     ):
         super(CINppConv, self).__init__(
             up_msg_size,
@@ -517,7 +517,7 @@ class CINppConv(SparseCINConv):
             max_dim,
             graph_norm,
             use_coboundaries,
-            **kwargs
+            **kwargs,
         )
         self.max_dim = max_dim
         self.mp_levels = torch.nn.ModuleList()

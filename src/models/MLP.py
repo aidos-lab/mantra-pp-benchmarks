@@ -7,14 +7,16 @@ from torch_geometric.utils import scatter
 
 
 class MLPLayer(nn.Module):
-    def __init__(self, in_channels, hidden_channels, batch_norm, dropout, residuals):
+    def __init__(
+        self, in_channels, hidden_channels, batch_norm, dropout, residuals
+    ):
         super().__init__()
         self.linear = nn.Linear(in_channels, hidden_channels)
         self.batch_norm = nn.Identity()
         if batch_norm:
             self.batch_norm = nn.LayerNorm(hidden_channels)
 
-        self.activation =  nn.ReLU()
+        self.activation = nn.ReLU()
         self.dropout = nn.Identity()
 
         if dropout is not None:
@@ -37,28 +39,59 @@ class MLPLayer(nn.Module):
 
         return h
 
+
 class MLP(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals):
+    def __init__(
+        self,
+        in_channels,
+        hidden_channels,
+        out_channels,
+        n_layers,
+        dropout,
+        batch_norm,
+        residuals,
+    ):
         super().__init__()
 
         self.hidden_layers = nn.ModuleList()
 
         # Hidden layers
         for _ in range(n_layers):
-            self.hidden_layers.append(MLPLayer(hidden_channels, hidden_channels, batch_norm=batch_norm, residuals=residuals, dropout=dropout))
+            self.hidden_layers.append(
+                MLPLayer(
+                    hidden_channels,
+                    hidden_channels,
+                    batch_norm=batch_norm,
+                    residuals=residuals,
+                    dropout=dropout,
+                )
+            )
 
         # Input layer
-        self.hidden_layers.insert(0, MLPLayer(in_channels, hidden_channels, batch_norm=batch_norm, residuals=False, dropout=dropout))
+        self.hidden_layers.insert(
+            0,
+            MLPLayer(
+                in_channels,
+                hidden_channels,
+                batch_norm=batch_norm,
+                residuals=False,
+                dropout=dropout,
+            ),
+        )
 
         # Readout layer
-        self.readout = MLPLayer(hidden_channels, out_channels, batch_norm=False, residuals=False, dropout=None)
-
-
+        self.readout = MLPLayer(
+            hidden_channels,
+            out_channels,
+            batch_norm=False,
+            residuals=False,
+            dropout=None,
+        )
 
     def forward(self, batch):
         x = batch.x
         for layer in self.hidden_layers:
             x = layer(x)
         x = self.readout(x)
-        x = scatter(x, batch.batch, reduce='mean')
+        x = scatter(x, batch.batch, reduce="mean")
         return x

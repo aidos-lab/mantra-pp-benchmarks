@@ -43,8 +43,13 @@ class TestGraphormerLayer:
 class TestGraphormerInit:
     def test_hidden_not_divisible_by_heads_raises(self):
         with pytest.raises(ValueError):
-            Graphormer(hidden_channels=7, n_layers=1, in_channels=2,
-                       out_channels=2, num_heads=3)
+            Graphormer(
+                hidden_channels=7,
+                n_layers=1,
+                in_channels=2,
+                out_channels=2,
+                num_heads=3,
+            )
 
     def test_default_params(self):
         model = Graphormer()

@@ -18,16 +18,20 @@ class GCNLayer(nn.Module):
         self.residual = residual
         self.dropout = dropout
 
-        #assert in_dim == out_dim, "Cannot use residuals here"
+        # assert in_dim == out_dim, "Cannot use residuals here"
 
-        self.batchnorm_h = nn.BatchNorm1d(out_dim) if batch_norm else nn.Identity()
-        self.conv = GCNConv(in_dim, out_dim, add_self_loops=False, normalize=True)
+        self.batchnorm_h = (
+            nn.BatchNorm1d(out_dim) if batch_norm else nn.Identity()
+        )
+        self.conv = GCNConv(
+            in_dim, out_dim, add_self_loops=False, normalize=True
+        )
 
     def forward(self, x, edge_index):
-        h_in = x # Saving the residual
+        h_in = x  # Saving the residual
 
         # Actual convolution
-        h = self.conv(x = x, edge_index = edge_index)
+        h = self.conv(x=x, edge_index=edge_index)
 
         # Batch normalization before activation
         h = self.batchnorm_h(h)
@@ -44,26 +48,49 @@ class GCNLayer(nn.Module):
 
 
 class GCN(nn.Module):
-    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,  n_layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5, pool_method: str = "mean"):
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_channels: int,
+        out_channels: int,
+        n_layers: int,
+        residuals: bool,
+        batch_norm: bool,
+        dropout: float = 0.5,
+        pool_method: str = "mean",
+    ):
         super().__init__()
         self.pool_method = pool_method
 
         self.hidden_layers = nn.ModuleList(
             [
-                GCNLayer(hidden_channels, hidden_channels, batch_norm, residuals, dropout)
+                GCNLayer(
+                    hidden_channels,
+                    hidden_channels,
+                    batch_norm,
+                    residuals,
+                    dropout,
+                )
                 for _ in range(n_layers)
             ]
         )
-        self.hidden_layers.insert(0, GCNLayer(in_channels, hidden_channels, batch_norm, residual=False, dropout=dropout))
-
-        self.final_linear = nn.Linear(
-            hidden_channels, out_channels
+        self.hidden_layers.insert(
+            0,
+            GCNLayer(
+                in_channels,
+                hidden_channels,
+                batch_norm,
+                residual=False,
+                dropout=dropout,
+            ),
         )
+
+        self.final_linear = nn.Linear(hidden_channels, out_channels)
 
     def forward(self, batch):
         x, edge_index, batch = batch.x, batch.edge_index, batch.batch
         # 1. Obtain node embeddings
-        #x = self.conv_input(x, edge_index)
+        # x = self.conv_input(x, edge_index)
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
 

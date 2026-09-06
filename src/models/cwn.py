@@ -87,15 +87,21 @@ class CWNLayer(nn.Module):
         self.conv_1_to_1 = (
             conv_1_to_1
             if conv_1_to_1 is not None
-            else _CWNDefaultFirstConv(in_channels[1], in_channels[2], out_channels)
+            else _CWNDefaultFirstConv(
+                in_channels[1], in_channels[2], out_channels
+            )
         )
         self.conv_0_to_1 = (
             conv_0_to_1
             if conv_0_to_1 is not None
-            else _CWNDefaultSecondConv(in_channels[0], in_channels[1], out_channels)
+            else _CWNDefaultSecondConv(
+                in_channels[0], in_channels[1], out_channels
+            )
         )
         self.aggregate_fn = (
-            aggregate_fn if aggregate_fn is not None else _CWNDefaultAggregate()
+            aggregate_fn
+            if aggregate_fn is not None
+            else _CWNDefaultAggregate()
         )
         self.update_fn = (
             update_fn
@@ -184,10 +190,14 @@ class CWNLayer(nn.Module):
             Architectures of topological deep learning: a survey on topological neural networks (2023).
             https://arxiv.org/abs/2304.10031.
         """
-        x_convolved_1_to_1 = self.conv_1_to_1(x_1, x_2, adjacency_1, incidence_2)
+        x_convolved_1_to_1 = self.conv_1_to_1(
+            x_1, x_2, adjacency_1, incidence_2
+        )
         x_convolved_0_to_1 = self.conv_0_to_1(x_0, x_1, incidence_1_t)
 
-        x_aggregated = self.aggregate_fn(x_convolved_1_to_1, x_convolved_0_to_1)
+        x_aggregated = self.aggregate_fn(
+            x_convolved_1_to_1, x_convolved_0_to_1
+        )
         return self.update_fn(x_aggregated, x_1)
 
 
@@ -210,12 +220,8 @@ class _CWNDefaultFirstConv(nn.Module):
 
     def __init__(self, in_channels_1, in_channels_2, out_channels) -> None:
         super().__init__()
-        self.conv_1_to_1 = Conv(
-            in_channels_1, out_channels
-        )
-        self.conv_2_to_1 = Conv(
-            in_channels_2, out_channels
-        )
+        self.conv_1_to_1 = Conv(in_channels_1, out_channels)
+        self.conv_2_to_1 = Conv(in_channels_2, out_channels)
 
     def forward(self, x_1, x_2, adjacency_1, incidence_2):
         r"""Forward pass.
@@ -260,9 +266,7 @@ class _CWNDefaultSecondConv(nn.Module):
 
     def __init__(self, in_channels_0, in_channels_1, out_channels) -> None:
         super().__init__()
-        self.conv_0_to_1 = Conv(
-            in_channels_0, out_channels
-        )
+        self.conv_0_to_1 = Conv(in_channels_0, out_channels)
 
     def forward(self, x_0, x_1, incidence_1_t):
         r"""Forward pass.
@@ -346,7 +350,6 @@ class _CWNDefaultUpdate(nn.Module):
         return F.elu(self.transform(x))
 
 
-
 class CWN(torch.nn.Module):
     """Implementation of a specific version of CW network [1]_.
 
@@ -388,35 +391,37 @@ class CWN(torch.nn.Module):
 
         self.layers = torch.nn.ModuleList(
             CWNLayer(
-                in_channels=hidden_channels,
-                out_channels=hidden_channels[0]
+                in_channels=hidden_channels, out_channels=hidden_channels[0]
             )
             for _ in range(n_layers)
         )
-        self.readout = PropagateSignalDown(max_dimension=3, hidden_channel=hidden_channels[0])
-        self.graph_readout = MLP(in_channels=hidden_channels[0], hidden_channels=hidden_channels[0], out_channels=kwargs['out_channels'], num_layers=2)
+        self.readout = PropagateSignalDown(
+            max_dimension=3, hidden_channel=hidden_channels[0]
+        )
+        self.graph_readout = MLP(
+            in_channels=hidden_channels[0],
+            hidden_channels=hidden_channels[0],
+            out_channels=kwargs["out_channels"],
+            num_layers=2,
+        )
 
     def _reconstruct(self, batch, name):
         idx = batch[f"{name}_idx"]
         val = batch[f"{name}_val"].detach()
-        if 'incidence' in name:
-            r_to = int(name.split('_')[-1])
+        if "incidence" in name:
+            r_to = int(name.split("_")[-1])
             r_from = r_to - 1
         else:
-            r_from = r_to = int(name.split('_')[-1])
+            r_from = r_to = int(name.split("_")[-1])
 
         n_rows = batch[f"x_{r_from}"].size(0)
         n_cols = batch[f"x_{r_to}"].size(0)
 
         return SparseTensor(
-            row=idx[0], col=idx[1], value=val,
-            sparse_sizes=(n_rows, n_cols)
+            row=idx[0], col=idx[1], value=val, sparse_sizes=(n_rows, n_cols)
         )
 
-    def forward(
-        self,
-        batch
-    ):
+    def forward(self, batch):
         """Forward computation through projection, convolutions, linear layers and average pooling.
 
         Parameters
@@ -444,9 +449,9 @@ class CWN(torch.nn.Module):
             Final hidden states of the faces (2-cells).
         """
 
-        x_0 = batch['x_0']
-        x_1 = batch['x_1']
-        x_2 = batch['x_2']
+        x_0 = batch["x_0"]
+        x_1 = batch["x_1"]
+        x_2 = batch["x_2"]
 
         x_0 = F.elu(self.proj_0(x_0))
         x_1 = F.elu(self.proj_1(x_1))
@@ -466,20 +471,18 @@ class CWN(torch.nn.Module):
                 incidence_1.t(),
             )
 
-
-
         model_out = {
-            'x_0': x_0,
-            'x_1': x_1,
-            'x_2': x_2,
+            "x_0": x_0,
+            "x_1": x_1,
+            "x_2": x_2,
         }
         incidence_map = {
-            'incidence_1': incidence_1,
-            'incidence_2': incidence_2
+            "incidence_1": incidence_1,
+            "incidence_2": incidence_2,
         }
         out = self.readout(model_out, incidence_map)
-        out = self.graph_readout(out['x_0'])
-        
-        out = scatter_add(out, batch['batch_0'], dim=-2)
+        out = self.graph_readout(out["x_0"])
 
-        return out 
+        out = scatter_add(out, batch["batch_0"], dim=-2)
+
+        return out

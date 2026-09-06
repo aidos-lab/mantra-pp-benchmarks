@@ -15,7 +15,9 @@ from code.src.models.cells.transformer.layers.readouts.GlobalMaxPooling import (
 from code.src.models.cells.transformer.layers.readouts.GlobalMeanPooling import (
     GlobalMeanPooling,
 )
-from code.src.models.cells.transformer.layers.readouts.NoReadout import NoReadout
+from code.src.models.cells.transformer.layers.readouts.NoReadout import (
+    NoReadout,
+)
 from code.src.models.cells.transformer.layers.readouts.Set2SetPooling import (
     Set2SetPooling,
 )

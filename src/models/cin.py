@@ -16,10 +16,20 @@ from src.models.cells.mp.cell_mp import (
 
 class CINCochainConv(CochainMessagePassing):
     """This is a dummy parameter-free message passing model used for testing."""
-    def __init__(self, up_msg_size: int, down_msg_size: int,
-                 msg_up_nn: Callable, msg_down_nn: Callable, update_nn: Callable,
-                 eps: float = 0., train_eps: bool = False):
-        super(CINCochainConv, self).__init__(up_msg_size, down_msg_size, use_boundary_msg=False)
+
+    def __init__(
+        self,
+        up_msg_size: int,
+        down_msg_size: int,
+        msg_up_nn: Callable,
+        msg_down_nn: Callable,
+        update_nn: Callable,
+        eps: float = 0.0,
+        train_eps: bool = False,
+    ):
+        super(CINCochainConv, self).__init__(
+            up_msg_size, down_msg_size, use_boundary_msg=False
+        )
         self.msg_up_nn = msg_up_nn
         self.msg_down_nn = msg_down_nn
         self.update_nn = update_nn
@@ -27,14 +37,18 @@ class CINCochainConv(CochainMessagePassing):
         if train_eps:
             self.eps = torch.nn.Parameter(torch.Tensor([eps]))
         else:
-            self.register_buffer('eps', torch.Tensor([eps]))
+            self.register_buffer("eps", torch.Tensor([eps]))
         self.reset_parameters()
 
     def forward(self, cochain: CochainMessagePassingParams):
-        out_up, out_down, _ = self.propagate(cochain.up_index, cochain.down_index,
-                                             None, x=cochain.x,
-                                             up_attr=cochain.kwargs['up_attr'],
-                                             down_attr=cochain.kwargs['down_attr'])
+        out_up, out_down, _ = self.propagate(
+            cochain.up_index,
+            cochain.down_index,
+            None,
+            x=cochain.x,
+            up_attr=cochain.kwargs["up_attr"],
+            down_attr=cochain.kwargs["down_attr"],
+        )
 
         out_up += (1 + self.eps) * cochain.x
         out_down += (1 + self.eps) * cochain.x
@@ -57,20 +71,36 @@ class CINCochainConv(CochainMessagePassing):
         x = torch.cat([down_x_j, down_attr], dim=-1)
         return self.msg_down_nn(x)
 
+
 class CINConv(torch.nn.Module):
-    def __init__(self, up_msg_size: int, down_msg_size: int,
-                 msg_up_nn: Callable, msg_down_nn: Callable, update_nn: Callable,
-                 eps: float = 0., train_eps: bool = False, max_dim: int = 2):
+    def __init__(
+        self,
+        up_msg_size: int,
+        down_msg_size: int,
+        msg_up_nn: Callable,
+        msg_down_nn: Callable,
+        update_nn: Callable,
+        eps: float = 0.0,
+        train_eps: bool = False,
+        max_dim: int = 2,
+    ):
         super(CINConv, self).__init__()
         self.max_dim = max_dim
         self.mp_levels = torch.nn.ModuleList()
-        for dim in range(max_dim+1):
-            mp = CINCochainConv(up_msg_size, down_msg_size,
-                              msg_up_nn, msg_down_nn, update_nn, eps, train_eps)
+        for dim in range(max_dim + 1):
+            mp = CINCochainConv(
+                up_msg_size,
+                down_msg_size,
+                msg_up_nn,
+                msg_down_nn,
+                update_nn,
+                eps,
+                train_eps,
+            )
             self.mp_levels.append(mp)
 
     def forward(self, *cochain_params: CochainMessagePassingParams):
-        assert len(cochain_params) <= self.max_dim+1
+        assert len(cochain_params) <= self.max_dim + 1
 
         out = []
         for dim in range(len(cochain_params)):
@@ -86,9 +116,18 @@ class CIN0(torch.nn.Module):
     https://github.com/rusty1s/pytorch_geometric/blob/master/benchmark/kernel/gin.py
     """
 
-    def __init__(self, num_input_features, num_classes, num_layers, hidden,
-                 dropout_rate: float = 0.5,
-                 max_dim: int = 2, jump_mode=None, nonlinearity='relu', readout='sum'):
+    def __init__(
+        self,
+        num_input_features,
+        num_classes,
+        num_layers,
+        hidden,
+        dropout_rate: float = 0.5,
+        max_dim: int = 2,
+        jump_mode=None,
+        nonlinearity="relu",
+        readout="sum",
+    ):
         super(CIN0, self).__init__()
 
         self.max_dim = max_dim
@@ -105,20 +144,33 @@ class CIN0(torch.nn.Module):
                 conv_nonlinearity(),
                 Linear(hidden, hidden),
                 conv_nonlinearity(),
-                BN(hidden))
+                BN(hidden),
+            )
             conv_up = Sequential(
                 Linear(layer_dim * 2, layer_dim),
                 conv_nonlinearity(),
-                BN(layer_dim))
+                BN(layer_dim),
+            )
             conv_down = Sequential(
                 Linear(layer_dim * 2, layer_dim),
                 conv_nonlinearity(),
-                BN(layer_dim))
+                BN(layer_dim),
+            )
             self.convs.append(
-                CINConv(layer_dim, layer_dim,
-                    conv_up, conv_down, conv_update, train_eps=False, max_dim=self.max_dim))
-        self.jump = JumpingKnowledge(jump_mode) if jump_mode is not None else None
-        if jump_mode == 'cat':
+                CINConv(
+                    layer_dim,
+                    layer_dim,
+                    conv_up,
+                    conv_down,
+                    conv_update,
+                    train_eps=False,
+                    max_dim=self.max_dim,
+                )
+            )
+        self.jump = (
+            JumpingKnowledge(jump_mode) if jump_mode is not None else None
+        )
+        if jump_mode == "cat":
             self.lin1 = Linear(num_layers * hidden, hidden)
         else:
             self.lin1 = Linear(hidden, hidden)
@@ -136,11 +188,17 @@ class CIN0(torch.nn.Module):
         # All complexes have nodes so we can extract the batch size from cochains[0]
         batch_size = data.cochains[0].batch.max() + 1
         # The MP output is of shape [message_passing_dim, batch_size, feature_dim]
-        pooled_xs = torch.zeros(self.max_dim + 1, batch_size, xs[0].size(-1),
-            device=batch_size.device)
+        pooled_xs = torch.zeros(
+            self.max_dim + 1,
+            batch_size,
+            xs[0].size(-1),
+            device=batch_size.device,
+        )
         for i in range(len(xs)):
             # It's very important that size is supplied.
-            pooled_xs[i, :, :] = self.pooling_fn(xs[i], data.cochains[i].batch, size=batch_size)
+            pooled_xs[i, :, :] = self.pooling_fn(
+                xs[i], data.cochains[i].batch, size=batch_size
+            )
         return pooled_xs
 
     def jump_complex(self, jump_xs):

@@ -11,7 +11,9 @@ from code.src.models.cells.transformer.WeightInitialization import (
     get_initialization_function,
 )
 from code.src.models.cells.transformer.layers.DropPath import DropPath
-from code.src.models.cells.transformer.layers.attention.MaskType import MaskType
+from code.src.models.cells.transformer.layers.attention.MaskType import (
+    MaskType,
+)
 from code.src.models.cells.transformer.layers.attention.SparseMultiHeadAttention import (
     SparseMultiHeadAttention,
 )

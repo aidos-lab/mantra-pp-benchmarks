@@ -11,7 +11,9 @@ from src.utils.graphormer_spd import GraphormerSPDPreTransform
 def make_graph_batch() -> Batch:
     graph_a = Data(
         x=torch.tensor([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]),
-        edge_index=torch.tensor([[0, 1, 1, 2], [1, 0, 2, 1]], dtype=torch.long),
+        edge_index=torch.tensor(
+            [[0, 1, 1, 2], [1, 0, 2, 1]], dtype=torch.long
+        ),
     )
     graph_b = Data(
         x=torch.tensor([[0.5, 0.5], [0.25, 0.75]]),
@@ -23,7 +25,9 @@ def make_graph_batch() -> Batch:
 def make_batch_with_spd(max_distance=4) -> Batch:
     """Create a batch with precomputed SPD."""
     graph_a, graph_b = make_graph_batch()
-    pre_transform = GraphormerSPDPreTransform(max_distance=max_distance, undirected=True)
+    pre_transform = GraphormerSPDPreTransform(
+        max_distance=max_distance, undirected=True
+    )
     data_list = [pre_transform(graph_a), pre_transform(graph_b)]
     return Batch.from_data_list(data_list)
 

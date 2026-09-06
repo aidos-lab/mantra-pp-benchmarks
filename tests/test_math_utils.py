@@ -43,11 +43,15 @@ class TestEigenvectorsSmallestK:
 
     def test_selects_smallest_eigenvalues(self):
         # Laplacian of a path graph 0-1-2
-        L = sp.csr_matrix(np.array([
-            [1.0, -1.0, 0.0],
-            [-1.0, 2.0, -1.0],
-            [0.0, -1.0, 1.0],
-        ]))
+        L = sp.csr_matrix(
+            np.array(
+                [
+                    [1.0, -1.0, 0.0],
+                    [-1.0, 2.0, -1.0],
+                    [0.0, -1.0, 1.0],
+                ]
+            )
+        )
         np.random.seed(42)
         result = eigenvectors_smallest_k_eigenvalues(L, k=2)
         # Should return 2 eigenvectors (skipping the zero eigenvalue)

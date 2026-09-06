@@ -11,7 +11,9 @@ from code.src.models.cells.transformer.WeightInitialization import (
     WeightInitialization,
     get_initialization_function,
 )
-from code.src.models.cells.transformer.layers.attention.MaskType import MaskType
+from code.src.models.cells.transformer.layers.attention.MaskType import (
+    MaskType,
+)
 
 
 class SparseMultiHeadAttention(nn.Module):

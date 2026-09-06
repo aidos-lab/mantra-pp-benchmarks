@@ -44,13 +44,17 @@ def extract_train_metadata(train_cfg):
     """Pull model / embedding / representation class names out of train_cfg
     so they can be logged to wandb alongside eval results.
     """
+
     def _last_segment(target):
         return str(target).rsplit(".", 1)[-1] if target else None
 
     transform_dict = train_cfg.dataset.transform
 
     embedding_target = None
-    if "embedding" in transform_dict and "_target_" in transform_dict.embedding:
+    if (
+        "embedding" in transform_dict
+        and "_target_" in transform_dict.embedding
+    ):
         embedding_target = transform_dict.embedding._target_
 
     representation_target = None
@@ -85,13 +89,17 @@ def build_transforms(train_cfg):
         trans = hydra.utils.instantiate(transform)
         if name == "create_labels":
             label_transform = trans
-        assert name in transform_order, f"Transform {name} not in transform_order"
+        assert (
+            name in transform_order
+        ), f"Transform {name} not in transform_order"
         transforms[transform_order.index(name)] = trans
 
     return Compose(transforms), label_transform
 
 
-def create_dataset(train_cfg, root, local_path, transforms, label_transform, balanced):
+def create_dataset(
+    train_cfg, root, local_path, transforms, label_transform, balanced
+):
     # `balanced` must match what precompute_barycentric.py wrote — it controls
     # the processed filename (`data_{dim}.pt` vs `data_{dim}_balanced.pt`).
     dataset = ManifoldTriangulations(
@@ -171,9 +179,9 @@ def get_test_loader(dataset, train_cfg, collate_fn=None):
     )
 
 
-
-
-@hydra.main(version_base=None, config_path="config", config_name="eval_barycentric")
+@hydra.main(
+    version_base=None, config_path="config", config_name="eval_barycentric"
+)
 def main(eval_cfg: EvalBarycentricConfig):
     ckpt_dir = eval_cfg.checkpoint_dir
     if not ckpt_dir or not os.path.isdir(ckpt_dir):
@@ -226,7 +234,6 @@ def main(eval_cfg: EvalBarycentricConfig):
         correct_label_to_index = json.load(f)
     label_transform.label_to_index = correct_label_to_index
 
-
     dataset = create_dataset(
         train_cfg,
         root=eval_cfg.bary_dataset_root,
@@ -246,6 +253,7 @@ def main(eval_cfg: EvalBarycentricConfig):
     collate_fn = None
     if not is_graph_repr:
         from src.utils.data_loading import collate_simplicial
+
         collate_fn = collate_simplicial
 
     state_dict = torch.load(
@@ -257,7 +265,7 @@ def main(eval_cfg: EvalBarycentricConfig):
     # `_orig_mod.` prefix on every key; strip it so load_state_dict matches
     # the uncompiled module we instantiate here.
     state_dict = {
-        (k[len("_orig_mod."):] if k.startswith("_orig_mod.") else k): v
+        (k[len("_orig_mod.") :] if k.startswith("_orig_mod.") else k): v
         for k, v in state_dict.items()
     }
 
@@ -274,11 +282,19 @@ def main(eval_cfg: EvalBarycentricConfig):
     conf_dict.update(train_meta)
     conf_dict["checkpoint"] = run_name
 
-
-    with wandb.init(entity=eval_cfg.logger.entity, project=eval_cfg.logger.project, config=conf_dict) as run:
+    with wandb.init(
+        entity=eval_cfg.logger.entity,
+        project=eval_cfg.logger.project,
+        config=conf_dict,
+    ) as run:
         run.summary.update(train_meta)
         test(
-            model, test_loader, accuracies, correct_label_to_index, run, train_cfg,
+            model,
+            test_loader,
+            accuracies,
+            correct_label_to_index,
+            run,
+            train_cfg,
             epoch=train_cfg.trainer.max_epoch,
         )
 

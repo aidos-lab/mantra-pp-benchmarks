@@ -26,7 +26,6 @@ Compute: scipy.sparse.csgraph.shortest_path with unweighted=True. It runs
 in C and is dramatically faster than networkx's per-source BFS loop.
 """
 
-
 import numpy as np
 import torch
 from scipy.sparse import csr_matrix
@@ -80,7 +79,9 @@ class GraphormerSPDPreTransform(BaseTransform):
     ):
         super().__init__()
         if max_distance <= 0:
-            raise ValueError(f"max_distance must be positive, got {max_distance}")
+            raise ValueError(
+                f"max_distance must be positive, got {max_distance}"
+            )
         if max_distance + 1 > 255:
             raise ValueError(
                 f"max_distance + 1 must fit in uint8 (<= 255); "
@@ -98,11 +99,17 @@ class GraphormerSPDPreTransform(BaseTransform):
             return int(n)
         if hasattr(data, "x") and data.x is not None:
             return int(data.x.size(0))
-        if hasattr(data, "edge_index") and data.edge_index is not None and data.edge_index.numel() > 0:
+        if (
+            hasattr(data, "edge_index")
+            and data.edge_index is not None
+            and data.edge_index.numel() > 0
+        ):
             return int(data.edge_index.max().item()) + 1
         return 0
 
-    def _compute_dense_spd(self, edge_index: torch.Tensor, n: int) -> np.ndarray:
+    def _compute_dense_spd(
+        self, edge_index: torch.Tensor, n: int
+    ) -> np.ndarray:
         """Return an (n, n) uint8 SPD matrix with the encoding documented above."""
         unreachable = self.max_distance + 1
 
@@ -146,4 +153,3 @@ class GraphormerSPDPreTransform(BaseTransform):
         # Promote to SPDData so PyG batching uses the right __cat_dim__/__inc__.
         object.__setattr__(data, "__class__", SPDData)
         return data
-

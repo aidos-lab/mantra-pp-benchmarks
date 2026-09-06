@@ -5,9 +5,10 @@ import torch.nn as nn
 
 
 class LossType(Enum):
-    BINARY=1,
-    MULTICLASS=2,
-    REGRESSION=3
+    BINARY = (1,)
+    MULTICLASS = (2,)
+    REGRESSION = 3
+
 
 class BaseLoss(nn.Module):
     def __init__(self, task_type: LossType):
@@ -24,4 +25,8 @@ class BaseLoss(nn.Module):
 
 class Contrastive(BaseLoss):
     def __call__(self, y1_pred, y2_pred, gamma: float = 0):
-        return max(0, (y1_pred @ y2_pred)/(torch.norm(y1_pred)*torch.norm(y2_pred)) - gamma)
+        return max(
+            0,
+            (y1_pred @ y2_pred) / (torch.norm(y1_pred) * torch.norm(y2_pred))
+            - gamma,
+        )

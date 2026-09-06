@@ -17,8 +17,12 @@ class GraphormerConfig(BaseModel):
     num_heads: int = 8
     dropout: float = 0.1
     max_degree: int = 32
-    max_distance: int = 16  # max shortest-path distance bucket for spatial encoding
-    use_spatial_encoding: bool = True  # implemented as a gate (no control-flow in forward)
+    max_distance: int = (
+        16  # max shortest-path distance bucket for spatial encoding
+    )
+    use_spatial_encoding: bool = (
+        True  # implemented as a gate (no control-flow in forward)
+    )
     ffn_expansion_ratio: int = 4  # FFN hidden size = hidden_channels * ratio
     spd_undirected: bool = True  # treat edges as undirected when computing SPD
 
@@ -31,7 +35,14 @@ class GraphormerLayer(nn.Module):
         1. Layer Norm -> Multi-Head Attention -> Residual
         2. Layer Norm -> FFN -> Residual
     """
-    def __init__(self, hidden_dim: int, num_heads: int, dropout: float, ffn_expansion_ratio: int = 4):
+
+    def __init__(
+        self,
+        hidden_dim: int,
+        num_heads: int,
+        dropout: float,
+        ffn_expansion_ratio: int = 4,
+    ):
         super().__init__()
         if hidden_dim % num_heads != 0:
             raise ValueError(
@@ -148,18 +159,18 @@ class Graphormer(nn.Module):
     """
 
     def __init__(
-            self,
-            hidden_channels: int = 128,
-            n_layers: int = 4,
-            in_channels: int = 1,
-            out_channels: int = 5,
-            num_heads: int = 8,
-            dropout: float = 0.1,
-            max_degree: int = 32,
-            max_distance: int = 16,
-            use_spatial_encoding: bool = True,
-            ffn_expansion_ratio: int = 4,
-            spd_undirected: bool = True,
+        self,
+        hidden_channels: int = 128,
+        n_layers: int = 4,
+        in_channels: int = 1,
+        out_channels: int = 5,
+        num_heads: int = 8,
+        dropout: float = 0.1,
+        max_degree: int = 32,
+        max_distance: int = 16,
+        use_spatial_encoding: bool = True,
+        ffn_expansion_ratio: int = 4,
+        spd_undirected: bool = True,
     ):
         super().__init__()
         if hidden_channels % num_heads != 0:
@@ -172,20 +183,12 @@ class Graphormer(nn.Module):
         self.spd_undirected = spd_undirected
         self.max_distance = max_distance
 
-        self.input_proj = nn.Linear(
-            in_channels, hidden_channels
-        )
-        self.in_degree_emb = nn.Embedding(
-            max_degree + 1, hidden_channels
-        )
-        self.out_degree_emb = nn.Embedding(
-            max_degree + 1, hidden_channels
-        )
+        self.input_proj = nn.Linear(in_channels, hidden_channels)
+        self.in_degree_emb = nn.Embedding(max_degree + 1, hidden_channels)
+        self.out_degree_emb = nn.Embedding(max_degree + 1, hidden_channels)
         # Spatial encoding is an attention bias indexed by shortest-path distance.
         # We allocate max_distance+2 buckets: [0..max_distance] plus one bucket for "unreachable/overflow".
-        self.spatial_pos_emb = nn.Embedding(
-            max_distance + 2, num_heads
-        )
+        self.spatial_pos_emb = nn.Embedding(max_distance + 2, num_heads)
 
         self.layers = nn.ModuleList(
             [
@@ -274,7 +277,9 @@ class Graphormer(nn.Module):
                 max_nodes,
                 node_mask,
             )
-            attn_bias = self.spatial_pos_emb(spd).permute(0, 3, 1, 2).contiguous()
+            attn_bias = (
+                self.spatial_pos_emb(spd).permute(0, 3, 1, 2).contiguous()
+            )
         else:
             attn_bias = x_dense.new_zeros(
                 (batch_size, self.num_heads, max_nodes, max_nodes)

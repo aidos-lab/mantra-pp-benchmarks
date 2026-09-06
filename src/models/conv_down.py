@@ -9,18 +9,18 @@ from torch_sparse import SparseTensor
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.in_channels = in_channels 
+        self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.weight = nn.Parameter(torch.Tensor(self.in_channels, self.out_channels))
-        
+        self.weight = nn.Parameter(
+            torch.Tensor(self.in_channels, self.out_channels)
+        )
+
         self.reset_parameters()
 
     def reset_parameters(self):
-        gain = nn.init.calculate_gain('relu')
-        torch.nn.init.xavier_uniform_(
-            self.weight, gain=gain
-        )
+        gain = nn.init.calculate_gain("relu")
+        torch.nn.init.xavier_uniform_(self.weight, gain=gain)
 
     def forward(self, x_source, neighborhood: SparseTensor):
         neighborhood.coalesce()
@@ -53,7 +53,6 @@ class PropagateSignalDown(nn.Module):
     def __init__(self, max_dimension, hidden_channel):
         super().__init__()
 
-
         self.dimensions = range(max_dimension - 1, 0, -1)
         self.hidden_channel = hidden_channel
 
@@ -61,9 +60,7 @@ class PropagateSignalDown(nn.Module):
             setattr(
                 self,
                 f"agg_conv_{i}",
-                Conv(
-                    self.hidden_channel, self.hidden_channel
-                ),
+                Conv(self.hidden_channel, self.hidden_channel),
             )
 
             setattr(self, f"ln_{i}", torch.nn.LayerNorm(self.hidden_channel))

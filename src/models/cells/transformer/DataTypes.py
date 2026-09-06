@@ -41,6 +41,7 @@ def _other_features_to_device(
     else:
         return dict_of_tensors_to_device(feature, device)
 
+
 @dataclass
 class SimplicialComplexData:
     pass

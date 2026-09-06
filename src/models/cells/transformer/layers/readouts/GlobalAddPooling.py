@@ -2,7 +2,9 @@ import torch
 import torch_geometric.nn as pyg_nn
 from jaxtyping import Float
 
-from code.src.models.cells.transformer.layers.readouts.BaseReadout import BaseReadout
+from code.src.models.cells.transformer.layers.readouts.BaseReadout import (
+    BaseReadout,
+)
 
 
 class GlobalAddPooling(BaseReadout):

@@ -17,14 +17,26 @@ from code.src.models.cells.transformer.InputPreprocessing import (
     InputPreprocessing,
     generate_input_preprocessing_layer,
 )
-from code.src.models.cells.transformer.Readout import Readout, get_readout_layer
-from code.src.models.cells.transformer.TensorDiagram import TensorDiagram, Interaction
-from code.src.models.cells.transformer.WeightInitialization import WeightInitialization
-from code.src.models.cells.transformer.layers.BottleneckMLP import BottleneckMLP
+from code.src.models.cells.transformer.Readout import (
+    Readout,
+    get_readout_layer,
+)
+from code.src.models.cells.transformer.TensorDiagram import (
+    TensorDiagram,
+    Interaction,
+)
+from code.src.models.cells.transformer.WeightInitialization import (
+    WeightInitialization,
+)
+from code.src.models.cells.transformer.layers.BottleneckMLP import (
+    BottleneckMLP,
+)
 from code.src.models.cells.transformer.layers.attention.HierarchicalAttentionLayer import (
     HierarchicalAttentionLayer,
 )
-from code.src.models.cells.transformer.layers.attention.MaskType import MaskType
+from code.src.models.cells.transformer.layers.attention.MaskType import (
+    MaskType,
+)
 from code.src.models.cells.transformer.layers.attention.PointCloudAttentionLayer import (
     PointCloudAttentionLayer,
 )
@@ -525,7 +537,7 @@ class CellularTransformer(nn.Module):
         batch_matrices: dict[Interaction, SparseMatrix],
         attention_matrices: dict[Interaction, SparseMatrix],
     ) -> dict[int, Float[torch.Tensor, "..."]]:
-        (h_joint, joint_batch_matrix, joint_attention_matrix) = (
+        h_joint, joint_batch_matrix, joint_attention_matrix = (
             PointCloudAttentionLayer.get_joint_signals_and_batch_and_attention_matrices(
                 x=h,
                 batch_masks=batch_matrices,

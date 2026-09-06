@@ -50,14 +50,12 @@ class SANConv(nn.Module):
         self.weight = Parameter(
             torch.empty(n_filters, in_channels, out_channels)
         )
-        self.att_weight = Parameter(
-            torch.empty(2 * out_channels * n_filters)
-        )
+        self.att_weight = Parameter(torch.empty(2 * out_channels * n_filters))
 
         self.reset_parameters()
 
     def reset_parameters(self):
-        gain = nn.init.calculate_gain('relu')
+        gain = nn.init.calculate_gain("relu")
         nn.init.xavier_uniform_(self.weight, gain=gain)
         nn.init.xavier_uniform_(self.att_weight.unsqueeze(0), gain=gain)
 
@@ -167,8 +165,12 @@ class SANTMX(nn.Module):
         self.layers = nn.ModuleList()
         self.layers.append(SANTMXLayer(in_channels, hidden_channels, kappa))
         for _ in range(n_layers - 2):
-            self.layers.append(SANTMXLayer(hidden_channels, hidden_channels, kappa))
-        self.layers.append(SANTMXLayer(hidden_channels, hidden_channels, kappa))
+            self.layers.append(
+                SANTMXLayer(hidden_channels, hidden_channels, kappa)
+            )
+        self.layers.append(
+            SANTMXLayer(hidden_channels, hidden_channels, kappa)
+        )
 
         self.linear = nn.Linear(hidden_channels, hidden_channels)
         self.readout = SumReadout(hidden_channels, out_channels)
@@ -177,16 +179,15 @@ class SANTMX(nn.Module):
         """Rebuild a SparseTensor from batched _idx/_val keys."""
         idx = batch[f"{name}_idx"]
         val = batch[f"{name}_val"]
-        if 'incidence' in name:
-            r_to = int(name.split('_')[-1])
+        if "incidence" in name:
+            r_to = int(name.split("_")[-1])
             r_from = r_to - 1
         else:
-            r_from = r_to = int(name.split('_')[-1])
+            r_from = r_to = int(name.split("_")[-1])
         n_rows = batch[f"x_{r_from}"].size(0)
         n_cols = batch[f"x_{r_to}"].size(0)
         return SparseTensor(
-            row=idx[0], col=idx[1], value=val,
-            sparse_sizes=(n_rows, n_cols)
+            row=idx[0], col=idx[1], value=val, sparse_sizes=(n_rows, n_cols)
         )
 
     def _compute_projection_matrix(self, L_g):
@@ -231,11 +232,13 @@ class SANTMX(nn.Module):
         rows = torch.cat(all_rows)
         cols = torch.cat(all_cols)
         vals = torch.cat(all_vals)
-        return SparseTensor(row=rows, col=cols, value=vals, sparse_sizes=(E, E))
+        return SparseTensor(
+            row=rows, col=cols, value=vals, sparse_sizes=(E, E)
+        )
 
     def forward(self, batch):
-        x = batch['x_1']
-        batch_1 = batch['batch_1']
+        x = batch["x_1"]
+        batch_1 = batch["batch_1"]
 
         up_laplacian = self._reconstruct(batch, "up_laplacian_1")
         down_laplacian = self._reconstruct(batch, "down_laplacian_1")

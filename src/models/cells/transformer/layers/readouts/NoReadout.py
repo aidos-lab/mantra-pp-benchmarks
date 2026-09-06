@@ -1,7 +1,9 @@
 import torch
 from jaxtyping import Float
 
-from code.src.models.cells.transformer.layers.readouts.BaseReadout import BaseReadout
+from code.src.models.cells.transformer.layers.readouts.BaseReadout import (
+    BaseReadout,
+)
 
 
 class NoReadout(BaseReadout):

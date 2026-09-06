@@ -21,7 +21,10 @@ class SALayer(nn.Module):
     as well as the harmonic component of an edge signal, providing a generalization of graph attention
     networks to higher-order domains.
     """
-    def __init__(self, F_in, F_out,  kappa, p_dropout, alpha_leaky_relu, act_fn):
+
+    def __init__(
+        self, F_in, F_out, kappa, p_dropout, alpha_leaky_relu, act_fn
+    ):
         super(SALayer, self).__init__()
 
         self.K = kappa
@@ -30,8 +33,8 @@ class SALayer(nn.Module):
         self.Wirr = nn.Parameter(torch.empty(size=(self.K, F_in, F_out)))
         self.Wsol = nn.Parameter(torch.empty(size=(self.K, F_in, F_out)))
         self.Whar = nn.Parameter(torch.empty(size=(F_in, F_out)))
-        self.att_irr = nn.Parameter(torch.empty(size=(2*F_out*self.K, 1)))
-        self.att_sol = nn.Parameter(torch.empty(size=(2*F_out*self.K, 1)))
+        self.att_irr = nn.Parameter(torch.empty(size=(2 * F_out * self.K, 1)))
+        self.att_sol = nn.Parameter(torch.empty(size=(2 * F_out * self.K, 1)))
 
         self.dropout = p_dropout
         self.leakyrelu = nn.LeakyReLU(alpha_leaky_relu)
@@ -40,7 +43,7 @@ class SALayer(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        gain = nn.init.calculate_gain('relu')
+        gain = nn.init.calculate_gain("relu")
         nn.init.xavier_uniform_(self.Wirr.data, gain=gain)
         nn.init.xavier_uniform_(self.Wsol.data, gain=gain)
         nn.init.xavier_uniform_(self.Whar.data, gain=gain)
@@ -59,10 +62,10 @@ class SALayer(nn.Module):
         u_row, u_col, _ = up_laplacian.coo()
 
         # Split attention vectors
-        a_l_irr = self.att_irr[:self.F_out * self.K]
-        a_r_irr = self.att_irr[self.F_out * self.K:]
-        a_l_sol = self.att_sol[:self.F_out * self.K]
-        a_r_sol = self.att_sol[self.F_out * self.K:]
+        a_l_irr = self.att_irr[: self.F_out * self.K]
+        a_r_irr = self.att_irr[self.F_out * self.K :]
+        a_l_sol = self.att_sol[: self.F_out * self.K]
+        a_r_sol = self.att_sol[self.F_out * self.K :]
 
         # Compute attention scores only on non-zero entries
         e_irr = self.leakyrelu(
@@ -89,12 +92,16 @@ class SALayer(nn.Module):
         acc_irr = x @ self.Wirr[self.K - 1]
         acc_sol = x @ self.Wsol[self.K - 1]
         for k in range(self.K - 2, -1, -1):
-            acc_irr = spmm(d_index, alpha_irr, E, E, acc_irr) + x @ self.Wirr[k]
-            acc_sol = spmm(u_index, alpha_sol, E, E, acc_sol) + x @ self.Wsol[k]
+            acc_irr = (
+                spmm(d_index, alpha_irr, E, E, acc_irr) + x @ self.Wirr[k]
+            )
+            acc_sol = (
+                spmm(u_index, alpha_sol, E, E, acc_sol) + x @ self.Wsol[k]
+            )
         z_i = spmm(d_index, alpha_irr, E, E, acc_irr)
         z_s = spmm(u_index, alpha_sol, E, E, acc_sol)
 
-        out = (z_i + z_s + x_har)
+        out = z_i + z_s + x_har
 
         if self.act_fn is None:
             return out
@@ -104,7 +111,9 @@ class SALayer(nn.Module):
 
 class SCLayer(nn.Module):
 
-    def __init__(self, F_in, F_out, kappa, p_dropout, alpha_leaky_relu, act_fn):
+    def __init__(
+        self, F_in, F_out, kappa, p_dropout, alpha_leaky_relu, act_fn
+    ):
         super(SCLayer, self).__init__()
         self.K = kappa
         self.F_in = F_in
@@ -120,7 +129,7 @@ class SCLayer(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        gain = nn.init.calculate_gain('relu')
+        gain = nn.init.calculate_gain("relu")
         nn.init.xavier_uniform_(self.Wirr.data, gain=gain)
         nn.init.xavier_uniform_(self.Wsol.data, gain=gain)
         nn.init.xavier_uniform_(self.Whar.data, gain=gain)
@@ -156,7 +165,20 @@ class SAN(nn.Module):
 
     @author: Lorenzo Giusti
     """
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, alpha_leaky_relu=0.01, kappa=2, dropout=0.0, epsilon=0.1, k_proj=10, attention=False):
+
+    def __init__(
+        self,
+        in_channels,
+        hidden_channels,
+        out_channels,
+        n_layers,
+        alpha_leaky_relu=0.01,
+        kappa=2,
+        dropout=0.0,
+        epsilon=0.1,
+        k_proj=10,
+        attention=False,
+    ):
         super().__init__()
 
         assert n_layers > 2, "Needs at least 3 layers in `n_layers`"
@@ -173,68 +195,70 @@ class SAN(nn.Module):
             self.layers = nn.ModuleList(
                 [
                     SALayer(
-                        F_in = hidden_channels,
-                        F_out = hidden_channels,
+                        F_in=hidden_channels,
+                        F_out=hidden_channels,
                         kappa=kappa,
                         p_dropout=dropout,
                         alpha_leaky_relu=alpha_leaky_relu,
-                        act_fn=self.act
+                        act_fn=self.act,
                     )
                     for _ in range(n_layers - 2)
                 ]
             )
-            self.layers.insert(0,
+            self.layers.insert(
+                0,
                 SALayer(
-                    F_in = in_channels,
-                    F_out = hidden_channels,
+                    F_in=in_channels,
+                    F_out=hidden_channels,
                     kappa=kappa,
                     p_dropout=dropout,
                     alpha_leaky_relu=alpha_leaky_relu,
-                    act_fn=self.act
-                )
+                    act_fn=self.act,
+                ),
             )
             self.layers.append(
                 SALayer(
-                    F_in = hidden_channels,
-                    F_out = hidden_channels,
+                    F_in=hidden_channels,
+                    F_out=hidden_channels,
                     kappa=kappa,
                     p_dropout=dropout,
                     alpha_leaky_relu=alpha_leaky_relu,
-                    act_fn=None
+                    act_fn=None,
                 )
             )
         else:
             self.layers = nn.ModuleList(
                 [
                     SCLayer(
-                        F_in = hidden_channels,
-                        F_out = hidden_channels,
+                        F_in=hidden_channels,
+                        F_out=hidden_channels,
                         kappa=kappa,
                         p_dropout=dropout,
                         alpha_leaky_relu=alpha_leaky_relu,
-                        act_fn=self.act
+                        act_fn=self.act,
                     )
                     for _ in range(n_layers - 2)
                 ]
             )
-            self.layers.insert(0,
+            self.layers.insert(
+                0,
                 SCLayer(
-                    F_in = in_channels,
-                    F_out = hidden_channels,
+                    F_in=in_channels,
+                    F_out=hidden_channels,
                     kappa=kappa,
                     p_dropout=dropout,
                     alpha_leaky_relu=alpha_leaky_relu,
-                    act_fn=self.act
-                )
+                    act_fn=self.act,
+                ),
             )
             self.layers.append(
                 SCLayer(
-                    F_in = hidden_channels,
-                    F_out = hidden_channels,
+                    F_in=hidden_channels,
+                    F_out=hidden_channels,
                     kappa=kappa,
                     p_dropout=dropout,
                     alpha_leaky_relu=alpha_leaky_relu,
-                    act_fn=None
+                    act_fn=None,
                 )
             )
         self.linear = nn.Linear(hidden_channels, hidden_channels)
@@ -244,16 +268,15 @@ class SAN(nn.Module):
         """Rebuild a SparseTensor from batched _idx/_val keys."""
         idx = batch[f"{name}_idx"]
         val = batch[f"{name}_val"]
-        if 'incidence' in name:
-            r_to = int(name.split('_')[-1])
+        if "incidence" in name:
+            r_to = int(name.split("_")[-1])
             r_from = r_to - 1
         else:
-            r_from = r_to = int(name.split('_')[-1])
+            r_from = r_to = int(name.split("_")[-1])
         n_rows = batch[f"x_{r_from}"].size(0)
         n_cols = batch[f"x_{r_to}"].size(0)
         return SparseTensor(
-            row=idx[0], col=idx[1], value=val,
-            sparse_sizes=(n_rows, n_cols)
+            row=idx[0], col=idx[1], value=val, sparse_sizes=(n_rows, n_cols)
         )
 
     def _single_graph_projector(self, L_g):
@@ -303,11 +326,13 @@ class SAN(nn.Module):
         rows = torch.cat(all_rows)
         cols = torch.cat(all_cols)
         vals = torch.cat(all_vals)
-        return SparseTensor(row=rows, col=cols, value=vals, sparse_sizes=(E, E))
+        return SparseTensor(
+            row=rows, col=cols, value=vals, sparse_sizes=(E, E)
+        )
 
     def forward(self, batch):
-        x = batch['x_1']
-        batch_1 = batch['batch_1']
+        x = batch["x_1"]
+        batch_1 = batch["batch_1"]
 
         up_laplacian = self._reconstruct(batch, "up_laplacian_1")
         down_laplacian = self._reconstruct(batch, "down_laplacian_1")

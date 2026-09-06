@@ -7,8 +7,12 @@ from torch import nn
 from dgl.sparse import spmatrix
 
 from code.src.models.cells.transformer.TensorDiagram import Interaction
-from code.src.models.cells.transformer.WeightInitialization import WeightInitialization
-from code.src.models.cells.transformer.layers.attention.MaskType import MaskType
+from code.src.models.cells.transformer.WeightInitialization import (
+    WeightInitialization,
+)
+from code.src.models.cells.transformer.layers.attention.MaskType import (
+    MaskType,
+)
 from code.src.models.cells.transformer.layers.attention.PairwiseAttentionLayer import (
     PairwiseAttentionLayer,
 )
@@ -95,9 +99,7 @@ class PointCloudAttentionLayer(nn.Module):
         indices = torch.cat(indices_to_concat, dim=1)
         values = torch.cat(values_to_concat, dim=0)
         total_samples = sum(n_samples.values())
-        return spmatrix(
-            indices, values, shape=(total_samples, total_samples)
-        )
+        return spmatrix(indices, values, shape=(total_samples, total_samples))
 
     @staticmethod
     def get_joint_signals_and_batch_and_attention_matrices(

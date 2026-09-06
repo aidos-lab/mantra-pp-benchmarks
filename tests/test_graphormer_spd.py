@@ -47,10 +47,7 @@ class TestExactDistances(unittest.TestCase):
         data = transform(_make_data(edge_index, num_nodes=4))
 
         expected = torch.tensor(
-            [[0, 1, 2, 3],
-             [1, 0, 1, 2],
-             [2, 1, 0, 1],
-             [3, 2, 1, 0]],
+            [[0, 1, 2, 3], [1, 0, 1, 2], [2, 1, 0, 1], [3, 2, 1, 0]],
             dtype=torch.long,
         )
         self.assertTrue(torch.equal(_spd_matrix(data), expected))
@@ -76,7 +73,9 @@ class TestExactDistances(unittest.TestCase):
         transform = GraphormerSPDPreTransform(max_distance=16, undirected=True)
         data = transform(_make_data(edge_index, num_nodes=4))
 
-        expected = torch.ones((4, 4), dtype=torch.long) - torch.eye(4, dtype=torch.long)
+        expected = torch.ones((4, 4), dtype=torch.long) - torch.eye(
+            4, dtype=torch.long
+        )
         self.assertTrue(torch.equal(_spd_matrix(data), expected))
 
     def test_two_disconnected_edges(self):
@@ -89,10 +88,7 @@ class TestExactDistances(unittest.TestCase):
 
         UN = 17
         expected = torch.tensor(
-            [[0, 1, UN, UN],
-             [1, 0, UN, UN],
-             [UN, UN, 0, 1],
-             [UN, UN, 1, 0]],
+            [[0, 1, UN, UN], [1, 0, UN, UN], [UN, UN, 0, 1], [UN, UN, 1, 0]],
             dtype=torch.long,
         )
         self.assertTrue(torch.equal(_spd_matrix(data), expected))
@@ -105,9 +101,7 @@ class TestExactDistances(unittest.TestCase):
 
         UN = 17
         expected = torch.tensor(
-            [[0, 1, UN],
-             [1, 0, UN],
-             [UN, UN, 0]],
+            [[0, 1, UN], [1, 0, UN], [UN, UN, 0]],
             dtype=torch.long,
         )
         self.assertTrue(torch.equal(_spd_matrix(data), expected))
@@ -130,10 +124,7 @@ class TestCutoffEncoding(unittest.TestCase):
 
         UN = 3  # max_distance + 1
         expected = torch.tensor(
-            [[0, 1, 2, UN],
-             [1, 0, 1, 2],
-             [2, 1, 0, 1],
-             [UN, 2, 1, 0]],
+            [[0, 1, 2, UN], [1, 0, 1, 2], [2, 1, 0, 1], [UN, 2, 1, 0]],
             dtype=torch.long,
         )
         self.assertTrue(torch.equal(_spd_matrix(data), expected))
@@ -151,7 +142,9 @@ class TestCutoffEncoding(unittest.TestCase):
     def test_max_distance_254_fits_uint8(self):
         """Boundary: max_distance=254 → unreachable=255, still fits in uint8."""
         edge_index = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
-        transform = GraphormerSPDPreTransform(max_distance=254, undirected=True)
+        transform = GraphormerSPDPreTransform(
+            max_distance=254, undirected=True
+        )
         data = transform(_make_data(edge_index, num_nodes=2))
         self.assertEqual(data.spd.dtype, torch.uint8)
 
@@ -174,7 +167,9 @@ class TestDirected(unittest.TestCase):
     def test_directed_chain_asymmetric(self):
         """0→1→2: dist(0,2)=2, dist(2,0)=unreachable."""
         edge_index = torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
-        transform = GraphormerSPDPreTransform(max_distance=16, undirected=False)
+        transform = GraphormerSPDPreTransform(
+            max_distance=16, undirected=False
+        )
         data = transform(_make_data(edge_index, num_nodes=3))
 
         D = _spd_matrix(data)
@@ -268,7 +263,9 @@ class TestOutputFormat(unittest.TestCase):
 
     def test_custom_attr_name(self):
         edge_index = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
-        transform = GraphormerSPDPreTransform(max_distance=4, attr_name="my_spd")
+        transform = GraphormerSPDPreTransform(
+            max_distance=4, attr_name="my_spd"
+        )
         data = transform(_make_data(edge_index, num_nodes=2))
 
         self.assertTrue(hasattr(data, "my_spd"))
@@ -319,10 +316,10 @@ class TestBatching(unittest.TestCase):
             [[0, 1, 1, 2, 2, 3], [1, 0, 2, 1, 3, 2]], dtype=torch.long
         )
         transform = GraphormerSPDPreTransform(max_distance=16, undirected=True)
-        g1 = transform(_make_data(edge_index, num_nodes=4))   # chain n=4
+        g1 = transform(_make_data(edge_index, num_nodes=4))  # chain n=4
 
         e2 = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
-        g2 = transform(_make_data(e2, num_nodes=2))            # edge n=2
+        g2 = transform(_make_data(e2, num_nodes=2))  # edge n=2
 
         D1 = _spd_matrix(g1).clone()
         D2 = _spd_matrix(g2).clone()

@@ -1,6 +1,8 @@
 from enum import Enum
 
-from code.src.models.cells.transformer.WeightInitialization import WeightInitialization
+from code.src.models.cells.transformer.WeightInitialization import (
+    WeightInitialization,
+)
 from code.src.models.cells.transformer.layers.input_preprocessing.ConcatenationPositionalEncoding import (
     ConcatenationPositionalEncoding,
 )

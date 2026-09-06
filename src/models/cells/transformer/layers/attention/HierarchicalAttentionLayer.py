@@ -5,9 +5,16 @@ from dgl.sparse import SparseMatrix
 from jaxtyping import Float
 from torch import nn
 
-from code.src.models.cells.transformer.TensorDiagram import TensorDiagram, Interaction
-from code.src.models.cells.transformer.WeightInitialization import WeightInitialization
-from code.src.models.cells.transformer.layers.attention.MaskType import MaskType
+from code.src.models.cells.transformer.TensorDiagram import (
+    TensorDiagram,
+    Interaction,
+)
+from code.src.models.cells.transformer.WeightInitialization import (
+    WeightInitialization,
+)
+from code.src.models.cells.transformer.layers.attention.MaskType import (
+    MaskType,
+)
 from code.src.models.cells.transformer.layers.attention.PairwiseAttentionLayer import (
     PairwiseAttentionLayer,
 )

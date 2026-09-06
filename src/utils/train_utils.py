@@ -9,10 +9,7 @@ from src.utils.logging import log_metrics
 
 
 def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
-    """ Run the training 
-
-
-    """
+    """Run the training"""
 
     model.train()
     metrics = defaultdict(float)
@@ -21,7 +18,9 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
     # Go over each batch
     for batch in train_dataset:
-        batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
+        batch = batch.to(
+            cfg.trainer.device, non_blocking=(cfg.trainer.device != "cpu")
+        )
         optimizer.zero_grad(set_to_none=True)
 
         y_hat = model(batch)
@@ -44,18 +43,17 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
     losses = torch.stack(losses)
     sizes = torch.tensor(batch_sizes, device=losses.device, dtype=losses.dtype)
-    metrics['train/loss'] = (losses * sizes).sum().item() / sizes.sum().item()
+    metrics["train/loss"] = (losses * sizes).sum().item() / sizes.sum().item()
 
     for name, acc in accuracies:
-        metrics[f'train/{name}'] = acc.compute().detach().cpu().item()
+        metrics[f"train/{name}"] = acc.compute().detach().cpu().item()
         acc.reset()
 
     return metrics
 
-def validate(model,  val_dataset, loss_fn, accuracies, cfg):
-    """ Run the validation evaluation
 
-    """
+def validate(model, val_dataset, loss_fn, accuracies, cfg):
+    """Run the validation evaluation"""
     model.eval()
     for _, acc in accuracies:
         acc.reset()
@@ -65,7 +63,9 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
         losses = []
         batch_sizes = []
         for batch in val_dataset:
-            batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
+            batch = batch.to(
+                cfg.trainer.device, non_blocking=(cfg.trainer.device != "cpu")
+            )
 
             y_hat = model(batch)
             y = batch.y
@@ -79,8 +79,12 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
             batch_sizes.append(y.shape[0])
 
         losses = torch.stack(losses)
-        sizes = torch.tensor(batch_sizes, device=losses.device, dtype=losses.dtype)
-        metrics['val/loss'] = (losses * sizes).sum().item() / sizes.sum().item()
+        sizes = torch.tensor(
+            batch_sizes, device=losses.device, dtype=losses.dtype
+        )
+        metrics["val/loss"] = (
+            losses * sizes
+        ).sum().item() / sizes.sum().item()
 
     for name, acc in accuracies:
         metrics[f"val/{name}"] = acc.compute().detach().cpu().item()
@@ -88,11 +92,11 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
-    """ Run the test evaluation
-    """
 
-    is_classification = cfg.task.task_type == 'classification'
+def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
+    """Run the test evaluation"""
+
+    is_classification = cfg.task.task_type == "classification"
 
     for _, acc in accuracies:
         acc.reset()
@@ -105,7 +109,9 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
 
         model.eval()
         for batch in test_dataset:
-            batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
+            batch = batch.to(
+                cfg.trainer.device, non_blocking=(cfg.trainer.device != "cpu")
+            )
 
             predictions = model(batch)
             y = batch.y.long() if is_classification else batch.y
@@ -139,7 +145,12 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
 
     run.log(
         {
-            "conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total.cpu().tolist(), preds=y_hat_total.cpu().tolist(), class_names=class_names)
+            "conf_mat": wandb.plot.confusion_matrix(
+                probs=None,
+                y_true=y_total.cpu().tolist(),
+                preds=y_hat_total.cpu().tolist(),
+                class_names=class_names,
+            )
         }
     )
 
@@ -152,20 +163,28 @@ def make_labels(index_to_label, y, labels):
 
     indices = y.detach().cpu().reshape(-1).tolist()
     if len(indices) != len(labels):
-        raise ValueError("Each test target must have one corresponding data.label")
+        raise ValueError(
+            "Each test target must have one corresponding data.label"
+        )
 
     for index, label in zip(indices, labels):
         previous_label = index_to_label.setdefault(index, label)
         assert previous_label == label, f"There's a label mismatch in {label}"
 
+
 def init_metrics(cfg: RootConfig):
-    """ Initialize the metric classes
-    """
+    """Initialize the metric classes"""
     accs = []
     for name, acc in cfg.task.metrics.items():
-        if 'accuracy' in acc._target_.lower():
-            assert cfg.task.task_type == 'classification', "Cannot assign accuracy for regression tasks"
-            metric = hydra.utils.instantiate(acc, task='multiclass' if cfg.model.out_channels > 1 else 'binary', num_classes = cfg.model.out_channels)
+        if "accuracy" in acc._target_.lower():
+            assert (
+                cfg.task.task_type == "classification"
+            ), "Cannot assign accuracy for regression tasks"
+            metric = hydra.utils.instantiate(
+                acc,
+                task="multiclass" if cfg.model.out_channels > 1 else "binary",
+                num_classes=cfg.model.out_channels,
+            )
         else:
             metric = hydra.utils.instantiate(acc)
         accs.append((name, metric.to(cfg.trainer.device)))

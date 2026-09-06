@@ -2,7 +2,11 @@ from torch_geometric.transforms import BaseTransform, Compose
 from torch_geometric.data import Data
 from omegaconf import DictConfig, OmegaConf
 from mantra.datasets import ManifoldTriangulations
-from mantra.transforms import MomentCurveEmbedding, SelectAttributes, SelectFeatures
+from mantra.transforms import (
+    MomentCurveEmbedding,
+    SelectAttributes,
+    SelectFeatures,
+)
 import numpy as np
 import torch
 import hydra
@@ -12,6 +16,7 @@ from src.schema import RootConfig
 cs = ConfigStore().instance()
 cs.store(name="main_conf", node=RootConfig)
 
+
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg: RootConfig):
 
@@ -20,7 +25,8 @@ def main(cfg: RootConfig):
     transform_order = dataset_config.transform_order
 
     transforms = [
-        hydra.utils.instantiate(transform) for _, transform in transform_dict.items()
+        hydra.utils.instantiate(transform)
+        for _, transform in transform_dict.items()
     ]
     transforms = Compose(transforms)
 
@@ -28,14 +34,13 @@ def main(cfg: RootConfig):
         root=dataset_config.root,
         dimension=dataset_config.dimension,
         version=dataset_config.version,
-        pre_transform=transforms
+        pre_transform=transforms,
     )
     model = hydra.utils.instantiate(cfg.model)
 
-
-
     OmegaConf.resolve(cfg)
     print(OmegaConf.to_yaml(cfg))
+
 
 class BaseModel(L.LightningModule):
     def __init__(
@@ -50,7 +55,7 @@ class BaseModel(L.LightningModule):
         imbalance,
         factor: float = 0.5,
         patience: int = 10,
-        weight_decay: float = 0.0
+        weight_decay: float = 0.0,
     ):
         super().__init__()
         self.training_accuracy = training_accuracy
@@ -90,7 +95,6 @@ class BaseModel(L.LightningModule):
                 "Batch object does not have a known way to compute batch size."
             )
 
-    
         # Generalizing to accomodate for the different signatures.
         x_hat = self(batch)
         # Squeeze x_hat to match the shape of y
@@ -132,42 +136,75 @@ class BaseModel(L.LightningModule):
         # separate out all parameters to those that will and won't experience regularizing weight decay
         decay = set()
         no_decay = set()
-        whitelist_weight_modules = (torch.nn.Linear, torch_geometric.nn.GCNConv)
-        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding, torch.nn.BatchNorm1d, )
+        whitelist_weight_modules = (
+            torch.nn.Linear,
+            torch_geometric.nn.GCNConv,
+        )
+        blacklist_weight_modules = (
+            torch.nn.LayerNorm,
+            torch.nn.Embedding,
+            torch.nn.BatchNorm1d,
+        )
         for mn, m in self.named_modules():
             for pn, p in m.named_parameters():
-                fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
+                fpn = "%s.%s" % (mn, pn) if mn else pn  # full param name
                 # random note: because named_modules and named_parameters are recursive
                 # we will see the same tensors p many many times. but doing it this way
                 # allows us to know which parent module any tensor p belongs to...
-                if pn.endswith('bias'):
+                if pn.endswith("bias"):
                     # all biases will not be decayed
                     no_decay.add(fpn)
-                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                elif pn.endswith("weight") and isinstance(
+                    m, whitelist_weight_modules
+                ):
                     # weights of whitelist modules will be weight decayed
                     decay.add(fpn)
-                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                elif pn.endswith("weight") and isinstance(
+                    m, blacklist_weight_modules
+                ):
                     # weights of blacklist modules will NOT be weight decayed
                     no_decay.add(fpn)
-                elif pn.endswith('layer_scale'):
+                elif pn.endswith("layer_scale"):
                     no_decay.add(fpn)
 
         # validate that we considered every parameter
         param_dict = {pn: p for pn, p in self.named_parameters()}
         inter_params = decay & no_decay
         union_params = decay | no_decay
-        assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params), )
-        assert len(param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
-                                                    % (str(param_dict.keys() - union_params), )
+        assert (
+            len(inter_params) == 0
+        ), "parameters %s made it into both decay/no_decay sets!" % (
+            str(inter_params),
+        )
+        assert len(param_dict.keys() - union_params) == 0, (
+            "parameters %s were not separated into either decay/no_decay set!"
+            % (str(param_dict.keys() - union_params),)
+        )
 
         # create the pytorch optimizer object
         optim_groups = [
-            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.weight_decay},
-            {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+            {
+                "params": [param_dict[pn] for pn in sorted(list(decay))],
+                "weight_decay": self.weight_decay,
+            },
+            {
+                "params": [param_dict[pn] for pn in sorted(list(no_decay))],
+                "weight_decay": 0.0,
+            },
         ]
         optimizer = torch.optim.Adam(optim_groups, lr=self.learning_rate)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=self.factor, patience=self.patience, verbose=True)
-        return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "validation_loss"}
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=self.factor,
+            patience=self.patience,
+            verbose=True,
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+            "monitor": "validation_loss",
+        }
 
     def log_accuracies(
         self, x_hat, y, batch_len, step: Literal["train", "test", "validation"]

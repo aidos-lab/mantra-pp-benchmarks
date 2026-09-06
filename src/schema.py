@@ -13,13 +13,16 @@ class TrainerMeta:
     num_workers: int = 0
     pin_memory: bool = True
 
+
 @dataclass
 class MetricMeta:
     _target_: str
 
+
 @dataclass
 class LossMeta:
     _target_: str = ""
+
 
 @dataclass
 class TaskMeta:
@@ -29,9 +32,11 @@ class TaskMeta:
     task_type: str
     metrics: Dict[str, MetricMeta] = field(default_factory=dict)
 
+
 @dataclass
 class TransformMeta:
     _target_: str
+
 
 @dataclass
 class DatasetMeta:
@@ -48,6 +53,7 @@ class DatasetMeta:
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
 
+
 @dataclass
 class ModelMeta:
     _target_: str
@@ -59,11 +65,13 @@ class ModelMeta:
     batch_norm: bool = True
     dropout: float = 0.2
 
+
 @dataclass
 class LoggerMeta:
     name: str
     project: str
     entity: str
+
 
 @dataclass
 class GenerateBarycentricConfig:
@@ -92,6 +100,7 @@ class EvalBarycentricConfig:
     output: str | None = None
     seed: int = 42
 
+
 @dataclass
 class RootConfig:
     logger: LoggerMeta
@@ -105,5 +114,3 @@ class RootConfig:
     train: bool = True
     seed: int = 42
     compile: bool = False
-
-

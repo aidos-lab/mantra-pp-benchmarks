@@ -24,6 +24,7 @@ from src.utils.train_utils import train, validate
 # Fixtures and helpers
 # ---------------------------------------------------------------------------
 
+
 def _triangle_graph():
     """Triangle: 0-1-2-0 with constant features."""
     return Data(
@@ -66,6 +67,7 @@ def _dense_spd(data, max_distance, attr="spd"):
 # ===========================================================================
 # 1. pool and SumReadout — verify actual aggregation values
 # ===========================================================================
+
 
 class TestPoolValues:
     def test_two_graphs_mean_pool(self):
@@ -114,11 +116,14 @@ class TestSumReadoutValues:
 # 2. GCN — verify convolution computes correct values
 # ===========================================================================
 
+
 class TestGCNValues:
     def test_gcn_layer_identity_weights(self):
         """With identity weights and no bias, GCN conv on constant features
         should preserve the features (up to normalization)."""
-        layer = GCNLayer(in_dim=2, out_dim=2, batch_norm=False, residual=False, dropout=None)
+        layer = GCNLayer(
+            in_dim=2, out_dim=2, batch_norm=False, residual=False, dropout=None
+        )
         # Force identity weight and zero bias
         with torch.no_grad():
             layer.conv.lin.weight.copy_(torch.eye(2))
@@ -141,12 +146,16 @@ class TestGCNValues:
 
     def test_gcn_residual_adds_input(self):
         """With residual=True and same dims, output = conv(x) + x."""
-        layer = GCNLayer(in_dim=2, out_dim=2, batch_norm=False, residual=True, dropout=None)
+        layer = GCNLayer(
+            in_dim=2, out_dim=2, batch_norm=False, residual=True, dropout=None
+        )
         layer.eval()
 
         g = _triangle_graph()
         # With residual, output should be different from without
-        layer_no_res = GCNLayer(in_dim=2, out_dim=2, batch_norm=False, residual=False, dropout=None)
+        layer_no_res = GCNLayer(
+            in_dim=2, out_dim=2, batch_norm=False, residual=False, dropout=None
+        )
         layer_no_res.eval()
         with torch.no_grad():
             # Copy weights
@@ -162,8 +171,15 @@ class TestGCNValues:
     def test_gcn_graph_level_output(self):
         """Full GCN: different graphs in batch produce different outputs."""
         torch.manual_seed(42)
-        model = GCN(in_channels=2, hidden_channels=8, out_channels=3,
-                     n_layers=1, residuals=False, batch_norm=True, dropout=0.0)
+        model = GCN(
+            in_channels=2,
+            hidden_channels=8,
+            out_channels=3,
+            n_layers=1,
+            residuals=False,
+            batch_norm=True,
+            dropout=0.0,
+        )
         model.eval()
 
         g1 = _triangle_graph()
@@ -177,8 +193,15 @@ class TestGCNValues:
 
     def test_gcn_single_node_graph(self):
         """Single node with no edges: GCN should still produce output via mean pool."""
-        model = GCN(in_channels=2, hidden_channels=4, out_channels=2,
-                     n_layers=1, residuals=False, batch_norm=True, dropout=0.0)
+        model = GCN(
+            in_channels=2,
+            hidden_channels=4,
+            out_channels=2,
+            n_layers=1,
+            residuals=False,
+            batch_norm=True,
+            dropout=0.0,
+        )
         model.eval()
 
         g = _single_node_graph()
@@ -192,10 +215,17 @@ class TestGCNValues:
 # 3. MLP — verify scatter-based pooling and layer behavior
 # ===========================================================================
 
+
 class TestMLPValues:
     def test_mlp_layer_linear_transform(self):
         """With known weights, verify the linear transform."""
-        layer = MLPLayer(in_channels=2, hidden_channels=2, batch_norm=False, dropout=None, residuals=False)
+        layer = MLPLayer(
+            in_channels=2,
+            hidden_channels=2,
+            batch_norm=False,
+            dropout=None,
+            residuals=False,
+        )
         with torch.no_grad():
             layer.linear.weight.copy_(torch.eye(2))
             layer.linear.bias.fill_(0)
@@ -210,31 +240,49 @@ class TestMLPValues:
     def test_mlp_scatter_pooling(self):
         """MLP pools per-node outputs via scatter mean."""
         torch.manual_seed(7)
-        model = MLP(in_channels=2, hidden_channels=8, out_channels=3,
-                     n_layers=1, dropout=0.0, batch_norm=False, residuals=False)
+        model = MLP(
+            in_channels=2,
+            hidden_channels=8,
+            out_channels=3,
+            n_layers=1,
+            dropout=0.0,
+            batch_norm=False,
+            residuals=False,
+        )
         model.eval()
 
         # Two graphs with distinct features
-        g1 = Data(x=torch.tensor([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]),
-                  edge_index=torch.empty(2, 0, dtype=torch.long))
-        g2 = Data(x=torch.tensor([[0.0, 5.0]]),
-                  edge_index=torch.empty(2, 0, dtype=torch.long))
+        g1 = Data(
+            x=torch.tensor([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]),
+            edge_index=torch.empty(2, 0, dtype=torch.long),
+        )
+        g2 = Data(
+            x=torch.tensor([[0.0, 5.0]]),
+            edge_index=torch.empty(2, 0, dtype=torch.long),
+        )
         batch = _make_batch(g1, g2)
         out = model(batch)
 
         assert out.shape == (2, 3)
         # Graph 1 has 3 identical nodes => mean pool = single node output
         # Verify by running a single-node graph with same features
-        g1_single = Data(x=torch.tensor([[1.0, 0.0]]),
-                         edge_index=torch.empty(2, 0, dtype=torch.long))
+        g1_single = Data(
+            x=torch.tensor([[1.0, 0.0]]),
+            edge_index=torch.empty(2, 0, dtype=torch.long),
+        )
         batch_single = _make_batch(g1_single)
         out_single = model(batch_single)
         assert torch.allclose(out[0], out_single[0], atol=1e-5)
 
     def test_mlp_residual_disabled_on_dim_mismatch(self):
         """Residuals are disabled when in != out."""
-        layer = MLPLayer(in_channels=3, hidden_channels=5, batch_norm=False,
-                         dropout=None, residuals=True)
+        layer = MLPLayer(
+            in_channels=3,
+            hidden_channels=5,
+            batch_norm=False,
+            dropout=None,
+            residuals=True,
+        )
         assert layer.residuals is False
 
 
@@ -242,10 +290,13 @@ class TestMLPValues:
 # 4. ResidualGatedGCN — verify gating mechanism
 # ===========================================================================
 
+
 class TestResidualGatedGCNValues:
     def test_gating_mechanism_values(self):
         """Verify gate computation: gate = sigmoid(W_src @ x[src] + W_dst @ x[dst])."""
-        layer = ResidualGatedGCNLayer(in_dim=2, out_dim=2, batch_norm=False, residual=False)
+        layer = ResidualGatedGCNLayer(
+            in_dim=2, out_dim=2, batch_norm=False, residual=False
+        )
         layer.eval()
 
         x = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
@@ -255,22 +306,31 @@ class TestResidualGatedGCNValues:
         with torch.no_grad():
             src_feat = x[0:1]  # [1, 0]
             dst_feat = x[1:2]  # [0, 1]
-            gate_01 = torch.sigmoid(layer.gate_src(src_feat) + layer.gate_dst(dst_feat))
+            gate_01 = torch.sigmoid(
+                layer.gate_src(src_feat) + layer.gate_dst(dst_feat)
+            )
 
         out = layer(x, edge_index)
         assert out.shape == (2, 2)
         assert torch.isfinite(out).all()
 
     def test_residual_only_when_dims_match(self):
-        layer = ResidualGatedGCNLayer(in_dim=3, out_dim=5, batch_norm=False, residual=True)
+        layer = ResidualGatedGCNLayer(
+            in_dim=3, out_dim=5, batch_norm=False, residual=True
+        )
         assert layer.residual is False
 
     def test_full_model_batch(self):
         """Full model with batch: verify different graphs get different outputs."""
         torch.manual_seed(123)
         model = ResidualGatedGCN(
-            hidden_channels=8, n_layers=2, in_channels=2, out_channels=3,
-            batch_norm=True, residuals=True, dropout=0.0
+            hidden_channels=8,
+            n_layers=2,
+            in_channels=2,
+            out_channels=3,
+            batch_norm=True,
+            residuals=True,
+            dropout=0.0,
         )
         model.eval()
 
@@ -284,12 +344,19 @@ class TestResidualGatedGCNValues:
 # 5. Graphormer — verify attention, SPD, and degree encodings
 # ===========================================================================
 
+
 class TestGraphormerValues:
     def test_degree_encoding_values(self):
         """Verify degree embeddings are correctly looked up."""
         model = Graphormer(
-            hidden_channels=4, n_layers=1, in_channels=2, out_channels=2,
-            num_heads=2, dropout=0.0, max_degree=4, max_distance=4,
+            hidden_channels=4,
+            n_layers=1,
+            in_channels=2,
+            out_channels=2,
+            num_heads=2,
+            dropout=0.0,
+            max_degree=4,
+            max_distance=4,
             use_spatial_encoding=False,
         )
         model.eval()
@@ -305,12 +372,24 @@ class TestGraphormerValues:
         """Spatial encoding (SPD) should change the model output vs no spatial encoding."""
         torch.manual_seed(42)
         model_with = Graphormer(
-            hidden_channels=4, n_layers=1, in_channels=2, out_channels=2,
-            num_heads=2, dropout=0.0, max_distance=4, use_spatial_encoding=True,
+            hidden_channels=4,
+            n_layers=1,
+            in_channels=2,
+            out_channels=2,
+            num_heads=2,
+            dropout=0.0,
+            max_distance=4,
+            use_spatial_encoding=True,
         )
         model_without = Graphormer(
-            hidden_channels=4, n_layers=1, in_channels=2, out_channels=2,
-            num_heads=2, dropout=0.0, max_distance=4, use_spatial_encoding=False,
+            hidden_channels=4,
+            n_layers=1,
+            in_channels=2,
+            out_channels=2,
+            num_heads=2,
+            dropout=0.0,
+            max_distance=4,
+            use_spatial_encoding=False,
         )
         # Copy all shared weights
         model_without.load_state_dict(model_with.state_dict(), strict=False)
@@ -318,7 +397,9 @@ class TestGraphormerValues:
         model_without.eval()
 
         g = _path_graph()
-        spd_transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
+        spd_transform = GraphormerSPDPreTransform(
+            max_distance=4, undirected=True
+        )
         g_spd = spd_transform(g.clone())
         batch_spd = _make_batch(g_spd)
         batch_no_spd = _make_batch(g.clone())
@@ -331,21 +412,30 @@ class TestGraphormerValues:
     def test_spd_unpack_dense_correctness(self):
         """Verify _unpack_dense_spd reconstructs the distance matrix correctly."""
         model = Graphormer(
-            hidden_channels=4, n_layers=1, in_channels=2, out_channels=2,
-            num_heads=2, dropout=0.0, max_distance=4, use_spatial_encoding=True,
+            hidden_channels=4,
+            n_layers=1,
+            in_channels=2,
+            out_channels=2,
+            num_heads=2,
+            dropout=0.0,
+            max_distance=4,
+            use_spatial_encoding=True,
         )
 
         # Path graph 0-1-2: distances are [[0,1,2],[1,0,1],[2,1,0]]
         g = _path_graph()
-        spd_transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
+        spd_transform = GraphormerSPDPreTransform(
+            max_distance=4, undirected=True
+        )
         g = spd_transform(g)
         batch = _make_batch(g)
 
         spd = model._unpack_dense_spd(
             batch.spd,
             batch.spd_n,
-            batch_size=1, max_nodes=3,
-            node_mask=torch.tensor([[False, False, False]])
+            batch_size=1,
+            max_nodes=3,
+            node_mask=torch.tensor([[False, False, False]]),
         )
         expected = torch.tensor([[[0, 1, 2], [1, 0, 1], [2, 1, 0]]])
         assert torch.equal(spd, expected)
@@ -354,14 +444,24 @@ class TestGraphormerValues:
         """Mean pool should only average over real nodes, not padding."""
         torch.manual_seed(0)
         model = Graphormer(
-            hidden_channels=4, n_layers=1, in_channels=2, out_channels=2,
-            num_heads=2, dropout=0.0, max_distance=4, use_spatial_encoding=False,
+            hidden_channels=4,
+            n_layers=1,
+            in_channels=2,
+            out_channels=2,
+            num_heads=2,
+            dropout=0.0,
+            max_distance=4,
+            use_spatial_encoding=False,
         )
         model.eval()
 
         # Two graphs of different sizes
-        g1 = Data(x=torch.ones(5, 2), edge_index=torch.empty(2, 0, dtype=torch.long))
-        g2 = Data(x=torch.ones(2, 2), edge_index=torch.empty(2, 0, dtype=torch.long))
+        g1 = Data(
+            x=torch.ones(5, 2), edge_index=torch.empty(2, 0, dtype=torch.long)
+        )
+        g2 = Data(
+            x=torch.ones(2, 2), edge_index=torch.empty(2, 0, dtype=torch.long)
+        )
         batch = _make_batch(g1, g2)
         out = model(batch)
 
@@ -374,6 +474,7 @@ class TestGraphormerValues:
 # ===========================================================================
 # 6. GraphormerLayer — verify attention math
 # ===========================================================================
+
 
 class TestGraphormerLayerValues:
     def test_residual_connection(self):
@@ -415,15 +516,16 @@ class TestGraphormerLayerValues:
 # 6b. CWN — verify graph-level pooling and output
 # ===========================================================================
 
+
 class TestCWNValues:
     def _make_cwn_batch(self):
         """Create a batch of 2 simplicial complexes with different cell counts."""
         batch = Data()
         # SC 1: 3 nodes, 5 edges, 2 faces
         # SC 2: 4 nodes, 3 edges, 1 face
-        batch.x_0 = torch.randn(7, 3)   # 3 + 4
-        batch.x_1 = torch.randn(8, 3)   # 5 + 3
-        batch.x_2 = torch.randn(3, 3)   # 2 + 1
+        batch.x_0 = torch.randn(7, 3)  # 3 + 4
+        batch.x_1 = torch.randn(8, 3)  # 5 + 3
+        batch.x_2 = torch.randn(3, 3)  # 2 + 1
 
         batch.batch_0 = torch.tensor([0, 0, 0, 1, 1, 1, 1])
         batch.batch_1 = torch.tensor([0, 0, 0, 0, 0, 1, 1, 1])
@@ -503,9 +605,11 @@ class TestCWNValues:
             if param.requires_grad:
                 assert param.grad is not None, f"No gradient for {name}"
 
+
 # ===========================================================================
 # 6c. SCCNN — verify forward pass, gradient flow, and output shape
 # ===========================================================================
+
 
 class TestSCCNNValues:
     def _make_sccnn_batch(self):
@@ -632,6 +736,7 @@ class TestSCCNNValues:
 # 7b. SAN — verify forward pass and harmonic projector
 # ===========================================================================
 
+
 class TestSANValues:
     def _make_san_batch(self):
         """Create a batch of 2 simplicial complexes for SAN.
@@ -647,21 +752,25 @@ class TestSANValues:
 
         # Down Laplacian for SC1 (triangle: 3 edges, boundary from 3 nodes)
         # SC2 (path: 2 edges), combined block-diagonal
-        batch.down_laplacian_1_idx = torch.tensor([
-            [0, 0, 1, 1, 2, 2, 3, 4],
-            [0, 1, 0, 1, 2, 2, 3, 4],
-        ])
+        batch.down_laplacian_1_idx = torch.tensor(
+            [
+                [0, 0, 1, 1, 2, 2, 3, 4],
+                [0, 1, 0, 1, 2, 2, 3, 4],
+            ]
+        )
         batch.down_laplacian_1_val = torch.tensor(
-            [2., -1., -1., 2., 2., 0., 1., 1.], dtype=torch.float32
+            [2.0, -1.0, -1.0, 2.0, 2.0, 0.0, 1.0, 1.0], dtype=torch.float32
         )
 
         # Up Laplacian: triangle edges have upper faces, path edges don't
-        batch.up_laplacian_1_idx = torch.tensor([
-            [0, 0, 1, 1, 2, 2],
-            [0, 1, 0, 1, 2, 2],
-        ])
+        batch.up_laplacian_1_idx = torch.tensor(
+            [
+                [0, 0, 1, 1, 2, 2],
+                [0, 1, 0, 1, 2, 2],
+            ]
+        )
         batch.up_laplacian_1_val = torch.tensor(
-            [1., -1., -1., 1., 1., 0.], dtype=torch.float32
+            [1.0, -1.0, -1.0, 1.0, 1.0, 0.0], dtype=torch.float32
         )
 
         return batch
@@ -672,8 +781,11 @@ class TestSANValues:
 
         torch.manual_seed(42)
         model = SAN(
-            in_channels=4, hidden_channels=8, out_channels=3,
-            n_layers=3, attention=True,
+            in_channels=4,
+            hidden_channels=8,
+            out_channels=3,
+            n_layers=3,
+            attention=True,
         )
         model.eval()
 
@@ -688,8 +800,11 @@ class TestSANValues:
 
         torch.manual_seed(42)
         model = SAN(
-            in_channels=4, hidden_channels=8, out_channels=3,
-            n_layers=3, attention=False,
+            in_channels=4,
+            hidden_channels=8,
+            out_channels=3,
+            n_layers=3,
+            attention=False,
         )
         model.eval()
 
@@ -704,8 +819,11 @@ class TestSANValues:
 
         torch.manual_seed(42)
         model = SAN(
-            in_channels=4, hidden_channels=8, out_channels=3,
-            n_layers=3, attention=True,
+            in_channels=4,
+            hidden_channels=8,
+            out_channels=3,
+            n_layers=3,
+            attention=True,
         )
         model.train()
 
@@ -718,7 +836,9 @@ class TestSANValues:
         for name, param in model.named_parameters():
             if param.requires_grad:
                 assert param.grad is not None, f"SAN.{name} has no gradient"
-                assert torch.isfinite(param.grad).all(), f"SAN.{name} has non-finite gradient"
+                assert torch.isfinite(
+                    param.grad
+                ).all(), f"SAN.{name} has non-finite gradient"
 
     def test_san_sclayer_gradient_flow(self):
         """SCLayer (no attention) should also have full gradient flow."""
@@ -726,8 +846,11 @@ class TestSANValues:
 
         torch.manual_seed(42)
         model = SAN(
-            in_channels=4, hidden_channels=8, out_channels=3,
-            n_layers=3, attention=False,
+            in_channels=4,
+            hidden_channels=8,
+            out_channels=3,
+            n_layers=3,
+            attention=False,
         )
         model.train()
 
@@ -739,8 +862,12 @@ class TestSANValues:
 
         for name, param in model.named_parameters():
             if param.requires_grad:
-                assert param.grad is not None, f"SAN(SC).{name} has no gradient"
-                assert torch.isfinite(param.grad).all(), f"SAN(SC).{name} has non-finite gradient"
+                assert (
+                    param.grad is not None
+                ), f"SAN(SC).{name} has no gradient"
+                assert torch.isfinite(
+                    param.grad
+                ).all(), f"SAN(SC).{name} has non-finite gradient"
 
     def test_harmonic_projector_is_idempotent(self):
         """Per-graph P_har should satisfy P^2 ≈ P (idempotent) since it's a projector."""
@@ -748,12 +875,17 @@ class TestSANValues:
 
         torch.manual_seed(42)
         model = SAN(
-            in_channels=4, hidden_channels=8, out_channels=3,
-            n_layers=3, attention=True, epsilon=0.1, k_proj=10,
+            in_channels=4,
+            hidden_channels=8,
+            out_channels=3,
+            n_layers=3,
+            attention=True,
+            epsilon=0.1,
+            k_proj=10,
         )
 
         batch = self._make_san_batch()
-        batch_1 = batch['batch_1']
+        batch_1 = batch["batch_1"]
 
         up_laplacian = model._reconstruct(batch, "up_laplacian_1")
         down_laplacian = model._reconstruct(batch, "down_laplacian_1")
@@ -763,18 +895,25 @@ class TestSANValues:
         P_dense = P.to_dense()
 
         # Idempotent: P @ P ≈ P
-        P_squared = (P_dense @ P_dense)
-        assert torch.allclose(P_dense, P_squared, atol=1e-4), "Harmonic projector is not idempotent"
+        P_squared = P_dense @ P_dense
+        assert torch.allclose(
+            P_dense, P_squared, atol=1e-4
+        ), "Harmonic projector is not idempotent"
 
         # Symmetric: P ≈ P^T
-        assert torch.allclose(P_dense, P_dense.T, atol=1e-4), "Harmonic projector is not symmetric"
+        assert torch.allclose(
+            P_dense, P_dense.T, atol=1e-4
+        ), "Harmonic projector is not symmetric"
 
         # Block-diagonal: no cross-graph entries
         mask_cross = batch_1.unsqueeze(0) != batch_1.unsqueeze(1)  # (E, E)
-        assert (P_dense[mask_cross].abs() < 1e-8).all(), "P has cross-graph entries"
+        assert (
+            P_dense[mask_cross].abs() < 1e-8
+        ).all(), "P has cross-graph entries"
 
 
 # ===========================================================================
+
 
 class TestSPDValues:
     def test_triangle_distances(self):
@@ -807,7 +946,7 @@ class TestSPDValues:
         transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
 
         g1 = transform(_triangle_graph())  # 3 nodes; all off-diag = 1
-        g2 = transform(_path_graph())      # 3 nodes; chain 0-1-2
+        g2 = transform(_path_graph())  # 3 nodes; chain 0-1-2
 
         # Per-graph dense matrices are size n*n = 9 uint8 bytes each.
         assert g1.spd.numel() == 9
@@ -821,7 +960,8 @@ class TestSPDValues:
                 assert d1[i, j].item() == (0 if i == j else 1)
         # Path 0-1-2.
         assert torch.equal(
-            d2, torch.tensor([[0, 1, 2], [1, 0, 1], [2, 1, 0]], dtype=torch.long)
+            d2,
+            torch.tensor([[0, 1, 2], [1, 0, 1], [2, 1, 0]], dtype=torch.long),
         )
 
         batch = _make_batch(g1, g2)
@@ -843,12 +983,20 @@ class TestSPDValues:
 # 10. Training utilities — verify metric computation
 # ===========================================================================
 
+
 class TestTrainValidateValues:
     def _make_model_and_data(self, out_channels=3):
         """Create a simple model, data, and loss for testing."""
         torch.manual_seed(42)
-        model = GCN(in_channels=2, hidden_channels=8, out_channels=out_channels,
-                     n_layers=1, residuals=False, batch_norm=True, dropout=0.0)
+        model = GCN(
+            in_channels=2,
+            hidden_channels=8,
+            out_channels=out_channels,
+            n_layers=1,
+            residuals=False,
+            batch_norm=True,
+            dropout=0.0,
+        )
 
         g1 = Data(
             x=torch.randn(4, 2),
@@ -869,20 +1017,27 @@ class TestTrainValidateValues:
         """Simple accuracy metric compatible with torchmetrics interface.
         Avoids importing torchmetrics which triggers a broken torchvision circular import
         in the local environment."""
+
         class SimpleAccuracy(nn.Module):
             def __init__(self):
                 super().__init__()
                 self.correct = 0
                 self.total = 0
+
             def __call__(self, preds, target):
-                pred_labels = preds.argmax(dim=-1) if preds.dim() > 1 else preds
+                pred_labels = (
+                    preds.argmax(dim=-1) if preds.dim() > 1 else preds
+                )
                 self.correct += (pred_labels == target).sum().item()
                 self.total += target.numel()
+
             def compute(self):
                 return torch.tensor(self.correct / max(self.total, 1))
+
             def reset(self):
                 self.correct = 0
                 self.total = 0
+
         return SimpleAccuracy()
 
     def test_train_returns_loss(self):
@@ -891,38 +1046,38 @@ class TestTrainValidateValues:
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         loss_fn = nn.CrossEntropyLoss()
 
-        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
-        accuracies = [('acc', self._make_accuracy())]
+        cfg = SimpleNamespace(trainer=SimpleNamespace(device="cpu"))
+        accuracies = [("acc", self._make_accuracy())]
 
         metrics = train(model, optimizer, data, loss_fn, accuracies, cfg)
-        assert 'train/loss' in metrics
-        assert metrics['train/loss'] > 0
-        assert np.isfinite(metrics['train/loss'])
-        assert 'train/acc' in metrics
-        assert 0.0 <= metrics['train/acc'] <= 1.0
+        assert "train/loss" in metrics
+        assert metrics["train/loss"] > 0
+        assert np.isfinite(metrics["train/loss"])
+        assert "train/acc" in metrics
+        assert 0.0 <= metrics["train/acc"] <= 1.0
 
     def test_validate_returns_loss_and_accuracy(self):
         """Validation should compute loss and accuracy."""
         model, data = self._make_model_and_data()
         loss_fn = nn.CrossEntropyLoss()
 
-        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
-        accuracies = [('acc', self._make_accuracy())]
+        cfg = SimpleNamespace(trainer=SimpleNamespace(device="cpu"))
+        accuracies = [("acc", self._make_accuracy())]
 
         model.eval()
         metrics = validate(model, data, loss_fn, accuracies, cfg)
-        assert 'val/loss' in metrics
-        assert np.isfinite(metrics['val/loss'])
-        assert 'val/acc' in metrics
-        assert 0.0 <= metrics['val/acc'] <= 1.0
+        assert "val/loss" in metrics
+        assert np.isfinite(metrics["val/loss"])
+        assert "val/acc" in metrics
+        assert 0.0 <= metrics["val/acc"] <= 1.0
 
     def test_train_updates_weights(self):
         """After one training step, model parameters should change."""
         model, data = self._make_model_and_data()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         loss_fn = nn.CrossEntropyLoss()
-        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
-        accuracies = [('acc', self._make_accuracy())]
+        cfg = SimpleNamespace(trainer=SimpleNamespace(device="cpu"))
+        accuracies = [("acc", self._make_accuracy())]
 
         params_before = {n: p.clone() for n, p in model.named_parameters()}
 
@@ -938,8 +1093,8 @@ class TestTrainValidateValues:
         """Validation should not change model parameters."""
         model, data = self._make_model_and_data()
         loss_fn = nn.CrossEntropyLoss()
-        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
-        accuracies = [('acc', self._make_accuracy())]
+        cfg = SimpleNamespace(trainer=SimpleNamespace(device="cpu"))
+        accuracies = [("acc", self._make_accuracy())]
 
         model.eval()
         params_before = {n: p.clone() for n, p in model.named_parameters()}
@@ -947,12 +1102,15 @@ class TestTrainValidateValues:
         validate(model, data, loss_fn, accuracies, cfg)
 
         for n, p in model.named_parameters():
-            assert torch.equal(params_before[n], p), f"Validation changed parameter {n}"
+            assert torch.equal(
+                params_before[n], p
+            ), f"Validation changed parameter {n}"
 
 
 # ===========================================================================
 # 11. Collate simplicial — verify batching correctness
 # ===========================================================================
+
 
 class TestCollateSimplicialValues:
     def _make_sparse(self, n_rows, n_cols, diag_size=None):
@@ -968,7 +1126,9 @@ class TestCollateSimplicialValues:
         idx = torch.arange(diag_size)
         indices = torch.stack([idx, idx])
         values = torch.ones(diag_size)
-        return torch.sparse_coo_tensor(indices, values, size=(n_rows, n_cols)).coalesce()
+        return torch.sparse_coo_tensor(
+            indices, values, size=(n_rows, n_cols)
+        ).coalesce()
 
     def _make_simplicial_data(self, n_nodes, n_edges, n_triangles, y_val=0):
         """Create a Data object with sparse connectivity matrices (as the real pipeline does)."""
@@ -1003,7 +1163,7 @@ class TestCollateSimplicialValues:
         # x_0 should be concatenated: 3 + 5 = 8 nodes
         assert batch.x_0.shape[0] == 8
         assert batch.x_1.shape[0] == 10  # 4 + 6
-        assert batch.x_2.shape[0] == 5   # 2 + 3
+        assert batch.x_2.shape[0] == 5  # 2 + 3
 
         # batch indices
         assert batch.batch_0.tolist() == [0, 0, 0, 1, 1, 1, 1, 1]
@@ -1055,16 +1215,47 @@ class TestCollateSimplicialValues:
 # 12. End-to-end: model determinism and gradient flow
 # ===========================================================================
 
+
 class TestEndToEnd:
     def test_deterministic_forward(self):
         """Same seed + same input => same output."""
         for Model, kwargs in [
-            (GCN, dict(in_channels=2, hidden_channels=8, out_channels=3,
-                       n_layers=2, residuals=True, batch_norm=True, dropout=0.0)),
-            (MLP, dict(in_channels=2, hidden_channels=8, out_channels=3,
-                       n_layers=2, dropout=0.0, batch_norm=True, residuals=True)),
-            (ResidualGatedGCN, dict(in_channels=2, hidden_channels=8, out_channels=3,
-                                    n_layers=2, batch_norm=True, residuals=True, dropout=0.0)),
+            (
+                GCN,
+                dict(
+                    in_channels=2,
+                    hidden_channels=8,
+                    out_channels=3,
+                    n_layers=2,
+                    residuals=True,
+                    batch_norm=True,
+                    dropout=0.0,
+                ),
+            ),
+            (
+                MLP,
+                dict(
+                    in_channels=2,
+                    hidden_channels=8,
+                    out_channels=3,
+                    n_layers=2,
+                    dropout=0.0,
+                    batch_norm=True,
+                    residuals=True,
+                ),
+            ),
+            (
+                ResidualGatedGCN,
+                dict(
+                    in_channels=2,
+                    hidden_channels=8,
+                    out_channels=3,
+                    n_layers=2,
+                    batch_norm=True,
+                    residuals=True,
+                    dropout=0.0,
+                ),
+            ),
         ]:
             torch.manual_seed(0)
             m1 = Model(**kwargs)
@@ -1077,17 +1268,49 @@ class TestEndToEnd:
             batch = _make_batch(_triangle_graph(), _path_graph())
             out1 = m1(batch)
             out2 = m2(batch)
-            assert torch.allclose(out1, out2, atol=1e-6), f"{Model.__name__} not deterministic"
+            assert torch.allclose(
+                out1, out2, atol=1e-6
+            ), f"{Model.__name__} not deterministic"
 
     def test_gradient_flow_all_models(self):
         """All parameters should receive gradients during backprop."""
         configs = [
-            (GCN, dict(in_channels=2, hidden_channels=8, out_channels=3,
-                       n_layers=2, residuals=True, batch_norm=True, dropout=0.0)),
-            (MLP, dict(in_channels=2, hidden_channels=8, out_channels=3,
-                       n_layers=2, dropout=0.0, batch_norm=False, residuals=False)),
-            (ResidualGatedGCN, dict(in_channels=2, hidden_channels=8, out_channels=3,
-                                    n_layers=2, batch_norm=True, residuals=True, dropout=0.0)),
+            (
+                GCN,
+                dict(
+                    in_channels=2,
+                    hidden_channels=8,
+                    out_channels=3,
+                    n_layers=2,
+                    residuals=True,
+                    batch_norm=True,
+                    dropout=0.0,
+                ),
+            ),
+            (
+                MLP,
+                dict(
+                    in_channels=2,
+                    hidden_channels=8,
+                    out_channels=3,
+                    n_layers=2,
+                    dropout=0.0,
+                    batch_norm=False,
+                    residuals=False,
+                ),
+            ),
+            (
+                ResidualGatedGCN,
+                dict(
+                    in_channels=2,
+                    hidden_channels=8,
+                    out_channels=3,
+                    n_layers=2,
+                    batch_norm=True,
+                    residuals=True,
+                    dropout=0.0,
+                ),
+            ),
         ]
         for Model, kwargs in configs:
             torch.manual_seed(42)
@@ -1106,21 +1329,33 @@ class TestEndToEnd:
 
             for name, param in model.named_parameters():
                 if param.requires_grad:
-                    assert param.grad is not None, f"{Model.__name__}.{name} has no gradient"
-                    assert torch.isfinite(param.grad).all(), f"{Model.__name__}.{name} has non-finite gradient"
+                    assert (
+                        param.grad is not None
+                    ), f"{Model.__name__}.{name} has no gradient"
+                    assert torch.isfinite(
+                        param.grad
+                    ).all(), f"{Model.__name__}.{name} has non-finite gradient"
 
     def test_graphormer_gradient_flow(self):
         """Graphormer: all parameters should receive gradients."""
         torch.manual_seed(42)
         model = Graphormer(
-            hidden_channels=8, n_layers=2, in_channels=2, out_channels=3,
-            num_heads=2, dropout=0.0, max_distance=4, use_spatial_encoding=True,
+            hidden_channels=8,
+            n_layers=2,
+            in_channels=2,
+            out_channels=3,
+            num_heads=2,
+            dropout=0.0,
+            max_distance=4,
+            use_spatial_encoding=True,
         )
         model.train()
 
         g = _path_graph()
         g.y = torch.tensor([1])
-        spd_transform = GraphormerSPDPreTransform(max_distance=4, undirected=True)
+        spd_transform = GraphormerSPDPreTransform(
+            max_distance=4, undirected=True
+        )
         g = spd_transform(g)
         batch = _make_batch(g)
 
@@ -1130,5 +1365,9 @@ class TestEndToEnd:
 
         for name, param in model.named_parameters():
             if param.requires_grad:
-                assert param.grad is not None, f"Graphormer.{name} has no gradient"
-                assert torch.isfinite(param.grad).all(), f"Graphormer.{name} has non-finite gradient"
+                assert (
+                    param.grad is not None
+                ), f"Graphormer.{name} has no gradient"
+                assert torch.isfinite(
+                    param.grad
+                ).all(), f"Graphormer.{name} has non-finite gradient"
