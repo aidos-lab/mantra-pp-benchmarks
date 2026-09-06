@@ -302,14 +302,6 @@ class TestResidualGatedGCNValues:
         x = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
         edge_index = torch.tensor([[0, 1], [1, 0]])
 
-        # Manually compute expected gate for edge 0->1
-        with torch.no_grad():
-            src_feat = x[0:1]  # [1, 0]
-            dst_feat = x[1:2]  # [0, 1]
-            gate_01 = torch.sigmoid(
-                layer.gate_src(src_feat) + layer.gate_dst(dst_feat)
-            )
-
         out = layer(x, edge_index)
         assert out.shape == (2, 2)
         assert torch.isfinite(out).all()

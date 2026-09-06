@@ -12,6 +12,7 @@ from src.models.cells.mp.cell_mp import (
     CochainMessagePassing,
     CochainMessagePassingParams,
 )
+from src.models.cells.mp.complex import ComplexBatch
 
 
 class CINCochainConv(CochainMessagePassing):

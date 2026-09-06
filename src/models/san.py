@@ -305,7 +305,6 @@ class SAN(nn.Module):
             start, end = offsets[g].item(), offsets[g + 1].item()
             if start == end:
                 continue
-            n = end - start
 
             # Extract per-graph block efficiently via SparseTensor slicing
             L_block = hodge_laplacian[start:end, start:end].to_dense()

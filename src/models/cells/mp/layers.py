@@ -421,11 +421,15 @@ class SparseCINConv(torch.nn.Module):
                         kwargs["act_module"](),
                     )
                 else:
-                    msg_up_nn = lambda xs: xs[0]
+
+                    def msg_up_nn(xs):
+                        return xs[0]
 
             msg_boundaries_nn = passed_msg_boundaries_nn
             if msg_boundaries_nn is None:
-                msg_boundaries_nn = lambda x: x
+
+                def msg_boundaries_nn(x):
+                    return x
 
             update_up_nn = passed_update_up_nn
             if update_up_nn is None:
@@ -531,7 +535,9 @@ class CINppConv(SparseCINConv):
                         kwargs["act_module"](),
                     )
                 else:
-                    msg_up_nn = lambda xs: xs[0]
+
+                    def msg_up_nn(xs):
+                        return xs[0]
 
             msg_down_nn = passed_msg_down_nn
             if msg_down_nn is None:
@@ -542,11 +548,15 @@ class CINppConv(SparseCINConv):
                         kwargs["act_module"](),
                     )
                 else:
-                    msg_down_nn = lambda xs: xs[0]
+
+                    def msg_down_nn(xs):
+                        return xs[0]
 
             msg_boundaries_nn = passed_msg_boundaries_nn
             if msg_boundaries_nn is None:
-                msg_boundaries_nn = lambda x: x
+
+                def msg_boundaries_nn(x):
+                    return x
 
             update_up_nn = passed_update_up_nn
             if update_up_nn is None:

@@ -15,7 +15,10 @@ def get_nonlinearity(nonlinearity, return_module=True):
         function = F.elu
     elif nonlinearity == "id":
         module = torch.nn.Identity
-        function = lambda x: x
+
+        def function(x):
+            return x
+
     elif nonlinearity == "sigmoid":
         module = torch.nn.Sigmoid
         function = F.sigmoid
