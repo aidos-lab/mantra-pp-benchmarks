@@ -1,0 +1,51 @@
+# CI for mantra-pp-benchmarks (private repo).
+# pull_request only: a push trigger would bill every commit twice.
+# Strip this file from any anonymised submission tarball; it names aidos-lab.
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MANTRA_REF: cy
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: benchmarks
+
+      # The editable ../mantra path source only resolves with a sibling checkout.
+      - uses: actions/checkout@v6
+        with:
+          repository: aidos-lab/mantra
+          ref: ${{ env.MANTRA_REF }}
+          path: mantra
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync (CPU wheels only)
+        working-directory: benchmarks
+        run: uv sync --extra cpu
+
+      - name: ruff
+        working-directory: benchmarks
+        run: uv run ruff check .
+
+      - name: black
+        working-directory: benchmarks
+        run: uv run black --check .
+
+      - name: pytest
+        working-directory: benchmarks
+        run: uv run pytest -q
