@@ -45,15 +45,38 @@ cs.store(name="main_conf", node=RootConfig)
 
 torch._dynamo.config.capture_scalar_outputs = True
 
+def _node_task_transforms():
+    """The node-level task transforms of mantra (aidos-lab/mantra#96)."""
+    try:
+        from mantra.transforms import (
+            AttributeToNodeClassTransform,
+            AttributeToNodeRegressionTransform,
+        )
+    except ImportError as error:
+        raise ImportError(
+            "Node-level tasks need a mantra with the node-level task "
+            "transforms (aidos-lab/mantra#96)"
+        ) from error
+    return AttributeToNodeRegressionTransform, AttributeToNodeClassTransform
+
+
 def task_to_transform(cfg, mapping=None):
     """Label transform of the task, i.e. the transform writing `data.y`.
 
     The MANTRA tasks are keyed by name. Every other task reads the raw
-    attribute `task.target` verbatim (the Calabi-Yau tasks hodge, chern
-    and hodge_class): regression targets are used as they are, while
-    classification needs `mapping` ({attribute value: class index}),
-    built over the full dataset (see `_cy_class_mapping`).
+    attribute `task.target`: regression targets are used as they are and
+    graph-level classification stores the raw value, which
+    `create_dataset` remaps over the train split. With
+    `task.task_level=node` the attribute holds one value per vertex and
+    the node-level transforms are used instead; they also store
+    `data.node_mask`, from which `task.mask_first` removes the first
+    vertex. Node-level classification needs `mapping`
+    ({vertex value: class index}) over the full dataset, since the
+    train-split remapping handles scalar targets only.
     """
+    task_level = getattr(cfg.task, "task_level", "graph")
+    mask_first = getattr(cfg.task, "mask_first", False)
+
     if cfg.task.name == "BettiNumbers":
         return BettiToClassTransform()
     elif cfg.task.name == "Orientability":
@@ -66,8 +89,21 @@ def task_to_transform(cfg, mapping=None):
         else:
             raise ValueError("Invalid dimension")
     elif cfg.task.task_type == "regression":
+        if task_level == "node":
+            node_regression, _ = _node_task_transforms()
+            return node_regression(cfg.task.target, mask_first=mask_first)
         return AttributeToRegressionTransform(cfg.task.target)
     elif cfg.task.task_type == "classification":
+        if task_level == "node":
+            if not mapping:
+                raise ValueError(
+                    "Node-level classification needs the {vertex value: "
+                    "class index} mapping of the full dataset"
+                )
+            _, node_classification = _node_task_transforms()
+            return node_classification(
+                cfg.task.target, mapping, mask_first=mask_first
+            )
         return AttributeToClassTransform(cfg.task.target, None)
     else:
         raise ValueError("Invalid task")
@@ -79,7 +115,8 @@ def _cy_class_mapping(cfg):
     Built from the raw label attribute over the *full* dataset (sorted
     values), so the neuron assignment is independent of the split and
     the seed, and values that only occur in val or test still get an
-    output neuron.
+    output neuron. Per-vertex attributes contribute every vertex value,
+    masked vertices included.
     """
     from mantra.datasets import CalabiYau
 
@@ -95,10 +132,10 @@ def _cy_class_mapping(cfg):
 
     values = set()
     for data in dataset:
-        value = data[source]
-        if isinstance(value, torch.Tensor):
-            value = value.item()
-        values.add(int(value))
+        values.update(
+            int(value)
+            for value in torch.as_tensor(data[source]).reshape(-1).tolist()
+        )
 
     return {value: index for index, value in enumerate(sorted(values))}
 
@@ -119,7 +156,17 @@ def create_dataset(cfg):
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
-    task_transform = task_to_transform(cfg)
+    is_node_classification = (
+        cfg.task.task_type == "classification"
+        and getattr(cfg.task, "task_level", "graph") == "node"
+    )
+    node_label_to_index = None
+    if is_node_classification:
+        if not is_cy:
+            raise ValueError("Node-level classification needs dataset=cy")
+        node_label_to_index = _cy_class_mapping(cfg)
+
+    task_transform = task_to_transform(cfg, mapping=node_label_to_index)
     transforms.insert(0, task_transform)
 
     transforms = Compose(transforms)
@@ -147,10 +194,6 @@ def create_dataset(cfg):
         train_dataset = CalabiYauDataset(split_type="train", **dataset_parameters)
         val_dataset = CalabiYauDataset(split_type="val", **dataset_parameters)
         test_dataset = CalabiYauDataset(split_type="test", **dataset_parameters)
-
-        # The class mapping already spans the full dataset, so `y` is
-        # contiguous by construction; the train-split remapping below
-        # is only needed for the MANTRA datasets.
     else:
 
         dataset_parameters = {
@@ -189,9 +232,10 @@ def create_dataset(cfg):
 
     label_to_index = {}
 
-    # If we are doing classification perform a relabaling that
-    # enumerates correctly
-    if cfg.task.task_type == "classification":
+    if is_node_classification:
+        # Per-vertex targets are contiguous by construction of the mapping.
+        label_to_index = node_label_to_index
+    elif cfg.task.task_type == "classification":
         labels = sorted({int(data.y.item()) for data in train_dataset})
         label_to_index = {label: index for index, label in enumerate(labels)}
         remap_labels = RemapLabels(label_to_index)
@@ -205,6 +249,28 @@ def is_graph_sample(sample):
     """Whether a sample is a graph (`x`, `edge_index`) or a simplicial
     complex (per-rank `x_0`, `x_1`, ...)."""
     return "x_0" not in sample
+
+
+def check_node_level_sample(cfg, sample):
+    """Node-level targets must line up with the nodes the model sees.
+
+    `data.y` has one row per triangulation vertex, so the representation
+    has to use the vertices as its nodes: the one-skeleton, or the
+    0-cells (`x_0`) of a simplicial complex. The dual graph (one node
+    per top simplex) and the Hasse diagram (one node per simplex)
+    cannot serve node-level tasks.
+    """
+    if getattr(cfg.task, "task_level", "graph") != "node":
+        return
+
+    n_nodes = sample.num_nodes if is_graph_sample(sample) else sample.x_0.shape[0]
+    if sample.y.shape[0] != n_nodes:
+        raise ValueError(
+            f"Node-level task: data.y has {sample.y.shape[0]} rows (one per "
+            f"vertex) but the representation has {n_nodes} nodes. Use "
+            "representation@dataset.transform.representation=one_skeleton "
+            "or a simplicial representation."
+        )
 
 
 def create_loaders(cfg, train_dataset, val_dataset, test_dataset, is_graph_representation):
@@ -226,6 +292,22 @@ def create_model(cfg, num_features, label_to_index):
     cfg.model.out_channels = (
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
+
+    # Node-level tasks need one prediction per vertex: the model's
+    # task_level switch is set from the task, like out_channels.
+    task_level = getattr(cfg.task, "task_level", "graph")
+    if task_level not in ("graph", "node"):
+        raise ValueError(
+            f"task.task_level must be 'graph' or 'node', got {task_level!r}"
+        )
+    if hasattr(cfg.model, "task_level"):
+        cfg.model.task_level = task_level
+    elif task_level == "node":
+        raise ValueError(
+            "task.task_level=node, but the model config has no task_level: "
+            "use a model with a node-level head (gcn, mlp, graphormer, "
+            "residual_gated_gcn, cwn, sccnn)"
+        )
 
     in_channels = num_features
 
@@ -251,6 +333,7 @@ def main(cfg: RootConfig):
 
     train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
     sample = train_ds[0]
+    check_node_level_sample(cfg, sample)
     is_graph_representation = is_graph_sample(sample)
     train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds, is_graph_representation)
 
