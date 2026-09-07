@@ -1,0 +1,12 @@
+_target_: src.models.GIN.GIN
+
+n_layers: 3
+hidden_channels: 64
+out_channels: 1 # Get from task
+dropout: 0.2
+batch_norm: True
+residuals: True
+
+# Graph readout; sum keeps it extensive
+pool_method: mean
+task_level: graph # Get from task
