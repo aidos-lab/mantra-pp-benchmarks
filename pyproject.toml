@@ -136,6 +136,8 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `uv run pytest` does not add the cwd to sys.path; tests import `main` and `src`.
+pythonpath = ["."]
 
 [tool.coverage.run]
 branch = true
