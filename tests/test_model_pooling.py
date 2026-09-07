@@ -47,9 +47,9 @@ class TestMLPPooling:
         assert torch.allclose(out_sum, n * out_mean, atol=1e-5)
 
     def test_invalid_pool_method_rejected(self):
-        model = _mlp("max")
+        model = _mlp("median")
         batch = Batch.from_data_list(_graphs())
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             model(batch)
 
     def test_readout_is_linear(self):

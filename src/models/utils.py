@@ -2,7 +2,11 @@ from torch import nn
 from torch_geometric.utils import scatter
 
 def pool(x, batch, reduce="mean"):
-    assert reduce in ['mean', 'sum'], "Unknown pooling method"
+    """Readout of the rows of `x` into one row per graph of `batch`."""
+    if reduce not in ("mean", "sum", "max"):
+        raise ValueError(
+            f"Unknown pooling method {reduce!r}; use 'mean', 'sum' or 'max'"
+        )
     return scatter(x, batch, dim=-2, reduce=reduce)
 
 class SumReadout(nn.Module):

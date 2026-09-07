@@ -1,0 +1,11 @@
+_target_: src.models.DeepSets.DeepSets
+
+n_layers: 3
+hidden_channels: 64
+out_channels: 1 # Get from task
+dropout: 0.0
+layer_norm: True
+
+# sum keeps the readout extensive (the CY targets scale with the point count)
+pool_method: sum
+task_level: graph # Get from task

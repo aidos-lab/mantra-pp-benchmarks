@@ -90,6 +90,12 @@ class TestPoolValues:
         expected = torch.tensor([[10.0], [25.0], [2.0]])
         assert torch.allclose(out, expected)
 
+    def test_two_graphs_max_pool(self):
+        x = torch.tensor([[1.0, 5.0], [3.0, 2.0], [0.0, 0.0]])
+        batch = torch.tensor([0, 0, 1])
+        out = pool(x, batch, reduce="max")
+        assert torch.equal(out, torch.tensor([[3.0, 5.0], [0.0, 0.0]]))
+
 
 class TestSumReadoutValues:
     def test_sum_without_projection(self):
