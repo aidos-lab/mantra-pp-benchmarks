@@ -259,7 +259,7 @@ def create_model(cfg, num_features, label_to_index):
     elif task_level == "node":
         raise ValueError(
             "task.task_level=node, but the model config has no task_level: "
-            "use a model with a node-level head (gcn, mlp, graphormer, "
+            "use a model with a node-level head (gcn, mlp, gin, graphormer, "
             "residual_gated_gcn, deepsets, pointnet, pointnetpp, cwn, sccnn)"
         )
 
