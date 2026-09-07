@@ -8,6 +8,7 @@ from collections import Counter
 
 import pytest
 import torch
+from torch_geometric.utils import degree
 
 try:
     from mantra.datasets import CalabiYauDataset  # noqa: F401
@@ -190,6 +191,26 @@ class TestCYNodeLevel:
         for g in range(n_graphs):
             rows = batch.y[batch.batch == g].flatten().tolist()
             assert rows == val[g].y.flatten().tolist()
+
+    def test_shuffled_loader_keeps_targets_with_their_graph(self, tmp_path):
+        cfg = _cfg(tmp_path, "task=chern_node", ONE_SKELETON,
+                   "trainer.batch_size=4")
+        train, val, test, _ = main.create_dataset(cfg)
+        train_loader, _, _ = main.create_loaders(
+            cfg, train, val, test, is_graph_representation=True
+        )
+
+        seen = []
+        for batch in train_loader:
+            degrees = degree(batch.edge_index[0], batch.num_nodes)
+            for g in range(batch.num_graphs):
+                rows = batch.y[batch.batch == g].flatten().tolist()
+                # h11 identifies the sample; node ptr[g] is its origin,
+                # the hub adjacent to the other four vertices.
+                assert rows == _c2(int(batch.h11[g]))
+                assert degrees[batch.ptr[g]] == 4
+                seen.append(int(batch.h11[g]))
+        assert sorted(seen) == sorted(int(data.h11) for data in train)
 
     def test_node_classification_maps_every_vertex_value(self, tmp_path):
         cfg = _cfg(

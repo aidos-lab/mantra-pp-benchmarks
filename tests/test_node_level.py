@@ -135,6 +135,23 @@ def _sccnn_batch(seed=0):
     return batch
 
 
+def _complex(n0, n1, n2, seed):
+    """Random 2-complex with sparse connectivity, for collate_simplicial."""
+    torch.manual_seed(seed)
+    data = Data(x_0=torch.randn(n0, 3), x_1=torch.randn(n1, 3),
+                x_2=torch.randn(n2, 3), dimension=torch.tensor(2))
+    shapes = {
+        "incidence_1": (n0, n1), "incidence_2": (n1, n2),
+        "adjacency_1": (n1, n1), "hodge_laplacian_0": (n0, n0),
+        "down_laplacian_1": (n1, n1), "up_laplacian_1": (n1, n1),
+        "down_laplacian_2": (n2, n2),
+    }
+    for name, shape in shapes.items():
+        dense = torch.randn(shape) * (torch.rand(shape) < 0.5)
+        data[name] = dense.to_sparse()
+    return data
+
+
 def _cwn(task_level, out_channels=1):
     torch.manual_seed(7)
     return CWN(in_channels=[3, 3, 3], hidden_channels=[4, 4, 4], n_layers=1,
@@ -187,15 +204,16 @@ class TestGraphModelNodeHeads:
         pooled = scatter(node_out, batch.batch, dim=0, reduce="mean")
         assert torch.allclose(graph_out, pooled, atol=1e-5)
 
-    def test_graphormer_node_outputs_follow_the_batch_order(self):
-        """Unpadding the dense batch must give the nodes in the order of
-        `batch.x`: the batched outputs equal the per-graph outputs."""
-        model = _graphormer("node", out_channels=2)
+    @pytest.mark.parametrize(("build", "spd"), GRAPH_MODELS)
+    def test_node_outputs_equal_per_graph_outputs(self, build, spd):
+        """Batching must neither mix graphs nor reorder nodes: the rows
+        of the batched output are the per-graph outputs, in order."""
+        model = build("node", out_channels=2)
         model.eval()
 
         graphs = _graphs()
-        batched = model(_batch(graphs, spd=True))
-        single = torch.cat([model(_batch([g], spd=True)) for g in graphs])
+        batched = model(_batch(graphs, spd=spd))
+        single = torch.cat([model(_batch([g], spd=spd)) for g in graphs])
 
         assert batched.shape == (5, 2)
         assert torch.allclose(batched, single, atol=1e-5)
@@ -352,6 +370,24 @@ class TestTrainingHelpersNodeLevel:
         assert captured["class_names"] == ["-20", "2", "4"]
         assert captured["y_true"] == [2, 0, 1, 1]
         assert captured["preds"] == [2, 0, 1, 1]
+
+
+class TestSimplicialModelsBatching:
+    @pytest.mark.parametrize("build", [_cwn, _sccnn], ids=["cwn", "sccnn"])
+    def test_node_outputs_equal_per_complex_outputs(self, build):
+        """collate_simplicial offsets every connectivity by its own rank
+        counts; the batched rows must equal the per-complex outputs."""
+        from src.utils.data_loading import collate_simplicial
+
+        model = build("node", out_channels=2)
+        model.eval()
+        complexes = [_complex(3, 5, 2, seed=1), _complex(4, 3, 1, seed=2)]
+
+        batched = model(collate_simplicial(complexes))
+        single = torch.cat([model(collate_simplicial([c])) for c in complexes])
+
+        assert batched.shape == (7, 2)
+        assert torch.allclose(batched, single, atol=1e-5)
 
 
 class TestCollateSimplicialNodeLevel:
