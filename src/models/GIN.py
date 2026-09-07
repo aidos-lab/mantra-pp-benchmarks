@@ -1,14 +1,18 @@
 """Graph Isomorphism Network (GIN).
 
 Xu et al., "How Powerful are Graph Neural Networks?", ICLR 2019
-(https://arxiv.org/abs/1810.00826). Sum aggregation with an MLP update
-makes GIN as expressive as the 1-WL test, an upper-bound control for
-the message-passing models on the triangulation benchmarks.
+(arXiv:1810.00826), Eq. 4.1: `h_v = MLP((1 + eps) h_v + sum_u h_u)` with
+a learned eps (GIN-eps), a 2-layer MLP and BatchNorm on every hidden
+layer. Sum aggregation with an MLP update makes GIN as expressive as the
+1-WL test, an upper-bound control for the message-passing models on the
+triangulation benchmarks.
 
-Deviations from the paper, for consistency with the other models of
-this repository: the graph readout pools only the final layer (Eq. 4.2
-concatenates the readouts of every layer) and residual connections are
-available. The data carries no `edge_attr`, so this is the plain GINConv.
+Deviations, for consistency with the other models of this repository:
+the graph readout pools only the final layer (Eq. 4.2 concatenates the
+readouts of every layer) with `pool_method` (the paper uses sum on the
+bioinformatics and mean on the social datasets), dropout follows every
+layer, and residual connections are available. The data carries no
+`edge_attr`, so this is the plain GINConv.
 """
 
 import torch
@@ -23,7 +27,12 @@ class GINLayer(nn.Module):
     """GINConv -> BatchNorm -> ReLU -> Dropout, with an optional residual."""
 
     def __init__(
-        self, in_dim: int, out_dim: int, batch_norm: bool, residual: bool, dropout: float
+        self,
+        in_dim: int,
+        out_dim: int,
+        batch_norm: bool,
+        residual: bool,
+        dropout: float,
     ):
         super().__init__()
         self.residual = residual
@@ -33,13 +42,18 @@ class GINLayer(nn.Module):
         # self-loop weight (1 + eps).
         mlp = nn.Sequential(
             nn.Linear(in_dim, out_dim),
+            nn.BatchNorm1d(out_dim) if batch_norm else nn.Identity(),
             nn.ReLU(),
             nn.Linear(out_dim, out_dim),
         )
         self.conv = GINConv(mlp, train_eps=True)
-        self.batchnorm_h = nn.BatchNorm1d(out_dim) if batch_norm else nn.Identity()
+        self.batchnorm_h = (
+            nn.BatchNorm1d(out_dim) if batch_norm else nn.Identity()
+        )
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:
         h = F.relu(self.batchnorm_h(self.conv(x=x, edge_index=edge_index)))
         h = F.dropout(h, p=self.dropout, training=self.training)
         if self.residual:
@@ -83,17 +97,16 @@ class GIN(nn.Module):
         self.pool_method = pool_method
         self.task_level = task_level
 
+        h = hidden_channels
         self.hidden_layers = nn.ModuleList(
-            [
-                GINLayer(hidden_channels, hidden_channels, batch_norm, residuals, dropout)
+            [GINLayer(in_channels, h, batch_norm, False, dropout)]
+            + [
+                GINLayer(h, h, batch_norm, residuals, dropout)
                 for _ in range(n_layers)
             ]
         )
-        self.hidden_layers.insert(
-            0, GINLayer(in_channels, hidden_channels, batch_norm, residual=False, dropout=dropout)
-        )
 
-        self.final_linear = nn.Linear(hidden_channels, out_channels)
+        self.final_linear = nn.Linear(h, out_channels)
 
     def forward(self, batch) -> torch.Tensor:
         x, edge_index, batch_idx = batch.x, batch.edge_index, batch.batch
