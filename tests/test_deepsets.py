@@ -49,9 +49,9 @@ def _identity_model(pool_method):
                      n_layers=1, dropout=0.0, layer_norm=False,
                      pool_method=pool_method)
     with torch.no_grad():
-        for layer in (model.phi[0], model.rho[0]):
-            layer.linear.weight.copy_(torch.eye(2))
-            layer.linear.bias.zero_()
+        for linear in (model.phi[0], model.rho[0][0]):
+            linear.weight.copy_(torch.eye(2))
+            linear.bias.zero_()
         model.rho[1].weight.fill_(1.0)
         model.rho[1].bias.zero_()
     return model.eval()
@@ -137,4 +137,4 @@ class TestDeepSetsNodeHead:
 
     def test_node_head_width(self):
         model = _model(task_level="node")
-        assert model.rho[0].linear.in_features == 2 * 8
+        assert model.rho[0][0].in_features == 2 * 8
