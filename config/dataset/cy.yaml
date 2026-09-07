@@ -15,9 +15,8 @@ limit: null
 # not implemented for this dataset.
 use_stratified: True
 
-# 20% test split as in arXiv:2112.09117.
 train_parameters:
   split:
-    train: 0.7
-    val: 0.1
+    train: 0.6
+    val: 0.2
     test: 0.2
