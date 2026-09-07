@@ -35,6 +35,8 @@ cpu = [
     "torch-sparse==0.6.18; sys_platform == 'darwin'",
     "torch-scatter==2.1.2+pt29cpu; sys_platform == 'linux'",
     "torch-scatter==2.1.2; sys_platform == 'darwin'",
+    "torch-cluster==1.6.3+pt29cpu; sys_platform == 'linux'",
+    "torch-cluster==1.6.3; sys_platform == 'darwin'",
 ]
 cu130 = [
     "mantra-dataset; sys_platform == 'linux'",
@@ -43,6 +45,7 @@ cu130 = [
     "pyg-lib==0.6.0+pt29cu130; sys_platform == 'linux'",
     "torch-sparse==0.6.18+pt29cu130; sys_platform == 'linux'",
     "torch-scatter==2.1.2+pt29cu130; sys_platform == 'linux'",
+    "torch-cluster==1.6.3+pt29cu130; sys_platform == 'linux'",
 ]
 
 [dependency-groups]
@@ -92,6 +95,11 @@ torch-sparse = [
     { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"},
 ]
 torch-scatter = [
+    { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Linux'"},
+    { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Darwin'"},
+    { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"},
+]
+torch-cluster = [
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Linux'"},
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Darwin'"},
     { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"},
