@@ -1,0 +1,18 @@
+_target_: src.models.PointNetPP.PointNetPP
+
+hidden_channels: 64
+out_channels: 1 # Get from task
+dropout: 0.0
+
+# FPS sampling ratio and grouping radius per set-abstraction level; the
+# radii are sized for integer lattice coordinates.
+sa_ratios: [0.5, 0.5]
+sa_radii: [2.0, 4.0]
+# Points kept per group; large enough never to truncate one.
+max_num_neighbors: 512
+# Neighbours of the k-NN interpolation of the node-level head.
+k: 3
+
+# symmetric aggregation of the global level
+pool_method: sum
+task_level: graph # Get from task
