@@ -6,7 +6,15 @@ import torch
 from omegaconf import OmegaConf
 from torch_geometric.data import Data
 
-from main import create_loaders, create_model, training_loop
+from main import create_loaders, create_model, is_graph_sample, training_loop
+
+
+def test_is_graph_sample_distinguishes_graphs_from_complexes():
+    graph = Data(x=torch.ones(2, 1), edge_index=torch.empty((2, 0), dtype=torch.long))
+    complex_ = Data(x_0=torch.ones(2, 1), x_1=torch.ones(1, 1))
+
+    assert is_graph_sample(graph)
+    assert not is_graph_sample(complex_)
 
 
 def test_create_loaders_disables_persistence_without_workers():

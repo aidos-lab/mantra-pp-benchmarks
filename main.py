@@ -201,6 +201,12 @@ def create_dataset(cfg):
 
     return train_dataset, val_dataset, test_dataset, label_to_index
 
+def is_graph_sample(sample):
+    """Whether a sample is a graph (`x`, `edge_index`) or a simplicial
+    complex (per-rank `x_0`, `x_1`, ...)."""
+    return "x_0" not in sample
+
+
 def create_loaders(cfg, train_dataset, val_dataset, test_dataset, is_graph_representation):
     trainer_cfg = cfg.trainer
     persistent_workers = trainer_cfg.num_workers > 0
@@ -245,9 +251,8 @@ def main(cfg: RootConfig):
 
     train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
     sample = train_ds[0]
-    is_graph_representation = bool("x_0" in sample.__dict__)
+    is_graph_representation = is_graph_sample(sample)
     train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds, is_graph_representation)
-
 
     if is_graph_representation:
         num_features = sample.x.shape[1]
