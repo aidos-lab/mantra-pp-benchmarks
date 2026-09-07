@@ -121,8 +121,6 @@ extend-exclude = [
     "logs",
     "experiments",
     ".venv-cytools",
-    "src/models/cells/transformer",
-    "train_lightning.py",
 ]
 
 [tool.ruff.lint]

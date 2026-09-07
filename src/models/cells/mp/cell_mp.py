@@ -421,7 +421,6 @@ class CochainMessagePassing(torch.nn.Module):
             message = self.get_msg_func(adjacency)
             out = message(**msg_kwargs)
 
-            # import pdb; pdb.set_trace()
             aggr_kwargs = self.inspector.distribute(
                 f"aggregate_{adjacency}", coll_dict
             )
@@ -585,7 +584,6 @@ class CochainMessagePassing(torch.nn.Module):
         that support "add", "mean" and "max" operations as specified in
         :meth:`__init__` by the :obj:`aggr` argument.
         """
-        # import pdb; pdb.set_trace()
         if boundary_ptr is not None:
             down_ptr = expand_left(
                 boundary_ptr, dim=self.node_dim, dims=inputs.dim()

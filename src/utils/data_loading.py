@@ -37,20 +37,6 @@ class SimplicialData(Data):
         return 0
 
 
-# class SimplicialData(Data):
-#     def is_valid(self, string):
-#         valid_names = ["adj", "incidence", "laplacian"]
-#         return any(name in string for name in valid_names)
-
-#     def __cat_dim__(self, key: str, value: Any, *args, **kwargs) -> Any:
-#         if torch_geometric.utils.is_sparse(value) and self.is_valid(key):
-#             return (0, 1)
-#         elif "index" in key or key == "face":
-#             return -1
-#         else:
-#             return 0
-
-
 def convert_connectivity(A, key, data):
     if is_sparse(A):
         if isinstance(A, SparseTensor):
@@ -117,12 +103,6 @@ def collate_simplicial(batch):
             )
 
         data_list.append(data)
-
-    # for key in data_list[0].keys():
-    #     val = data_list[0][key]
-    #     result = data_list[0].__inc__(key, val)
-    #     if result is None:
-    #         print(f"None inc for key: {key}, type: {type(val)}, shape: {getattr(val, 'shape', 'N/A')}")
 
     batch = torch_geometric.data.Batch.from_data_list(
         data_list, exclude_keys=["simplex_trie", "id", "name"]
@@ -236,7 +216,6 @@ def collate_simplicial_prev(batch):
             if A.is_sparse:
                 if not A.is_coalesced():
                     A = A.coalesce()
-                # A = SparseTensor.from_torch_sparse_coo_tensor()
                 indices = A.indices().clone()
                 values = A.values()
             else:
@@ -261,7 +240,6 @@ def collate_simplicial_prev(batch):
 
             elif mat_type == "square":
                 indices += running_idx_r_simplex[r_to]
-                # n = simplex_cnts[r]
 
                 # connectivity_shape[con_type][0] += n
                 # connectivity_shape[con_type][1] += n
@@ -295,7 +273,6 @@ def collate_simplicial_prev(batch):
 
     for con_type in connectivity_types:
         _, r_from, r_to = con_meta[con_type]
-        # shape = connectivity_shape[con_type]
         sparse_mat = torch.sparse_coo_tensor(
             idx_buffers[con_type],
             val_buffers[con_type],

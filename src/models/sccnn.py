@@ -225,31 +225,16 @@ class SCCNNLayer(nn.Module):
                 laplacian_up_2,
             ) = laplacian_all
 
-        # num_nodes, num_edges, num_triangles = x_0.shape[0], x_1.shape[0], x_2.shape[0]
-
         b1, b2 = incidence_all
 
-        # identity_0, identity_1, identity_2 = (
-        #     torch.eye(num_nodes).to(x_0.device),
-        #     torch.eye(num_edges).to(x_0.device),
-        #     torch.eye(num_triangles).to(x_0.device),
-        # )
         """
         Convolution in the node space
         """
         # -----------Logic to obtain update for 0-cells --------
-        # x_identity_0 = torch.unsqueeze(identity_0 @ x_0, 2)
-        # x_0_to_0 = self.chebyshev_conv(laplacian_0, self.conv_order, x_0)
-        # x_0_to_0 = torch.cat((x_identity_0, x_0_to_0), 2)
 
         x_0_laplacian = self.chebyshev_conv(laplacian_0, self.conv_order, x_0)
         x_0_to_0 = torch.cat([x_0.unsqueeze(2), x_0_laplacian], dim=2)
         # -------------------
-
-        # x_1_to_0 = torch.mm(b1, x_1)
-        # x_1_to_0_identity = torch.unsqueeze(identity_0 @ x_1_to_0, 2)
-        # x_1_to_0 = self.chebyshev_conv(laplacian_0, self.conv_order, x_1_to_0)
-        # x_1_to_0 = torch.cat((x_1_to_0_identity, x_1_to_0), 2)
 
         x_1_to_0_upper = b1 @ x_1
         x_1_to_0_laplacian = self.chebyshev_conv(
@@ -268,21 +253,12 @@ class SCCNNLayer(nn.Module):
         """
 
         # -----------Logic to obtain update for 1-cells --------
-        # x_identity_1 = torch.unsqueeze(identity_1 @ x_1, 2)
-        # x_1_down = self.chebyshev_conv(laplacian_down_1, self.conv_order, x_1)
-        # x_1_up = self.chebyshev_conv(laplacian_up_1, self.conv_order, x_1)
-        # x_1_to_1 = torch.cat((x_identity_1, x_1_down, x_1_up), 2)
 
         x_1_down = self.chebyshev_conv(laplacian_down_1, self.conv_order, x_1)
         x_1_up = self.chebyshev_conv(laplacian_up_1, self.conv_order, x_1)
         x_1_to_1 = torch.cat((x_1.unsqueeze(2), x_1_down, x_1_up), 2)
 
         # -------------------
-
-        # x_0_to_1 = torch.mm(b1.T, x_0)
-        # x_0_to_1_identity = torch.unsqueeze(identity_1 @ x_0_to_1, 2)
-        # x_0_to_1 = self.chebyshev_conv(laplacian_down_1, self.conv_order, x_0_to_1)
-        # x_0_to_1 = torch.cat((x_0_to_1_identity, x_0_to_1), 2)
 
         # Lower projection
         x_0_1_lower = b1.t() @ x_0
@@ -302,11 +278,6 @@ class SCCNNLayer(nn.Module):
             [x_0_1_lower.unsqueeze(2), x_0_1_down, x_0_1_up], dim=2
         )
         # -------------------
-
-        # x_2_to_1 = torch.mm(b2, x_2)
-        # x_2_to_1_identity = torch.unsqueeze(identity_1 @ x_2_to_1, 2)
-        # x_2_to_1 = self.chebyshev_conv(laplacian_up_1, self.conv_order, x_2_to_1)
-        # x_2_to_1 = torch.cat((x_2_to_1_identity, x_2_to_1), 2)
 
         x_2_1_upper = b2 @ x_2
 
@@ -329,15 +300,6 @@ class SCCNNLayer(nn.Module):
         """Convolution in the face (triangle) space, depending on the SC order,
         the exact form maybe a little different."""
         # -------------------Logic to obtain update for 2-cells --------
-        # x_identity_2 = torch.unsqueeze(identity_2 @ x_2, 2)
-
-        # if self.sc_order == 2:
-        #     x_2 = self.chebyshev_conv(laplacian_2, self.conv_order, x_2)
-        #     x_2_to_2 = torch.cat((x_identity_2, x_2), 2)
-        # elif self.sc_order > 2:
-        #     x_2_down = self.chebyshev_conv(laplacian_down_2, self.conv_order, x_2)
-        #     x_2_up = self.chebyshev_conv(laplacian_up_2, self.conv_order, x_2)
-        #     x_2_to_2 = torch.cat((x_identity_2, x_2_down, x_2_up), 2)
 
         x_2_down = self.chebyshev_conv(laplacian_down_2, self.conv_order, x_2)
         x_2_up = self.chebyshev_conv(laplacian_up_2, self.conv_order, x_2)
@@ -345,14 +307,6 @@ class SCCNNLayer(nn.Module):
         x_2_to_2 = torch.cat((x_2.unsqueeze(2), x_2_down, x_2_up), 2)
 
         # -------------------
-
-        # x_1_to_2 = torch.mm(b2.T, x_1)
-        # x_1_to_2_identity = torch.unsqueeze(identity_2 @ x_1_to_2, 2)
-        # if self.sc_order == 2:
-        #     x_1_to_2 = self.chebyshev_conv(laplacian_2, self.conv_order, x_1_to_2)
-        # elif self.sc_order > 2:
-        #     x_1_to_2 = self.chebyshev_conv(laplacian_down_2, self.conv_order, x_1_to_2)
-        # x_1_to_2 = torch.cat((x_1_to_2_identity, x_1_to_2), 2)
 
         x_1_2_lower = b2.t() @ x_1
 
@@ -367,18 +321,9 @@ class SCCNNLayer(nn.Module):
             [x_1_2_lower.unsqueeze(2), x_1_2_down, x_1_2_up], dim=2
         )
 
-        # That is my code, but to execute this part we need to have simplices order of k+1 in this case order of 3
-        # x_3_2_upper = x_1_to_2 = torch.mm(b2, x_3)
-        # x_3_2_down = self.chebyshev_conv(laplacian_down_2, self.conv_order, x_3_2_upper)
-        # x_3_2_up = self.chebyshev_conv(laplacian_up_2, self.conv_order, x_3_2_upper)
-
-        # x_3_to_2 = torch.cat([x_3_2_upper.unsueeze(2), x_3_2_down, x_3_2_up], dim=2)
-
         # -------------------
 
         x_2_all = torch.cat([x_1_to_2, x_2_to_2], dim=2)
-        # The final version of this model should have the following line
-        # x_2_all = torch.cat([x_1_to_2, x_2_to_2, x_3_to_2], dim=2)
 
         # -------------------
 

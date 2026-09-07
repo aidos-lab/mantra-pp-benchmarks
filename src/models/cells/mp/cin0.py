@@ -249,7 +249,6 @@ class SparseCIN(torch.nn.Module):
     def pool_complex(self, xs, data):
         # All complexes have nodes so we can extract the batch size from cochains[0]
         batch_size = data.cochains[0].batch.max() + 1
-        # print(batch_size)
         # The MP output is of shape [message_passing_dim, batch_size, feature_dim]
         pooled_xs = torch.zeros(
             self.max_dim + 1,
@@ -285,10 +284,6 @@ class SparseCIN(torch.nn.Module):
                 max_dim=self.max_dim, include_down_features=False
             )
             start_to_process = 0
-            # if i == len(self.convs) - 2:
-            #     start_to_process = 1
-            # if i == len(self.convs) - 1:
-            #     start_to_process = 2
             xs = conv(*params, start_to_process=start_to_process)
             data.set_xs(xs)
 
