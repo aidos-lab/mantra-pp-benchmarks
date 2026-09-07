@@ -1,0 +1,48 @@
+# Shared by mantra and mantra-pp-benchmarks. Same hook ids in both repos.
+# Install once per clone:  uv run pre-commit install
+# (default_install_hook_types below installs the pre-push hook too.)
+#
+# All hooks run through `uv run`, so they use the versions in the dev
+# dependency group. Pin black== and ruff== there, otherwise every worktree
+# resolves its own version and `--check` results differ between checkouts.
+
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: black-check
+        name: black (check, changed files)
+        entry: uv run black --check
+        language: system
+        types_or: [python, pyi]
+        exclude: ^docs/
+        pass_filenames: true
+
+      - id: ruff-check
+        name: ruff check (changed files)
+        entry: uv run ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: true
+
+      - id: pytest
+        name: pytest (full suite)
+        entry: uv run pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        # Delete this line to keep the suite on every commit (mantra today).
+        stages: [pre-push]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=2048]
