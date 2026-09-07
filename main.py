@@ -245,7 +245,7 @@ def main(cfg: RootConfig):
 
     train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
     sample = train_ds[0]
-    is_graph_representation = bool("x_0" in sample.__dict__)
+    is_graph_representation = "x_0" not in sample
     train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds, is_graph_representation)
 
 
