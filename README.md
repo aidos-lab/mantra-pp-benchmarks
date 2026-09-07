@@ -178,13 +178,13 @@ Key Hydra groups:
 | `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `san`, `san_tmx`, `cwn`, `sccnn`                  |
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
-| `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge`, `chern`, `hodge_class`              |
+| `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge_reg`, `hodge_class`                   |
 | `trainer`                                     | `default`                                                                                           |
 | `logger`                                      | `wandb`                                                                                             |
 
 Losses are not a Hydra group: every `config/task/*.yaml` carries its own
 `loss:` block (cross-entropy for the MANTRA tasks and `hodge_class`, MSE
-for `hodge` and `chern`).
+for `hodge_reg`).
 
 Outputs:
 
@@ -206,19 +206,19 @@ data. Downloading is not implemented yet, so point `dataset.local_path`
 at a local parquet file:
 
 ```bash
-python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge
+python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_reg
 ```
 
 Tasks:
 
-- `task=hodge` — graph-level regression of `h11` (`task.target=h12`
-  for the other Hodge number), scored with MAE and rounded accuracy.
-- `task=chern` — graph-level regression of `c2_anticanonical` with the
-  same metrics; the targets are used as they are.
-- `task=hodge_class` — classification of the target value. The class
-  mapping is built over the full dataset, so every value keeps its
-  output neuron independent of the split, and it is saved next to the
-  checkpoint as `label_to_index.json`.
+- `task=hodge_reg` — graph-level regression of `h11`, scored with MAE
+  and rounded accuracy; `task.target=h12` for the other Hodge number,
+  `task.target=c2_anticanonical` for the second Chern class paired with
+  the anticanonical divisor. The targets are used as they are.
+- `task=hodge_class` — classification of the target value. The values
+  of the train split become the classes, remapped to contiguous
+  indices like the MANTRA tasks and saved next to the checkpoint as
+  `label_to_index.json`.
 
 Splits are seeded with `dataset.seed` and sized by
 `dataset.train_parameters.split` (0.7/0.1/0.2); the split files encode
@@ -244,7 +244,7 @@ the representation and let the representation read them (works for
 `hasse_diagram` and `dual_graph`):
 
 ```bash
-python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge \
+python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_reg \
     representation@dataset.transform.representation=hasse_diagram \
     dataset.transform.representation.feature_propagation=x \
     transform@dataset.transform.embedding=propagate_convex_comb \
