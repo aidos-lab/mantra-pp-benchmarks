@@ -260,7 +260,7 @@ def create_model(cfg, num_features, label_to_index):
         raise ValueError(
             "task.task_level=node, but the model config has no task_level: "
             "use a model with a node-level head (gcn, mlp, graphormer, "
-            "residual_gated_gcn, cwn, sccnn)"
+            "residual_gated_gcn, deepsets, pointnet, cwn, sccnn)"
         )
 
     in_channels = num_features
