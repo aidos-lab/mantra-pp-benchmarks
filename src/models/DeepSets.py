@@ -13,8 +13,8 @@ The model reads only `batch.x` and `batch.batch`, never the connectivity,
 so with `x` set to the lattice coordinates it sees the polytope and
 nothing of the triangulation: the geometry-only control for the
 Calabi-Yau benchmarks. The Hodge numbers are properties of the polytope
-(for favorable polytopes `h11 = n_points - 5`, so a sum-pooled model can
-count its way to them), while the second Chern class and the
+(for a favorable polytope `h11_cy = n_points - 5`, so a sum-pooled model
+can count its way to it), while the second Chern class and the
 intersection numbers depend on the triangulation, where a point-set
 model is expected to fall behind the models that use the simplicial
 structure. The gap between the two is the quantity of interest.
