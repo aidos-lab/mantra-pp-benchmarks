@@ -269,10 +269,12 @@ over all rows. Two things must line up with that:
 
 - the graph nodes have to be the vertices, so pick the one-skeleton
   (or a simplicial representation) instead of the default dual graph;
+  `main.py` rejects a representation whose node count differs from the
+  number of targets;
 - the model needs a node-level head: `create_model` sets
-  `model.task_level` from the task; `gcn`, `mlp`,
-  `residual_gated_gcn`, `graphormer` then skip the pooling (one output
-  per node) and `cwn`, `sccnn` read out per 0-cell.
+  `model.task_level` from the task for `gcn`, `mlp`,
+  `residual_gated_gcn`, `graphormer` (no pooling, one output per
+  node) and for `cwn`, `sccnn` (per-0-cell outputs).
 
 ```bash
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet \
@@ -288,9 +290,9 @@ without). Read MSE and MAE with that in mind.
 
 Any attribute task can be run per vertex, e.g. node-level
 classification with `task=hodge_class task.target=c2
-task.task_level=node`. As at graph level, the classes are the values
-seen in the train split; a vertex value that occurs only in val or
-test is an error at start-up, since no model could predict it.
+task.task_level=node`. Unlike graph-level classification, the class
+mapping then spans every vertex value of the full dataset, because the
+train-split remap handles scalar targets only.
 
 ## Reproducing the subdivision experiments
 
