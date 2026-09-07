@@ -1,54 +1,27 @@
 """DeepSets and PointNet over the lattice points of a polytope.
 
-Zaheer et al., "Deep Sets", NeurIPS 2017 (https://arxiv.org/abs/1703.06114):
-a permutation-invariant function of a set is `rho(sum_i phi(x_i))` with
-`phi` a shared point-wise network and `rho` a network on the pooled
-feature. With max pooling this is the vanilla PointNet of Qi et al.,
-"PointNet: Deep Learning on Point Sets for 3D Classification and
-Segmentation", CVPR 2017 (https://arxiv.org/abs/1612.00593), without the
-input and feature transforms, which have no role for integer lattice
-coordinates; `config/model/pointnet.yaml` is that configuration.
+Zaheer et al., "Deep Sets", NeurIPS 2017 (arXiv:1703.06114), Theorem 2:
+a permutation-invariant set function is `rho(sum_i phi(x_i))` with a
+shared point-wise network `phi` and a network `rho` on the pooled
+feature. With max pooling this is PointNet (Qi et al., CVPR 2017,
+arXiv:1612.00593) without its input and feature transform networks;
+`config/model/pointnet.yaml` is that configuration. At node level a
+point is predicted from its embedding concatenated with the pooled set
+feature, the segmentation head of PointNet (one permutation-equivariant
+layer in the terms of Deep Sets, Lemma 3). Deep Sets uses plain layers
+and PointNet BatchNorm; here every layer is `utils.mlp`'s
+Linear -> LayerNorm -> ReLU, which is independent of the set size.
 
-The model reads only `batch.x` and `batch.batch`, never the connectivity,
-so with `x` set to the lattice coordinates it sees the polytope and
-nothing of the triangulation: the geometry-only control for the
-Calabi-Yau benchmarks. The Hodge numbers are properties of the polytope
-(for a favorable polytope `h11_cy = n_points - 5`, so a sum-pooled model
-can count its way to it), while the second Chern class and the
-intersection numbers depend on the triangulation, where a point-set
-model is expected to fall behind the models that use the simplicial
-structure. The gap between the two is the quantity of interest.
-
-At node level every point is predicted from its own embedding
-concatenated with the pooled set feature, the segmentation head of
-PointNet.
+The model reads only `batch.x` and `batch.batch`: with `x` set to the
+lattice coordinates it sees the polytope and nothing of the
+triangulation, the geometry-only control of the Calabi-Yau benchmarks
+(README, "Point-set models").
 """
 
 import torch
 import torch.nn as nn
 
-from src.models.utils import pool
-
-
-class PointLayer(nn.Module):
-    """Shared point-wise transformation: Linear -> LayerNorm -> ReLU -> Dropout."""
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        layer_norm: bool,
-        dropout: float,
-    ):
-        super().__init__()
-        self.linear = nn.Linear(in_channels, out_channels)
-        # LayerNorm rather than BatchNorm: sets have variable size, and
-        # per-point statistics keep the layer independent of the batch.
-        self.norm = nn.LayerNorm(out_channels) if layer_norm else nn.Identity()
-        self.dropout = nn.Dropout(dropout) if dropout else nn.Identity()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.dropout(torch.relu(self.norm(self.linear(x))))
+from src.models.utils import mlp, pool
 
 
 class DeepSets(nn.Module):
@@ -90,17 +63,11 @@ class DeepSets(nn.Module):
         self.pool_method = pool_method
         self.task_level = task_level
 
-        widths = [in_channels] + [hidden_channels] * n_layers
-        self.phi = nn.Sequential(
-            *[
-                PointLayer(a, b, layer_norm, dropout)
-                for a, b in zip(widths[:-1], widths[1:])
-            ]
-        )
-        rho_in = 2 * hidden_channels if task_level == "node" else hidden_channels
+        h = hidden_channels
+        self.phi = mlp([in_channels] + [h] * n_layers, dropout, layer_norm)
+        rho_in = 2 * h if task_level == "node" else h
         self.rho = nn.Sequential(
-            PointLayer(rho_in, hidden_channels, layer_norm, dropout),
-            nn.Linear(hidden_channels, out_channels),
+            mlp([rho_in, h], dropout, layer_norm), nn.Linear(h, out_channels)
         )
 
     def forward(self, batch) -> torch.Tensor:

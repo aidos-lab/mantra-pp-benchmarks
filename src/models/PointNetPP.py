@@ -1,89 +1,35 @@
 """PointNet++ over the lattice points of a polytope.
 
 Qi et al., "PointNet++: Deep Hierarchical Feature Learning on Point Sets
-in a Metric Space", NeurIPS 2017 (https://arxiv.org/abs/1706.02413), in
-the form of PyTorch Geometric's `pointnet2_classification` and
-`pointnet2_segmentation` examples. Set-abstraction (SA) levels sample
-centroids by farthest point sampling (FPS), group the points within a
-radius of each centroid and encode every group with a shared PointNet;
-a global level pools the surviving points into one feature per set. At
+in a Metric Space", NeurIPS 2017 (arXiv:1706.02413), in the form of
+PyTorch Geometric's `pointnet2_classification` / `_segmentation`
+examples. Each set-abstraction (SA) level samples centroids by farthest
+point sampling, groups the points within a radius of each centroid
+(ball query) and encodes every group with a shared PointNet on the
+features and the coordinates relative to the centroid; a global level
+encodes and pools the surviving points into one feature per set. At
 node level, feature-propagation (FP) levels interpolate the features
-back to the finer levels by inverse-distance weighted k-NN and encode
-them with the skip features of that level (Section 3.4 of the paper).
+back to each finer level by inverse squared-distance weighted k-NN
+(k = 3), concatenate the skip features of that level and apply a shared
+MLP, the "unit PointNet" (Section 3.4; the part-segmentation network of
+Appendix B). FPS starts at the first point of each set as in the
+original implementation; for the lattice coordinates that is the
+origin, so forward passes are deterministic and the hierarchy is
+anchored there, but not invariant to reordering the input rows.
 
-Like `DeepSets`, the model reads only `batch.x` (the coordinates) and
-`batch.batch`, so it sees the polytope and nothing of the triangulation.
-FPS starts at each set's first point, the origin for the lattice
-coordinates, so a forward pass is deterministic; the hierarchy is
-anchored at the origin and the output is not invariant to reordering
-the input rows. Deviations from the paper matching the other models of
-this repository: LayerNorm instead of BatchNorm (sets have variable
-size), a configurable `sum`/`mean`/`max` readout (`sum` keeps the
-prediction extensive) and single-scale grouping.
+Deviations, matching the rest of this repository: LayerNorm instead of
+BatchNorm, a configurable `sum`/`mean`/`max` global readout (the paper
+pools with max; `sum` keeps the prediction extensive), single-scale
+grouping, the coordinates as the input-level skip features, and no
+neighbour cap that could truncate a group. Like `DeepSets`, the model
+reads only `batch.x` and `batch.batch` (README, "Point-set models").
 """
 
 import torch
 import torch.nn as nn
 from torch_geometric.nn import PointNetConv, fps, knn_interpolate, radius
 
-from src.models.utils import pool
-
-
-def _mlp(channels, dropout):
-    layers = []
-    for c_in, c_out in zip(channels[:-1], channels[1:]):
-        layers += [nn.Linear(c_in, c_out), nn.LayerNorm(c_out), nn.ReLU()]
-        if dropout:
-            layers.append(nn.Dropout(dropout))
-    return nn.Sequential(*layers)
-
-
-class SetAbstraction(nn.Module):
-    """One SA level: FPS-sample `ratio` of the points, group the points
-    within `r` of each sample and encode the groups with a shared
-    PointNet on the features and the coordinates relative to the
-    centroid."""
-
-    def __init__(
-        self, ratio: float, r: float, local_nn: nn.Module, max_num_neighbors: int
-    ):
-        super().__init__()
-        self.ratio = ratio
-        self.r = r
-        self.max_num_neighbors = max_num_neighbors
-        # radius() already pairs every centroid with itself; PyG's self
-        # loops would pair flat indices across the sets of a batch.
-        self.conv = PointNetConv(local_nn, add_self_loops=False)
-
-    def forward(self, x, pos, batch):
-        idx = fps(pos, batch, ratio=self.ratio, random_start=False)
-        row, col = radius(
-            pos,
-            pos[idx],
-            self.r,
-            batch,
-            batch[idx],
-            max_num_neighbors=self.max_num_neighbors,
-        )
-        edge_index = torch.stack([col, row], dim=0)
-        x_dst = None if x is None else x[idx]
-        x = self.conv((x, x_dst), (pos, pos[idx]), edge_index)
-        return x, pos[idx], batch[idx]
-
-
-class FeaturePropagation(nn.Module):
-    """One FP level: interpolate the coarse features onto the finer
-    points by inverse-distance weighted k-NN and encode them together
-    with the skip features of the finer level."""
-
-    def __init__(self, k: int, mlp: nn.Module):
-        super().__init__()
-        self.k = k
-        self.mlp = mlp
-
-    def forward(self, x, pos, batch, x_skip, pos_skip, batch_skip):
-        x = knn_interpolate(x, pos, pos_skip, batch, batch_skip, k=self.k)
-        return self.mlp(torch.cat([x, x_skip], dim=1))
+from src.models.utils import mlp, pool
 
 
 class PointNetPP(nn.Module):
@@ -127,45 +73,58 @@ class PointNetPP(nn.Module):
         task_level: str = "graph",
     ):
         super().__init__()
-        if not sa_ratios or len(sa_ratios) != len(sa_radii):
+        if len(sa_ratios) != len(sa_radii):
             raise ValueError(
-                "sa_ratios and sa_radii must be non-empty lists of equal length"
+                "sa_ratios and sa_radii must have the same length"
             )
         self.pool_method = pool_method
         self.task_level = task_level
+        self.sa_ratios = list(sa_ratios)
+        self.sa_radii = list(sa_radii)
+        self.max_num_neighbors = max_num_neighbors
+        self.k = k
 
         h = hidden_channels
-        self.sa_levels = nn.ModuleList()
-        feat = 0
-        for ratio, r in zip(sa_ratios, sa_radii):
-            # local_nn sees the features of a grouped point and its
-            # coordinates relative to the centroid.
-            self.sa_levels.append(
-                SetAbstraction(
-                    ratio, r, _mlp([feat + in_channels, h, h], dropout), max_num_neighbors
+        # A group's PointNet sees a point's features and its coordinates
+        # relative to the centroid. radius() already pairs each centroid
+        # with itself; PyG's self loops would cross the sets of a batch.
+        self.sa_convs = nn.ModuleList(
+            [
+                PointNetConv(
+                    mlp([feat + in_channels, h, h], dropout),
+                    add_self_loops=False,
                 )
-            )
-            feat = h
-        self.global_nn = _mlp([h + in_channels, h, h], dropout)
-
+                for feat in [0] + [h] * (len(sa_ratios) - 1)
+            ]
+        )
+        self.global_nn = mlp([h + in_channels, h, h], dropout)
         # FP levels run from the global level back to the input points,
         # whose skip features are the coordinates.
-        self.fp_levels = nn.ModuleList()
-        if task_level == "node":
-            for skip in [h] * len(sa_ratios) + [in_channels]:
-                self.fp_levels.append(
-                    FeaturePropagation(k, _mlp([h + skip, h, h], dropout))
-                )
-
+        skips = [h] * len(sa_ratios) + [in_channels]
+        self.fp_mlps = nn.ModuleList(
+            [mlp([h + skip, h, h], dropout) for skip in skips]
+            if task_level == "node"
+            else []
+        )
         self.final_linear = nn.Linear(h, out_channels)
 
     def forward(self, batch) -> torch.Tensor:
-        pos, batch_idx = batch.x, batch.batch
-
-        levels = [(pos, pos, batch_idx)]
-        x, p, b = None, pos, batch_idx
-        for sa in self.sa_levels:
-            x, p, b = sa(x, p, b)
+        x, p, b = None, batch.x, batch.batch
+        levels = [(p, p, b)]
+        sa_levels = zip(self.sa_ratios, self.sa_radii, self.sa_convs)
+        for ratio, r, conv in sa_levels:
+            idx = fps(p, b, ratio=ratio, random_start=False)
+            row, col = radius(
+                p,
+                p[idx],
+                r,
+                b,
+                b[idx],
+                max_num_neighbors=self.max_num_neighbors,
+            )
+            x_dst = None if x is None else x[idx]
+            x = conv((x, x_dst), (p, p[idx]), torch.stack([col, row]))
+            p, b = p[idx], b[idx]
             levels.append((x, p, b))
 
         x = pool(self.global_nn(torch.cat([x, p], dim=1)), b, self.pool_method)
@@ -173,10 +132,12 @@ class PointNetPP(nn.Module):
             return self.final_linear(x)
 
         # The global level is one point per set at the origin, so the
-        # first FP level copies the set feature to every coarse point.
-        p = pos.new_zeros(x.shape[0], pos.shape[1])
-        b = torch.arange(x.shape[0], device=pos.device)
-        for fp, (x_skip, p_skip, b_skip) in zip(self.fp_levels, reversed(levels)):
-            x = fp(x, p, b, x_skip, p_skip, b_skip)
+        # first interpolation copies the set feature to every coarse point.
+        p = p.new_zeros(x.shape[0], p.shape[1])
+        b = torch.arange(x.shape[0], device=p.device)
+        fp_levels = zip(self.fp_mlps, reversed(levels))
+        for fp, (x_skip, p_skip, b_skip) in fp_levels:
+            x = knn_interpolate(x, p, p_skip, b, b_skip, k=self.k)
+            x = fp(torch.cat([x, x_skip], dim=1))
             p, b = p_skip, b_skip
         return self.final_linear(x)

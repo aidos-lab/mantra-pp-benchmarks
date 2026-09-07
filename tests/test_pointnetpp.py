@@ -25,7 +25,9 @@ def _batch(clouds=None):
 
 
 def _model(**overrides):
-    kwargs = dict(in_channels=4, hidden_channels=16, out_channels=3, dropout=0.0)
+    kwargs = dict(
+        in_channels=4, hidden_channels=16, out_channels=3, dropout=0.0
+    )
     kwargs.update(overrides)
     torch.manual_seed(0)
     return PointNetPP(**kwargs).eval()
@@ -61,7 +63,8 @@ class TestPointNetPP:
         model = _model()
         clouds = _clouds()
         wired = [
-            Data(x=c.x, edge_index=torch.tensor([[0, 1], [1, 0]])) for c in clouds
+            Data(x=c.x, edge_index=torch.tensor([[0, 1], [1, 0]]))
+            for c in clouds
         ]
         assert torch.equal(model(_batch(clouds)), model(_batch(wired)))
 
@@ -83,11 +86,9 @@ class TestPointNetPP:
         assert out.shape == ((3, 3) if task_level == "node" else (2, 3))
         assert torch.isfinite(out).all()
 
-    def test_invalid_levels_rejected(self):
+    def test_mismatched_levels_rejected(self):
         with pytest.raises(ValueError):
             PointNetPP(in_channels=4, sa_ratios=[0.5], sa_radii=[2.0, 4.0])
-        with pytest.raises(ValueError):
-            PointNetPP(in_channels=4, sa_ratios=[], sa_radii=[])
 
 
 class TestPointNetPPNodeHead:
@@ -98,10 +99,12 @@ class TestPointNetPPNodeHead:
 
     def test_fp_levels_mirror_sa_levels_plus_input(self):
         model = _model(
-            task_level="node", sa_ratios=[0.5, 0.5, 0.5], sa_radii=[2.0, 3.0, 4.0]
+            task_level="node",
+            sa_ratios=[0.5, 0.5, 0.5],
+            sa_radii=[2.0, 3.0, 4.0],
         )
-        assert len(model.fp_levels) == 4
-        assert len(_model().fp_levels) == 0
+        assert len(model.fp_mlps) == 4
+        assert len(_model().fp_mlps) == 0
 
     def test_node_output_sees_the_whole_set(self):
         """The set feature is propagated back to every point, so moving
