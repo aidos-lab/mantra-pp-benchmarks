@@ -7,8 +7,8 @@ loss:
 name: HodgeClass
 task_type: classification
 
-# Classify the attribute value; every value of the full dataset gets
-# its own class (see create_dataset).
+# Classify the attribute value; the train-split values become the
+# classes (see create_dataset).
 target: h11
 
 metrics:

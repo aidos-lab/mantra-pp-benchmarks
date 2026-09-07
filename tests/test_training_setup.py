@@ -46,7 +46,7 @@ def test_create_model_updates_runtime_output_channels(monkeypatch):
     monkeypatch.setattr("main.hydra.utils.instantiate", fake_instantiate)
     cfg = SimpleNamespace(
         model=SimpleNamespace(in_channels=1, out_channels=1),
-        task=SimpleNamespace(task_type="classification"),
+        task=SimpleNamespace(task_type="classification", task_level="graph"),
         dataset=SimpleNamespace(
             transform=SimpleNamespace(
                 select_features=SimpleNamespace(representation="graph")

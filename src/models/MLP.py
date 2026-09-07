@@ -39,9 +39,10 @@ class MLPLayer(nn.Module):
         return h
 
 class MLP(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals, pool_method="mean"):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals, pool_method="mean", task_level="graph"):
         super().__init__()
         self.pool_method = pool_method
+        self.task_level = task_level
 
         self.hidden_layers = nn.ModuleList()
 
@@ -61,6 +62,8 @@ class MLP(nn.Module):
         x = batch.x
         for layer in self.hidden_layers:
             x = layer(x)
-        x = pool(x, batch.batch, self.pool_method)
+        # Node-level tasks keep one embedding per node
+        if self.task_level == "graph":
+            x = pool(x, batch.batch, self.pool_method)
         x = self.readout(x)
         return x

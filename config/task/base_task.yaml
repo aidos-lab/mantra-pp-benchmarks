@@ -1,3 +1,4 @@
 name: Base
 task_type: classification # classification / regression
+task_level: graph # graph: one target per sample / node: one per vertex
 metrics: {}
