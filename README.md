@@ -29,8 +29,8 @@ package from a sibling checkout expected at `../mantra` (see
 ├── config/                      # Hydra config groups (model, dataset, transform, task, …)
 ├── src/
 │   ├── models/                  # GCN, MLP, ResidualGatedGCN, Graphormer, SAN, SAN-TMX, CWN, SCCNN
-│   ├── utils/                   # data loading, train loop, metrics, barycentric helpers
-│   ├── metrics/                 # loss + task metrics
+│   ├── utils/                   # data loading, pair sampler, train loop, barycentric helpers
+│   ├── metrics/                 # training objectives, task and embedding metrics
 │   └── schema.py                # OmegaConf dataclasses for Hydra structured configs
 └── tests/                       # pytest suite (math utils, transforms, models, losses, …)
 ```
@@ -66,7 +66,7 @@ All commands below assume `.venv/bin/python` (or `uv run python …`).
 
 > **zsh users:** the bracketed Hydra list overrides
 > (e.g. `dataset.transform_order=[representation,…]`) need to be quoted —
-> `'dataset.transform_order=[representation,embedding,select_features,create_labels]'`
+> `'dataset.transform_order=[representation,embedding,select_features]'`
 > — because zsh treats `[…]` as a glob. In bash they work either way.
 
 ### Datasets
@@ -115,12 +115,13 @@ split seed) live in `config/dataset/dataset.yaml` and are forwarded to
 
 #### Loading a locally generated balanced JSON in training
 
-To train on a balanced JSON you produced (here the demo file from the
-example above):
+A JSON that is *already* balanced is loaded like any other local file,
+with `dataset.balanced=False` — the flag asks for balancing to be done
+now, not for the file to be declared balanced:
 
 ```bash
 .venv/bin/python main.py \
-    dataset.balanced=True \
+    dataset.balanced=False \
     dataset.local_path=/tmp/2_manifolds_balanced_demo.json \
     dataset.root=data/2d_mantra_balanced \
     dataset.dimension=2 \
@@ -128,26 +129,19 @@ example above):
     representation@dataset.transform.representation=one_skeleton \
     transform@dataset.transform.embedding=random_features \
     dataset.transform.select_features.src=random_features \
-    dataset.transform_order=[representation,embedding,select_features,create_labels] \
+    dataset.transform_order=[representation,embedding,select_features] \
     task=name \
-    +task/metrics@task.metrics.bal_acc=accuracy \
     trainer.device=cpu trainer.max_epoch=2
 ```
 
 The first run copies the JSON into
-`${dataset.root}/mantra/${dim}D/raw/${dim}_manifolds_balanced.json` and
+`${dataset.root}/mantra/${dim}D/raw/${dim}_manifolds.json` and
 materializes the processed cache. Subsequent runs reuse the cache; pass
 `dataset.reload=True` to force re-processing.
 
-#### How `dataset.local_path` and `dataset.balanced` interact
-
-`main.py` enforces the invariant
-
-```python
-assert not ((dataset.local_path is not None) ^ dataset.balanced)
-```
-
-i.e. they must both be set or both be unset.
+Caches of `dataset.balanced=True` built before the fix in the MANTRA
+library (`MantraDataset(balanced=True)` used to discard the balanced
+entries) hold unbalanced data; rebuild them with `dataset.reload=True`.
 
 ## Running a single training run
 
@@ -164,11 +158,13 @@ i.e. they must both be set or both be unset.
     representation@dataset.transform.representation=one_skeleton \
     transform@dataset.transform.embedding=random_features \
     dataset.transform.select_features.src=random_features \
-    dataset.transform_order=[representation,embedding,select_features,create_labels] \
+    dataset.transform_order=[representation,embedding,select_features] \
     task=name \
-    +task/metrics@task.metrics.bal_acc=accuracy \
     trainer.device=cpu trainer.max_epoch=2
 ```
+
+The task config carries its metrics (`accuracy` and the macro-averaged
+`balanced_accuracy`), so no `+task/metrics@...` override is needed.
 
 For the balanced variant, generate the JSON first (see
 [Generating the balanced dataset](#generating-the-balanced-dataset))
@@ -183,7 +179,7 @@ Key Hydra groups:
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
 | `task`                                        | `name`, `orientability`, `betti_numbers`                                                            |
-| `loss`                                        | `cross_entropy`, `contrastive`                                                                      |
+| `loss`                                        | `cross_entropy`, `pachner_consistency`, `pachner_pairwise`, `pachner_infonce`                       |
 | `trainer`                                     | `default`                                                                                           |
 | `logger`                                      | `wandb`                                                                                             |
 
@@ -193,100 +189,119 @@ Outputs:
   to `${checkpoint_path}/<wandb_run_name>/{best_val.pt, config.yaml}`.
 - Train / val / test metrics and a confusion matrix are logged to
   Weights & Biases under `${logger.entity}/${logger.project}`.
+- With `dataset.division_type != none` the subdivided `ood` split is
+  built and evaluated in the same run, logged under the `ood/` prefix.
+  The subdivision arguments go into `dataset.subdivision`, e.g.
+  `dataset.division_type=graded 'dataset.subdivision={graded_vertex_number: 16}'`,
+  `dataset.division_type=stellar 'dataset.subdivision={fraction: 0.75}'` or
+  `dataset.division_type=barycentric 'dataset.subdivision={round: 1}'`.
+  This replaces the three-step `precompute_barycentric.py` /
+  `evaluate_barycentric.py` pipeline for a fresh run; that pipeline is
+  still the way to evaluate an *existing* checkpoint.
 
 To turn off W&B sync, run with `WANDB_MODE=offline`. To override the
 project name use `logger.project=<name>` (and `logger.entity=<entity>`).
 
-## Reproducing the subdivision experiments
+## Out-of-distribution evaluation on subdivided triangulations
 
-The barycentric / stellar / graded-subdivision experiments follow a
-three-step pipeline. Throughout, `${LEVEL}` denotes the subdivision level
-(1, 2, …; or a fraction in `(0, 1)` for partial-stellar).
-
-### 1. Generate the subdivided JSONs
-
-The unbalanced source JSON is whatever `ManifoldTriangulations` cached
-locally — e.g. `data/mantra/2D/raw/2_manifolds.json` after one
-`balanced=False` run:
+The subdivided test set is the `ood` split of `MantraDataset`: the
+MANTRA library subdivides the entries of the test split, so no separate
+JSON has to be generated. Add the subdivision to any training run and it
+is built, evaluated and logged (prefix `ood/`) in the same job:
 
 ```bash
-.venv/bin/python generate_barycentric_data.py \
-    input=data/mantra/2D/raw/2_manifolds.json \
-    output_dir=/tmp/mantra_bary_demo \
-    prefix=2_manifolds \
-    n_levels=1 \
-    min_vertices=16 \
-    mode=stellar
-```
-
-Writes `${output_dir}/${prefix}_bary_<level>.json` for every level
-`1..n_levels`. Entries with fewer than `min_vertices` after subdivision
-are dropped from the output. See
-[`config/generate_barycentric_data.yaml`](./config/generate_barycentric_data.yaml)
-for all options (notably `n_smallest`, `min_class_count`, and the
-`mode` validity rules; valid `mode` values are `stellar`,
-`full_barycentric`, `graded`).
-
-### 2. Build the pre_transform cache for that level
-
-Using the demo stellar level-1 JSON produced in step 1:
-
-```bash
-.venv/bin/python precompute_barycentric.py \
-    +bary_level=1 \
-    dataset.root=data/bary1_2d_unbalanced_random_features_dual_graph \
-    dataset.local_path=/tmp/mantra_bary_demo/2_manifolds_bary_1.json \
-    dataset.dimension=2 \
+.venv/bin/python main.py \
     dataset.balanced=False \
-    representation@dataset.transform.representation=dual_graph \
+    dataset.root=data \
+    dataset.dimension=2 \
+    model=gcn \
+    representation@dataset.transform.representation=one_skeleton \
     transform@dataset.transform.embedding=random_features \
     dataset.transform.select_features.src=random_features \
-    dataset.transform_order=[representation,embedding,select_features,create_labels] \
-    task=name model=gcn trainer.device=cpu \
-    +task/metrics@task.metrics.bal_acc=accuracy
+    dataset.transform_order=[representation,embedding,select_features] \
+    task=name \
+    dataset.division_type=graded \
+    'dataset.subdivision={graded_vertex_number: 16}' \
+    dataset.max_ood_size_per_class=20 \
+    trainer.device=cpu trainer.max_epoch=2
 ```
 
-`precompute_barycentric.py` deliberately drops the
-`local_path XOR balanced` assertion that `main.py` enforces, so it
-can take an unbalanced subdivided JSON via `dataset.local_path`.
+| `dataset.division_type` | `dataset.subdivision`        |
+| ----------------------- | ---------------------------- |
+| `graded`                | `{graded_vertex_number: N}` — every OOD entry is grown to exactly `N` vertices |
+| `stellar`               | `{fraction: f}` — subdivide a fraction `f` of the top simplices |
+| `barycentric`           | `{round: k}` — `k` full barycentric subdivisions |
+| `none` (default)        | no OOD split is built        |
 
-The aggregated launchers used in the paper are
-`scripts/precompute_{gnn,cwn,san,sccnn}_barycentric_all*.sh` and
-`run_precompute_array.sh` (SLURM job array form).
+`graded` requires every in-distribution triangulation to have fewer than
+`graded_vertex_number` vertices; combine it with `dataset.max_vertices`
+to guarantee that. Note that Pachner walks (below) grow the
+in-distribution triangulations after that check, so with
+`dataset.walk_length > 0` the OOD entries are no longer guaranteed to be
+the larger ones.
 
-### 3. Evaluate a trained checkpoint on the subdivided cache
+`evaluate_barycentric.py` remains the way to evaluate an *existing*
+checkpoint on a subdivided dataset that was cached separately.
+
+## Pachner walks and the Pachner objectives
+
+Labels in MANTRA are topological invariants, so they are constant along
+a Pachner orbit: bistellar moves change the triangulation but not the
+manifold. `PachnerWalkDataset` (in the MANTRA library) turns that into
+supervision by expanding every train/val/test entry into a random walk
+of `dataset.walk_length` snapshots, `dataset.moves_per_step` moves
+apart:
 
 ```bash
-.venv/bin/python evaluate_barycentric.py \
-    checkpoint_dir=checkpoints/<run_name> \
-    bary_level=1 \
-    bary_dataset_root=data/bary1_2d_unbalanced_random_features_dual_graph \
-    bary_local_path=/tmp/mantra_bary_demo/2_manifolds_bary_1.json \
-    bary_balanced=False \
-    device=cpu
+.venv/bin/python main.py \
+    ... \
+    dataset.walk_length=2 \
+    dataset.moves_per_step=3 \
+    trainer.sampler=pachner_pairs \
+    loss=pachner_consistency
 ```
 
-`evaluate_barycentric.py` loads the *training* config from
-`<checkpoint_dir>/config.yaml`, replays the same model-shape mutations
-that `main.py` applies (in particular `model.out_channels` from
-`label_to_index`), strips the `_orig_mod.` prefix introduced by
-`torch.compile`, and runs the test loop on the subdivided dataset.
+`dataset.walk_length=0` (the default) reproduces the plain dataset
+exactly, including its cache files. Walk snapshots carry `walk_base`
+(the entry they came from, counted within the split) and `walk_step`.
 
-The `bary_balanced` flag **must** match the `dataset.balanced` value used
-when the cache was built; the script aborts with a clear error otherwise.
+Two snapshots `a` and `b` of one walk are
+`|walk_step_a - walk_step_b| * moves_per_step` **random moves** apart.
+That is an upper bound on their Pachner distance, not the distance
+itself: a random walk can undo its own moves. Treat it as a monotone
+proxy.
 
-To sweep over levels and / or checkpoints, use Hydra multirun:
+`trainer.sampler=pachner_pairs` fills each training batch with index
+pairs instead of a random sample — same walk, same class from a
+different walk, and different class — in the proportions
+`trainer.pair_fractions` (default `[0.5, 0.25, 0.25]`). Without it a
+batch almost never contains two snapshots of one walk, and the
+objectives below have nothing to work with. The validation batches are
+sequential, but the snapshots of a walk are stored consecutively, so
+they contain same-walk pairs by construction.
 
-```bash
-.venv/bin/python evaluate_barycentric.py --multirun \
-    checkpoint_dir=checkpoints/run_a,checkpoints/run_b \
-    bary_level=1 \
-    bary_dataset_root='data/bary${bary_level}_2d_unbalanced_random_features_dual_graph' \
-    bary_local_path='/tmp/mantra_bary_demo/2_manifolds_bary_${bary_level}.json'
-```
+| `loss=`               | objective |
+| --------------------- | --------- |
+| `cross_entropy`       | the task loss alone (baseline) |
+| `pachner_consistency` | task loss + `weight` · mean over same-walk pairs of ‖g(T_a) − g(T_b)‖² (`target=embedding`) or of the symmetric KL of the softmax outputs (`target=logits`) |
+| `pachner_pairwise`    | (‖g(T_a) − g(T_b)‖ − `alpha`·d_ab)² on same-walk pairs, `relu(‖·‖ − radius)²` on same-class pairs, `relu(margin − ‖·‖)²` across classes, plus `ce_weight` · task loss |
+| `pachner_infonce`     | supervised contrastive loss with same-class positives, temperature `temperature`, plus `ce_weight` · task loss |
 
-Per-checkpoint results are written to
-`<checkpoint_dir>/barycentric_results_level_<L>.json`.
+Every objective returns its components, which are logged as
+`train/loss_<name>` and `val/loss_<name>`. Early stopping and the LR
+schedule key on `val/loss`, i.e. on the objective that is being trained.
+
+Because the objectives shape the embedding rather than the classifier,
+each run also reports (unless `trainer.eval_embeddings=False`), for the
+test and OOD splits:
+
+- `<split>/emb_spearman` — rank correlation of embedding distance with
+  the number of moves between two snapshots of one walk,
+- `<split>/emb_auroc` — how well the distance separates homeomorphism
+  types,
+- `<split>/emb_knn_bal_acc`, `<split>/emb_probe_bal_acc` — balanced
+  accuracy of a 5-NN and a linear probe fitted on the *train*
+  embeddings.
 
 ## Tests
 
@@ -295,8 +310,11 @@ Per-checkpoint results are written to
 ```
 
 The suite under [`tests/`](./tests) covers the math utilities,
-imbalance handling, the barycentric / stellar subdivision routines, and
-the model layers (Graphormer SPD, SAN-TMX, GCN/MLP, residual gated GCN).
+imbalance handling, the barycentric / stellar subdivision routines, the
+model layers (Graphormer SPD, SAN-TMX, GCN/MLP, residual gated GCN),
+and the Pachner pieces: the objectives, the pair sampler, the embedding
+metrics, and that every model's `forward_with_embedding` returns the
+logits its `forward` returns.
 
 
 ## Citation
