@@ -25,11 +25,11 @@ def test_create_loaders_disables_persistence_without_workers():
     )
     dataset = [Data(x=torch.ones(1, 1), y=torch.tensor(0))]
 
-    train_loader, val_loader, test_loader, ood_loader = create_loaders(
+    train_loader, val_loader, test_loader, ood_loaders = create_loaders(
         cfg, dataset, dataset, dataset
     )
 
-    assert ood_loader is None
+    assert ood_loaders == {}
     assert all(
         not loader.persistent_workers
         for loader in (train_loader, val_loader, test_loader)

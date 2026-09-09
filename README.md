@@ -245,6 +245,27 @@ in-distribution triangulations after that check, so with
 `dataset.walk_length > 0` the OOD entries are no longer guaranteed to be
 the larger ones.
 
+### The subdivision table
+
+To get the paper's generalization table out of a single run, select the
+`ood` config group instead of a single `division_type`:
+
+```bash
+.venv/bin/python main.py ... ood=paper_table
+```
+
+`config/ood/paper_table.yaml` lists four splits — graded to 16 vertices,
+0.75-top stellar, full stellar and one full barycentric subdivision —
+and each is built, evaluated and logged under its own prefix
+(`ood_graded16/`, `ood_stellar075/`, `ood_stellar1/`, `ood_bary1/`),
+next to the in-distribution `test/` column. Add or drop columns by
+editing that file or with `~dataset.ood_evaluations.<name>`; `ood=none`
+(the default) falls back to the single `division_type` split.
+
+Every column re-runs `process()`, which rewrites the identical
+train/val/test files and adds its own `ood` file, so the four splits
+share one cache root at the cost of four preprocessing passes.
+
 `evaluate_barycentric.py` remains the way to evaluate an *existing*
 checkpoint on a subdivided dataset that was cached separately.
 

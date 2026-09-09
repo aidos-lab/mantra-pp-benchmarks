@@ -1,0 +1,16 @@
+# @package dataset.ood_evaluations
+# The subdivision columns of the paper's generalization table. Each key
+# names the metrics of that split (test/... stays the in-distribution
+# column), each value is a division_type plus its subdivision arguments.
+graded16:
+  division_type: graded
+  subdivision: {graded_vertex_number: 16}
+stellar075:
+  division_type: stellar
+  subdivision: {fraction: 0.75}
+stellar1:
+  division_type: stellar
+  subdivision: {fraction: 1.0}
+bary1:
+  division_type: barycentric
+  subdivision: {round: 1}

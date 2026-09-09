@@ -1,0 +1,4 @@
+# @package dataset.ood_evaluations
+# No OOD table; dataset.division_type decides whether a single
+# subdivided split is built.
+{}

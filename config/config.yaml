@@ -10,6 +10,7 @@ defaults:
   - task: name
   - trainer: default
   - loss: cross_entropy
+  - ood: none
 
 train: True
 # Run seed: model initialisation, feature sampling and the pair sampler.

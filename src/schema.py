@@ -59,6 +59,7 @@ class DatasetMeta:
     max_ood_size_per_class: int | None = 100
     division_type: str = "none"
     subdivision: Dict[str, Any] = field(default_factory=dict)
+    ood_evaluations: Dict[str, Any] = field(default_factory=dict)
     walk_length: int = 0
     moves_per_step: int = 1
     walk_seed: int | None = None
