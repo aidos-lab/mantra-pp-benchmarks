@@ -16,6 +16,7 @@ from src.models.GCN import GCN, GCNLayer
 from src.models.MLP import MLP, MLPLayer
 from src.models.ResidualGatedGCN import ResidualGatedGCN, ResidualGatedGCNLayer
 from src.models.Graphormer import Graphormer, GraphormerLayer
+from src.metrics.loss import CrossEntropyObjective
 from src.models.utils import pool, SumReadout
 from src.utils.graphormer_spd import GraphormerSPDPreTransform
 from src.utils.train_utils import train, validate, init_metrics
@@ -890,12 +891,12 @@ class TestTrainValidateValues:
         """Training step should return a finite positive loss."""
         model, data = self._make_model_and_data()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        loss_fn = nn.CrossEntropyLoss()
+        objective = CrossEntropyObjective(nn.CrossEntropyLoss())
 
         cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
         accuracies = [('acc', self._make_accuracy())]
 
-        metrics = train(model, optimizer, data, loss_fn, accuracies, cfg)
+        metrics = train(model, optimizer, data, objective, accuracies, cfg)
         assert 'train/loss' in metrics
         assert metrics['train/loss'] > 0
         assert np.isfinite(metrics['train/loss'])
@@ -905,13 +906,13 @@ class TestTrainValidateValues:
     def test_validate_returns_loss_and_accuracy(self):
         """Validation should compute loss and accuracy."""
         model, data = self._make_model_and_data()
-        loss_fn = nn.CrossEntropyLoss()
+        objective = CrossEntropyObjective(nn.CrossEntropyLoss())
 
         cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
         accuracies = [('acc', self._make_accuracy())]
 
         model.eval()
-        metrics = validate(model, data, loss_fn, accuracies, cfg)
+        metrics = validate(model, data, objective, accuracies, cfg)
         assert 'val/loss' in metrics
         assert np.isfinite(metrics['val/loss'])
         assert 'val/acc' in metrics
@@ -921,13 +922,13 @@ class TestTrainValidateValues:
         """After one training step, model parameters should change."""
         model, data = self._make_model_and_data()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        loss_fn = nn.CrossEntropyLoss()
+        objective = CrossEntropyObjective(nn.CrossEntropyLoss())
         cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
         accuracies = [('acc', self._make_accuracy())]
 
         params_before = {n: p.clone() for n, p in model.named_parameters()}
 
-        train(model, optimizer, data, loss_fn, accuracies, cfg)
+        train(model, optimizer, data, objective, accuracies, cfg)
 
         any_changed = any(
             not torch.equal(params_before[n], p)
@@ -938,14 +939,14 @@ class TestTrainValidateValues:
     def test_validate_does_not_update_weights(self):
         """Validation should not change model parameters."""
         model, data = self._make_model_and_data()
-        loss_fn = nn.CrossEntropyLoss()
+        objective = CrossEntropyObjective(nn.CrossEntropyLoss())
         cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
         accuracies = [('acc', self._make_accuracy())]
 
         model.eval()
         params_before = {n: p.clone() for n, p in model.named_parameters()}
 
-        validate(model, data, loss_fn, accuracies, cfg)
+        validate(model, data, objective, accuracies, cfg)
 
         for n, p in model.named_parameters():
             assert torch.equal(params_before[n], p), f"Validation changed parameter {n}"

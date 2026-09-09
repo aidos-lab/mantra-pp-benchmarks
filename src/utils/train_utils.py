@@ -9,15 +9,26 @@ from src.schema import RootConfig
 
 
 
-def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
-    """ Run the training 
+def _weighted_mean(values, sizes):
+    """Sample-weighted mean of per-batch values."""
+    total = sum(sizes)
+    return sum(value * size for value, size in zip(values, sizes)) / total
 
 
+def train(model, optimizer, train_dataset, objective, accuracies, cfg):
+    """Run one training epoch.
+
+    Parameters
+    ----------
+    objective : nn.Module
+        Training objective mapping ``(logits, embedding, batch)`` to the
+        loss and its components; see :mod:`src.metrics.loss`.
     """
 
     model.train()
     metrics = defaultdict(float)
     losses = []
+    components = defaultdict(list)
     batch_sizes = []
 
     # Go over each batch
@@ -25,16 +36,15 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
         batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
         optimizer.zero_grad(set_to_none=True)
 
-        y_hat = model(batch)
+        y_hat, embedding = model.forward_with_embedding(batch)
         y = batch.y
 
-        loss = loss_fn(
-            y_hat,
-            y,
-        )
+        loss, parts = objective(y_hat, embedding, batch)
 
-        losses.append(loss.detach())
+        losses.append(loss.detach().item())
         batch_sizes.append(y.shape[0])
+        for name, value in parts.items():
+            components[name].append(value)
 
         for _, acc in accuracies:
             acc(y_hat.detach(), y)
@@ -43,9 +53,9 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
-    losses = torch.stack(losses)
-    sizes = torch.tensor(batch_sizes, device=losses.device, dtype=losses.dtype)
-    metrics['train/loss'] = (losses * sizes).sum().item() / sizes.sum().item()
+    metrics['train/loss'] = _weighted_mean(losses, batch_sizes)
+    for name, values in components.items():
+        metrics[f'train/loss_{name}'] = _weighted_mean(values, batch_sizes)
 
     for name, acc in accuracies:
         metrics[f'train/{name}'] = acc.compute().detach().cpu().item()
@@ -53,9 +63,12 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def validate(model,  val_dataset, loss_fn, accuracies, cfg):
-    """ Run the validation evaluation
+def validate(model, val_dataset, objective, accuracies, cfg):
+    """Run the validation evaluation.
 
+    The validation batches are sequential, and the entries of a walk are
+    stored consecutively, so a batch still contains the same-walk pairs
+    the Pachner objectives need.
     """
     model.eval()
     for _, acc in accuracies:
@@ -64,24 +77,27 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
     with torch.no_grad():
         metrics = defaultdict(float)
         losses = []
+        components = defaultdict(list)
         batch_sizes = []
         for batch in val_dataset:
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-            y_hat = model(batch)
+            y_hat, embedding = model.forward_with_embedding(batch)
             y = batch.y
 
-            loss = loss_fn(y_hat, y)
+            loss, parts = objective(y_hat, embedding, batch)
 
             for _, acc in accuracies:
                 acc(y_hat.detach(), y)
 
-            losses.append(loss.detach())
+            losses.append(loss.detach().item())
             batch_sizes.append(y.shape[0])
+            for name, value in parts.items():
+                components[name].append(value)
 
-        losses = torch.stack(losses)
-        sizes = torch.tensor(batch_sizes, device=losses.device, dtype=losses.dtype)
-        metrics['val/loss'] = (losses * sizes).sum().item() / sizes.sum().item()
+        metrics['val/loss'] = _weighted_mean(losses, batch_sizes)
+        for name, values in components.items():
+            metrics[f'val/loss_{name}'] = _weighted_mean(values, batch_sizes)
 
     for name, acc in accuracies:
         metrics[f"val/{name}"] = acc.compute().detach().cpu().item()
@@ -89,8 +105,15 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
-    """ Run the test evaluation
+def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, prefix='test'):
+    """Run the evaluation of one split.
+
+    Parameters
+    ----------
+    prefix : str
+        Metric prefix; ``"test"`` for the held-out split and
+        ``"ood"`` for the subdivided one. The confusion matrix is only
+        logged for the test split.
     """
 
     is_classification = cfg.task.task_type == 'classification'
@@ -120,13 +143,13 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
                 acc(predictions.detach(), y)
 
         for name, acc in accuracies:
-            metrics[f"test/{name}"] = acc.compute().item()
+            metrics[f"{prefix}/{name}"] = acc.compute().item()
             acc.reset()
 
     log_metrics(metrics, epoch=epoch, step=None, run=run, cfg=cfg)
 
-    if not is_classification:
-        return
+    if not is_classification or prefix != 'test':
+        return metrics
 
     y_total = torch.cat(y_all)
     y_hat_total = torch.cat(y_hat_all)
@@ -143,6 +166,8 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
             "conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total.cpu().tolist(), preds=y_hat_total.cpu().tolist(), class_names=class_names)
         }
     )
+
+    return metrics
 
 
 def make_labels(index_to_label, y, labels):

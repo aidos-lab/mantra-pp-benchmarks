@@ -1,0 +1,8 @@
+# Task loss plus a penalty on the distance between two snapshots of the
+# same Pachner walk. Needs dataset.walk_length > 0 and
+# trainer.sampler=pachner_pairs.
+_target_: src.metrics.loss.PachnerConsistency
+
+weight: 1.0
+# "embedding" penalises ||g(T_a) - g(T_b)||^2, "logits" the symmetric KL.
+target: embedding

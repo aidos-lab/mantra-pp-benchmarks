@@ -1,0 +1,12 @@
+# Metric learning on the pair structure: same-walk pairs are pulled to a
+# distance proportional to the number of moves between them, same-class
+# pairs inside `radius`, different-class pairs beyond `margin`.
+_target_: src.metrics.loss.PachnerPairwise
+
+alpha: 1.0
+radius: 1.0
+margin: 2.0
+ce_weight: 0.0
+kind_weights: [1.0, 1.0, 1.0]
+# Kept in sync with dataset.moves_per_step by main.py.
+moves_per_step: ${dataset.moves_per_step}

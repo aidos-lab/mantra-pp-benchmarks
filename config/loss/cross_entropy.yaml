@@ -1,1 +1,2 @@
-_target_: torch.nn.CrossEntropyLoss
+# Baseline objective: the task loss alone.
+_target_: src.metrics.loss.CrossEntropyObjective

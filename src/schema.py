@@ -13,6 +13,11 @@ class TrainerMeta:
     device: str
     num_workers: int = 0
     pin_memory: bool = True
+    sampler: str = "random"
+    pair_fractions: List[float] = field(
+        default_factory=lambda: [0.5, 0.25, 0.25]
+    )
+    eval_embeddings: bool = True
 
 @dataclass
 class MetricMeta:
@@ -45,6 +50,18 @@ class DatasetMeta:
     reload: bool = False
     balanced: bool = False
     use_stratified: bool = True
+    seed: int = 40
+    max_vertices: int | None = None
+    n_moves: int = 5
+    min_sample_per_class: int | None = 100
+    target_count: int = 100
+    use_surgery: bool = True
+    max_ood_size_per_class: int | None = 100
+    division_type: str = "none"
+    subdivision: Dict[str, Any] = field(default_factory=dict)
+    walk_length: int = 0
+    moves_per_step: int = 1
+    walk_seed: int | None = None
 
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
@@ -100,6 +117,9 @@ class RootConfig:
     dataset: DatasetMeta
     task: TaskMeta
     trainer: TrainerMeta
+    # The training objective, chosen from the `loss` config group. Its
+    # parameters differ per objective, so the node stays untyped.
+    loss: Any
 
     checkpoint_path: str
 

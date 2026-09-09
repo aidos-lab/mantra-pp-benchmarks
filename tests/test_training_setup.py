@@ -15,6 +15,7 @@ def test_create_loaders_disables_persistence_without_workers():
             batch_size=1,
             num_workers=0,
             pin_memory=False,
+            sampler="random",
         ),
         dataset=SimpleNamespace(
             transform=SimpleNamespace(
@@ -24,9 +25,15 @@ def test_create_loaders_disables_persistence_without_workers():
     )
     dataset = [Data(x=torch.ones(1, 1), y=torch.tensor(0))]
 
-    loaders = create_loaders(cfg, dataset, dataset, dataset)
+    train_loader, val_loader, test_loader, ood_loader = create_loaders(
+        cfg, dataset, dataset, dataset
+    )
 
-    assert all(not loader.persistent_workers for loader in loaders)
+    assert ood_loader is None
+    assert all(
+        not loader.persistent_workers
+        for loader in (train_loader, val_loader, test_loader)
+    )
 
 
 def test_create_model_updates_runtime_output_channels(monkeypatch):
@@ -80,7 +87,10 @@ class BatchLinear(torch.nn.Module):
         self.linear = torch.nn.Linear(1, 2)
 
     def forward(self, batch):
-        return self.linear(batch.x)
+        return self.forward_with_embedding(batch)[0]
+
+    def forward_with_embedding(self, batch):
+        return self.linear(batch.x), batch.x
 
 
 class FakeRun:
@@ -103,6 +113,7 @@ def test_training_loop_saves_typed_label_mapping(tmp_path):
                 "weight_decay": 0.0,
             },
             "task": {"loss": {"_target_": "torch.nn.CrossEntropyLoss"}},
+            "loss": {"_target_": "src.metrics.loss.CrossEntropyObjective"},
         }
     )
     batch = Data(
