@@ -86,9 +86,12 @@ upstream MANTRA release:
    (`MantraDataset(balanced=True)`; see
    [Generating the balanced dataset](#generating-the-balanced-dataset)).
 3. **Subdivided MANTRA.** Full-barycentric / stellar / graded
-   subdivisions of the unbalanced or balanced JSONs, produced by
-   `generate_barycentric_data.py` (see
-   [Reproducing the subdivision experiments](#reproducing-the-subdivision-experiments)).
+   subdivisions of the test split, served by the MANTRA library as the
+   `ood` split (see
+   [Out-of-distribution evaluation](#out-of-distribution-evaluation-on-subdivided-triangulations)).
+4. **Pachner walks.** Every entry of the in-distribution splits expanded
+   into a random Pachner walk (see
+   [Pachner walks](#pachner-walks-and-the-pachner-objectives)).
 
 
 ### Generating the balanced dataset
@@ -192,9 +195,11 @@ Outputs:
 - With `dataset.division_type != none` the subdivided `ood` split is
   built and evaluated in the same run, logged under the `ood/` prefix.
   The subdivision arguments go into `dataset.subdivision`, e.g.
-  `dataset.division_type=graded 'dataset.subdivision={graded_vertex_number: 16}'`,
-  `dataset.division_type=stellar 'dataset.subdivision={fraction: 0.75}'` or
-  `dataset.division_type=barycentric 'dataset.subdivision={round: 1}'`.
+  `dataset.division_type=graded +dataset.subdivision.graded_vertex_number=16`,
+  `dataset.division_type=stellar +dataset.subdivision.fraction=0.75` or
+  `dataset.division_type=barycentric +dataset.subdivision.round=1`. The
+  `+` is needed because `dataset.subdivision` starts out empty and the
+  configs are in struct mode.
   This replaces the three-step `precompute_barycentric.py` /
   `evaluate_barycentric.py` pipeline for a fresh run; that pipeline is
   still the way to evaluate an *existing* checkpoint.
@@ -221,16 +226,16 @@ is built, evaluated and logged (prefix `ood/`) in the same job:
     dataset.transform_order=[representation,embedding,select_features] \
     task=name \
     dataset.division_type=graded \
-    'dataset.subdivision={graded_vertex_number: 16}' \
+    +dataset.subdivision.graded_vertex_number=16 \
     dataset.max_ood_size_per_class=20 \
     trainer.device=cpu trainer.max_epoch=2
 ```
 
 | `dataset.division_type` | `dataset.subdivision`        |
 | ----------------------- | ---------------------------- |
-| `graded`                | `{graded_vertex_number: N}` — every OOD entry is grown to exactly `N` vertices |
-| `stellar`               | `{fraction: f}` — subdivide a fraction `f` of the top simplices |
-| `barycentric`           | `{round: k}` — `k` full barycentric subdivisions |
+| `graded`                | `+dataset.subdivision.graded_vertex_number=N` — every OOD entry is grown to exactly `N` vertices |
+| `stellar`               | `+dataset.subdivision.fraction=f` — subdivide a fraction `f` of the top simplices |
+| `barycentric`           | `+dataset.subdivision.round=k` — `k` full barycentric subdivisions |
 | `none` (default)        | no OOD split is built        |
 
 `graded` requires every in-distribution triangulation to have fewer than
