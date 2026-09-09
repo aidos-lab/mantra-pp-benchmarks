@@ -13,15 +13,17 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.transforms import Compose
 
 
-from mantra.datasets import MantraDataset
+from mantra.datasets import PachnerWalkDataset
 from mantra.representations.internal import SimplexTrie
 from mantra.representations.internal.simplex_trie import SimplexNode
 from mantra.transforms.task_transforms import BettiToClassTransform, OrientableToClassTransform, NameToClass2MTransform, NameToClass3MTransform
 
+from src.metrics.embedding import evaluate_embeddings
 from src.schema import RootConfig
 from src.transforms import RemapLabels
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
+from src.utils.sampling import PachnerPairSampler
 from src.utils.train_utils import train, validate, test, init_metrics
 from src.utils.gpu_utils import is_blackwell_gpu, set_gpu_configs
 
@@ -91,22 +93,40 @@ def create_dataset(cfg):
             "target_count": dataset_cfg.target_count,
             "use_surgery": dataset_cfg.use_surgery,
             "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
+            "walk_length": dataset_cfg.walk_length,
+            "moves_per_step": dataset_cfg.moves_per_step,
+            "walk_seed": dataset_cfg.walk_seed,
             "transform": transforms,
+            # Subdivision arguments of the OOD split, forwarded as kwargs.
+            **OmegaConf.to_container(dataset_cfg.subdivision, resolve=True),
 
         }
 
-    train_dataset = MantraDataset(
+    train_dataset = PachnerWalkDataset(
         split_type="train",
         **dataset_parameters
     )
-    val_dataset = MantraDataset(
+    val_dataset = PachnerWalkDataset(
             split_type="val",
             **dataset_parameters
     )
-    test_dataset = MantraDataset(
+    test_dataset = PachnerWalkDataset(
             split_type="test",
             **dataset_parameters
     )
+
+    # The OOD split only exists once a subdivision is configured; with
+    # `division_type=none` it is a copy of the test split.
+    ood_dataset = None
+    if dataset_cfg.division_type != "none":
+        ood_dataset = PachnerWalkDataset(
+                split_type="ood",
+                **dataset_parameters
+        )
+
+    datasets = [train_dataset, val_dataset, test_dataset]
+    if ood_dataset is not None:
+        datasets.append(ood_dataset)
 
     label_to_index = {}
 
@@ -117,28 +137,58 @@ def create_dataset(cfg):
         label_to_index = {label: index for index, label in enumerate(labels)}
         remap_labels = RemapLabels(label_to_index)
 
-        for dataset in (train_dataset, val_dataset, test_dataset):
+        for dataset in datasets:
             dataset.transform = Compose([dataset.transform, remap_labels])
 
-    return train_dataset, val_dataset, test_dataset, label_to_index
+    return train_dataset, val_dataset, test_dataset, ood_dataset, label_to_index
 
-def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
+def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_dataset=None):
     trainer_cfg = cfg.trainer
     persistent_workers = trainer_cfg.num_workers > 0
 
     is_graph_representation = "x_0" not in train_dataset[0]
 
-    # TODO: Fix this assignment
+    loader_cls = PyGDataLoader if is_graph_representation else DataLoader
+    loader_kwargs = {
+        "num_workers": trainer_cfg.num_workers,
+        "pin_memory": trainer_cfg.pin_memory,
+        "persistent_workers": persistent_workers,
+    }
     if not is_graph_representation:
-        train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        test_loader = DataLoader(test_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-    else: # Graph
-        train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        loader_kwargs["collate_fn"] = collate_simplicial
 
-    return train_loader, val_loader, test_loader
+    train_sampler = create_pair_sampler(cfg, train_dataset)
+    if train_sampler is None:
+        train_loader = loader_cls(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, **loader_kwargs)
+    else:
+        # batch_sampler is mutually exclusive with batch_size and shuffle.
+        train_loader = loader_cls(train_dataset, batch_sampler=train_sampler, **loader_kwargs)
+
+    val_loader = loader_cls(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, **loader_kwargs)
+    test_loader = loader_cls(test_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, **loader_kwargs)
+    ood_loader = None
+    if ood_dataset is not None:
+        ood_loader = loader_cls(ood_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, **loader_kwargs)
+
+    return train_loader, val_loader, test_loader, ood_loader
+
+
+def create_pair_sampler(cfg, train_dataset):
+    """Build the batch sampler for the training loader, if configured."""
+    sampler_name = cfg.trainer.sampler
+    if sampler_name == "random":
+        return None
+    if sampler_name != "pachner_pairs":
+        raise ValueError(
+            f"Unknown trainer.sampler '{sampler_name}', expected "
+            "'random' or 'pachner_pairs'"
+        )
+    return PachnerPairSampler(
+        train_dataset,
+        batch_size=cfg.trainer.batch_size,
+        fractions=list(cfg.trainer.pair_fractions),
+        seed=cfg.seed,
+    )
 
 def create_model(cfg, num_features, label_to_index):
     cfg.model.out_channels = (
@@ -167,8 +217,8 @@ def main(cfg: RootConfig):
 
     # ---- Dataset -----
 
-    train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
-    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
+    train_ds, val_ds, test_ds, ood_ds, label_to_index = create_dataset(cfg)
+    train_dl, val_dl, test_dl, ood_dl = create_loaders(cfg, train_ds, val_ds, test_ds, ood_ds)
 
     sample = train_ds[0]
     if "x_0" in sample:
@@ -199,6 +249,16 @@ def main(cfg: RootConfig):
 
         test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch)
 
+        if ood_dl is not None:
+            test(model, ood_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch, prefix="ood")
+
+        if cfg.trainer.eval_embeddings:
+            for prefix, loader in (("test", test_dl), ("ood", ood_dl)):
+                if loader is None:
+                    continue
+                metrics = evaluate_embeddings(model, train_dl, loader, cfg, prefix=prefix)
+                log_metrics(metrics, epoch=last_epoch, step=None, run=run, cfg=cfg)
+
 
 def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):
     MAX_EPOCH = cfg.trainer.max_epoch
@@ -219,7 +279,9 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
 
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
-    loss_fn = hydra.utils.instantiate(cfg.task.loss)
+    objective = hydra.utils.instantiate(
+        cfg.loss, base_loss=hydra.utils.instantiate(cfg.task.loss)
+    )
 
     early_stopping_cnt = cfg.trainer.early_stopping
     last_val_loss = None
@@ -249,10 +311,10 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
         last_epoch = epoch
 
         # Train
-        train_metrics = train(model, optimizer, train_dataloader, loss_fn, accuracies, cfg)
+        train_metrics = train(model, optimizer, train_dataloader, objective, accuracies, cfg)
 
         # Validation
-        val_metrics = validate(model, val_dataloader, loss_fn, accuracies, cfg)
+        val_metrics = validate(model, val_dataloader, objective, accuracies, cfg)
 
         # Construct the progress bar
         pbar_str = ""

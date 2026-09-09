@@ -25,3 +25,10 @@ target_count: 100
 use_surgery: True
 max_ood_size_per_class: 100
 division_type: "none"
+# Pachner walks (PachnerWalkDataset); 0 keeps the plain MantraDataset.
+walk_length: 0
+moves_per_step: 1
+walk_seed: null
+# Keyword arguments of the OOD subdivision, e.g. {graded_vertex_number: 16},
+# {fraction: 0.75} or {round: 1}.
+subdivision: {}
