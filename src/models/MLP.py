@@ -56,9 +56,13 @@ class MLP(nn.Module):
 
 
     def forward(self, batch):
+        return self.forward_with_embedding(batch)[0]
+
+    def forward_with_embedding(self, batch):
+        """Return the logits and the pooled graph embedding."""
         x = batch.x
         for layer in self.hidden_layers:
             x = layer(x)
-        x = self.readout(x)
-        x = scatter(x, batch.batch, reduce='mean')
-        return x
+        embedding = scatter(x, batch.batch, reduce='mean')
+        logits = scatter(self.readout(x), batch.batch, reduce='mean')
+        return logits, embedding

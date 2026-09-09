@@ -549,6 +549,15 @@ class SCCNN(nn.Module):
         )
 
     def forward(self, batch):
+        return self.forward_with_embedding(batch)[0]
+
+    def forward_with_embedding(self, batch):
+        """Return the logits and the pooled complex embedding.
+
+        The embedding concatenates the mean-pooled backbone features of
+        every rank, so it keeps the per-rank information that the
+        summed readout collapses into the logits.
+        """
         x = {
             int(x_key.split('_')[-1]): batch[x_key]
             for x_key in batch.keys() if isinstance(x_key, str) and x_key.split('_')[0] == 'x' and x_key.split('_')[1].isdigit()
@@ -602,5 +611,14 @@ class SCCNN(nn.Module):
         out_1 = self.readout_1(x_1, x_bel_1)
         out_2 = self.readout_2(x_2, x_bel_2)
 
+        embedding = torch.cat(
+            [
+                scatter(x_r, x_bel_r, dim=-2, reduce='mean')
+                for x_r, x_bel_r in (
+                    (x_0, x_bel_0), (x_1, x_bel_1), (x_2, x_bel_2)
+                )
+            ],
+            dim=-1,
+        )
 
-        return out_0 + out_1 + out_2
+        return out_0 + out_1 + out_2, embedding

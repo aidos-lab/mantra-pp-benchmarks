@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import List
 from torch_sparse import SparseTensor
-from torch_scatter import scatter_add
+from torch_scatter import scatter_add, scatter_mean
 from torch_geometric.nn import MLP
 
 from src.models.conv_down import Conv, PropagateSignalDown
@@ -417,6 +417,12 @@ class CWN(torch.nn.Module):
         self,
         batch
     ):
+        return self.forward_with_embedding(batch)[0]
+
+    def forward_with_embedding(
+        self,
+        batch
+    ):
         """Forward computation through projection, convolutions, linear layers and average pooling.
 
         Parameters
@@ -478,8 +484,11 @@ class CWN(torch.nn.Module):
             'incidence_2': incidence_2
         }
         out = self.readout(model_out, incidence_map)
+        # The classifier reads the 0-cells, so their mean is the
+        # complex-level embedding that feeds it.
+        embedding = scatter_mean(out['x_0'], batch['batch_0'], dim=-2)
         out = self.graph_readout(out['x_0'])
-        
+
         out = scatter_add(out, batch['batch_0'], dim=-2)
 
-        return out 
+        return out, embedding 

@@ -62,6 +62,10 @@ class GCN(nn.Module):
         )
 
     def forward(self, batch):
+        return self.forward_with_embedding(batch)[0]
+
+    def forward_with_embedding(self, batch):
+        """Return the logits and the pooled graph embedding."""
         x, edge_index, batch = batch.x, batch.edge_index, batch.batch
         # 1. Obtain node embeddings
         #x = self.conv_input(x, edge_index)
@@ -69,7 +73,6 @@ class GCN(nn.Module):
             x = layer(x, edge_index)
 
         # 2. Readout layer
-        x = pool(x, batch, self.pool_method)  # [batch_size, hidden_channels]
+        embedding = pool(x, batch, self.pool_method)  # [batch_size, hidden_channels]
         # 3. Apply a final classifier
-        x = self.final_linear(x)
-        return x
+        return self.final_linear(embedding), embedding
