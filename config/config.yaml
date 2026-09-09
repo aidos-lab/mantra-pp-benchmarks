@@ -12,7 +12,10 @@ defaults:
   - loss: cross_entropy
 
 train: True
-torch_seed: 42
+# Run seed: model initialisation and feature sampling. The
+# train/val/test split has its own seed (dataset.seed).
+seed: 42
+torch_seed: ${seed}
 compile: True
 checkpoint_path: checkpoints
 save_checkpoints: False
