@@ -6,3 +6,4 @@ n_layers: 3
 kappa: 2
 epsilon: 0.1
 k_proj: 5
+task_level: graph # Get from task; SAN has no node-level head

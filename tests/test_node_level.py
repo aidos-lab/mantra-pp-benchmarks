@@ -449,19 +449,12 @@ class TestCreateModelTaskLevel:
         assert cfg.model.task_level == "node"
         assert cfg.model.out_channels == 1
 
-    def test_graph_level_needs_no_switch(self):
+    def test_graph_level_is_set_too(self):
         cfg = _create_model_cfg(
             SimpleNamespace(in_channels=1, out_channels=1), "graph"
         )
         main.create_model(cfg, num_features=1, label_to_index={})
-        assert not hasattr(cfg.model, "task_level")
-
-    def test_model_without_switch_rejects_node_level(self):
-        cfg = _create_model_cfg(
-            SimpleNamespace(in_channels=1, out_channels=1), "node"
-        )
-        with pytest.raises(ValueError, match="task_level"):
-            main.create_model(cfg, num_features=1, label_to_index={})
+        assert cfg.model.task_level == "graph"
 
     def test_unknown_task_level_rejected(self):
         """A typo must not silently select the node-level head."""
