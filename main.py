@@ -211,14 +211,7 @@ def create_model(cfg, num_features, label_to_index):
         raise ValueError(
             f"task.task_level must be 'graph' or 'node', got {task_level!r}"
         )
-    if hasattr(cfg.model, "task_level"):
-        cfg.model.task_level = task_level
-    elif task_level == "node":
-        raise ValueError(
-            "task.task_level=node, but the model config has no task_level: "
-            "use a model with a node-level head (gcn, mlp, graphormer, "
-            "residual_gated_gcn, cwn, sccnn)"
-        )
+    cfg.model.task_level = task_level
 
     in_channels = num_features
 
