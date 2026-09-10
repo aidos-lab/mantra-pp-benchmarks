@@ -55,14 +55,12 @@ class MLP(nn.Module):
 
 
 
-    def forward(self, batch):
-        return self.forward_with_embedding(batch)[0]
-
-    def forward_with_embedding(self, batch):
-        """Return the logits and the pooled graph embedding."""
+    def forward(self, batch, return_embedding: bool = False):
+        """Return the logits, and with `return_embedding` the pooled
+        graph embedding alongside them."""
         x = batch.x
         for layer in self.hidden_layers:
             x = layer(x)
         embedding = scatter(x, batch.batch, reduce='mean')
         logits = scatter(self.readout(x), batch.batch, reduce='mean')
-        return logits, embedding
+        return (logits, embedding) if return_embedding else logits

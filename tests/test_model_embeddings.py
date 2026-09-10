@@ -1,8 +1,8 @@
 """Every model must expose an embedding without changing its logits.
 
 The Pachner objectives read the embedding that feeds the classifier
-head, so ``forward_with_embedding`` has to return exactly the logits
-``forward`` returned before the split.
+head, so ``forward(batch, return_embedding=True)`` has to return
+exactly the logits the plain call returns.
 """
 
 import pytest
@@ -101,7 +101,7 @@ def test_graph_models_keep_their_logits(model):
     model.eval()
     batch = graph_batch()
 
-    logits, embedding = model.forward_with_embedding(batch)
+    logits, embedding = model(batch, return_embedding=True)
 
     assert torch.equal(logits, model(batch))
     assert logits.shape == (BATCH_SIZE, 5)
@@ -121,7 +121,7 @@ def test_cwn_keeps_its_logits():
     model.eval()
     batch = simplicial_batch()
 
-    logits, embedding = model.forward_with_embedding(batch)
+    logits, embedding = model(batch, return_embedding=True)
 
     assert torch.equal(logits, model(batch))
     assert logits.shape == (BATCH_SIZE, 5)
@@ -141,11 +141,11 @@ def test_sccnn_keeps_its_logits():
     model.eval()
     batch = simplicial_batch(with_laplacians=True)
 
-    logits, embedding = model.forward_with_embedding(batch)
+    logits, embedding = model(batch, return_embedding=True)
 
     assert torch.equal(logits, model(batch))
     assert logits.shape == (BATCH_SIZE, 5)
-    # One block of pooled features per rank.
+    # One block of sum-pooled features per rank.
     assert embedding.shape == (BATCH_SIZE, 12)
 
 
@@ -154,7 +154,7 @@ def test_embeddings_separate_different_inputs():
     model = graph_models()[0]
     model.eval()
 
-    _, first = model.forward_with_embedding(graph_batch())
-    _, second = model.forward_with_embedding(graph_batch())
+    _, first = model(graph_batch(), return_embedding=True)
+    _, second = model(graph_batch(), return_embedding=True)
 
     assert not torch.allclose(first, second)

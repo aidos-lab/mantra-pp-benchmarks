@@ -297,6 +297,12 @@ That is an upper bound on their Pachner distance, not the distance
 itself: a random walk can undo its own moves. Treat it as a monotone
 proxy.
 
+An epoch under `trainer.sampler=pachner_pairs` is not a pass over the
+dataset: pairs are drawn with replacement and the epoch is merely given
+the same length as a shuffled one, so some entries are unseen in a
+given epoch and others repeat. Early stopping and the learning-rate
+schedule count these epochs.
+
 `trainer.sampler=pachner_pairs` fills each training batch with index
 pairs instead of a random sample — same walk, same class from a
 different walk, and different class — in the proportions
@@ -319,7 +325,9 @@ schedule key on `val/loss`, i.e. on the objective that is being trained.
 
 Because the objectives shape the embedding rather than the classifier,
 each run also reports (unless `trainer.eval_embeddings=False`), for the
-test and OOD splits:
+test and OOD splits — the embedding being what `forward(batch,
+return_embedding=True)` returns, i.e. the vector the classifier head
+consumes:
 
 - `<split>/emb_spearman` — rank correlation of embedding distance with
   the number of moves between two snapshots of one walk,

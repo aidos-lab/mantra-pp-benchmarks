@@ -86,6 +86,7 @@ def create_dataset(cfg):
             "seed": dataset_cfg.seed,
             "split_proportions": [split.train, split.val, split.test],
             "min_sample_per_class": dataset_cfg.min_sample_per_class,
+            "division_type": dataset_cfg.division_type,
             "stratified": dataset_cfg.use_stratified,
             "max_vertices": dataset_cfg.max_vertices,
             "n_moves": dataset_cfg.n_moves,
@@ -96,38 +97,36 @@ def create_dataset(cfg):
             "moves_per_step": dataset_cfg.moves_per_step,
             "walk_seed": dataset_cfg.walk_seed,
             "transform": transforms,
+            # MantraDataset names its processed files after the
+            # subdivision, so the in-distribution splits take it too.
+            **OmegaConf.to_container(dataset_cfg.subdivision, resolve=True),
 
         }
 
     train_dataset = PachnerWalkDataset(
         split_type="train",
-        **dataset_parameters,
-        **ood_kwargs(cfg)[1],
+        **dataset_parameters
     )
     val_dataset = PachnerWalkDataset(
             split_type="val",
-            **dataset_parameters,
-            **ood_kwargs(cfg)[1],
+            **dataset_parameters
     )
     test_dataset = PachnerWalkDataset(
             split_type="test",
-            **dataset_parameters,
-            **ood_kwargs(cfg)[1],
+            **dataset_parameters
     )
 
     # One OOD split per requested subdivision. Every variant re-runs
     # process(), which rewrites the identical train/val/test files and
     # adds its own ood file, so they coexist in one cache root.
-    ood_datasets = {}
-    for name, kwargs in ood_evaluations(cfg):
-        ood_datasets[name] = PachnerWalkDataset(
-                split_type="ood",
-                **dataset_parameters,
-                **kwargs,
+    ood_datasets = {
+        name: PachnerWalkDataset(
+            split_type="ood", **{**dataset_parameters, **kwargs}
         )
+        for name, kwargs in ood_evaluations(cfg)
+    }
 
-    datasets = [train_dataset, val_dataset, test_dataset]
-    datasets.extend(ood_datasets.values())
+    datasets = [train_dataset, val_dataset, test_dataset, *ood_datasets.values()]
 
     label_to_index = {}
 
@@ -145,19 +144,13 @@ def create_dataset(cfg):
 
 
 def ood_evaluations(cfg):
-    """Return the (name, dataset kwargs) pairs of the OOD splits.
+    """Return the (metric prefix, dataset override) pairs of the OOD splits.
 
     `dataset.ood_evaluations` holds the subdivisions of the OOD table,
     keyed by the name their metrics are logged under. When it is empty
     the run falls back to the single split described by
     `dataset.division_type` and `dataset.subdivision`, and to no OOD
     split at all for `division_type=none`.
-
-    Returns
-    -------
-    list of (str, dict)
-        Metric prefix and the `division_type` plus subdivision keyword
-        arguments of each split.
     """
     table = OmegaConf.to_container(cfg.dataset.ood_evaluations, resolve=True)
     if table:
@@ -171,22 +164,10 @@ def ood_evaluations(cfg):
             )
             for name, spec in table.items()
         ]
+    if cfg.dataset.division_type == "none":
+        return []
+    return [("ood", {})]
 
-    name, kwargs = ood_kwargs(cfg)
-    return [] if kwargs["division_type"] == "none" else [(name, kwargs)]
-
-
-def ood_kwargs(cfg):
-    """The single-split OOD configuration, as (name, dataset kwargs).
-
-    The in-distribution splits take these too: `MantraDataset` needs a
-    `division_type` to name its processed files, and the train, val and
-    test entries do not depend on which one it is.
-    """
-    return "ood", {
-        "division_type": cfg.dataset.division_type,
-        **OmegaConf.to_container(cfg.dataset.subdivision, resolve=True),
-    }
 
 def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=None):
     trainer_cfg = cfg.trainer
@@ -300,9 +281,8 @@ def main(cfg: RootConfig):
             test(model, loader, accuracies, label_to_index, run, cfg, epoch=last_epoch, prefix=name)
 
         if cfg.trainer.eval_embeddings:
-            for prefix, loader in [("test", test_dl), *ood_dls.items()]:
-                metrics = evaluate_embeddings(model, train_dl, loader, cfg, prefix=prefix)
-                log_metrics(metrics, epoch=last_epoch, step=None, run=run, cfg=cfg)
+            metrics = evaluate_embeddings(model, train_dl, {"test": test_dl, **ood_dls}, cfg)
+            log_metrics(metrics, epoch=last_epoch, step=None, run=run, cfg=cfg)
 
 
 def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):

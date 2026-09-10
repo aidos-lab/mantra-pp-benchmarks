@@ -548,15 +548,13 @@ class SCCNN(nn.Module):
             sparse_sizes=(n_rows, n_cols)
         )
 
-    def forward(self, batch):
-        return self.forward_with_embedding(batch)[0]
+    def forward(self, batch, return_embedding: bool = False):
+        """Return the logits, and with `return_embedding` the pooled
+        complex embedding alongside them.
 
-    def forward_with_embedding(self, batch):
-        """Return the logits and the pooled complex embedding.
-
-        The embedding concatenates the mean-pooled backbone features of
-        every rank, so it keeps the per-rank information that the
-        summed readout collapses into the logits.
+        Each rank's readout is a linear map followed by a sum over the
+        complex, so the vector the head consumes is the concatenation
+        of the sum-pooled backbone features per rank.
         """
         x = {
             int(x_key.split('_')[-1]): batch[x_key]
@@ -613,7 +611,7 @@ class SCCNN(nn.Module):
 
         embedding = torch.cat(
             [
-                scatter(x_r, x_bel_r, dim=-2, reduce='mean')
+                scatter(x_r, x_bel_r, dim=-2, reduce='sum')
                 for x_r, x_bel_r in (
                     (x_0, x_bel_0), (x_1, x_bel_1), (x_2, x_bel_2)
                 )
@@ -621,4 +619,5 @@ class SCCNN(nn.Module):
             dim=-1,
         )
 
-        return out_0 + out_1 + out_2, embedding
+        out = out_0 + out_1 + out_2
+        return (out, embedding) if return_embedding else out

@@ -22,11 +22,10 @@ def test_no_subdivision_gives_no_ood_split():
 
 
 def test_single_split_keeps_the_plain_prefix():
+    """The split inherits division_type from the shared parameters."""
     cfg = make_cfg("graded", {"graded_vertex_number": 16})
 
-    assert ood_evaluations(cfg) == [
-        ("ood", {"division_type": "graded", "graded_vertex_number": 16})
-    ]
+    assert ood_evaluations(cfg) == [("ood", {})]
 
 
 def test_table_yields_one_named_split_per_entry():

@@ -86,11 +86,9 @@ class BatchLinear(torch.nn.Module):
         super().__init__()
         self.linear = torch.nn.Linear(1, 2)
 
-    def forward(self, batch):
-        return self.forward_with_embedding(batch)[0]
-
-    def forward_with_embedding(self, batch):
-        return self.linear(batch.x), batch.x
+    def forward(self, batch, return_embedding=False):
+        logits = self.linear(batch.x)
+        return (logits, batch.x) if return_embedding else logits
 
 
 class FakeRun:

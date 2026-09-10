@@ -92,14 +92,14 @@ class ResidualGatedGCN(nn.Module):
         )
         self.dropout = dropout
 
-    def forward(self, batch):
-        return self.forward_with_embedding(batch)[0]
-
-    def forward_with_embedding(self, batch):
-        """Return the logits and the pooled graph embedding.
+    def forward(self, batch, return_embedding: bool = False):
+        """Return the logits, and with `return_embedding` the pooled
+        graph embedding alongside them.
 
         The embedding is taken before the dropout, so that it does not
-        carry dropout noise into a pairwise objective.
+        carry dropout noise into a pairwise objective. In training the
+        classifier therefore sees a dropped-out copy of the vector the
+        pair losses act on; in eval the two coincide.
         """
         x, edge_index, batch_idx = batch.x, batch.edge_index, batch.batch
         x = self.input_proj(x)
@@ -107,4 +107,5 @@ class ResidualGatedGCN(nn.Module):
             x = layer(x, edge_index)
         embedding = pool(x, batch_idx, self.pool_method)
         x = F.dropout(embedding, p=self.dropout, training=self.training)
-        return self.final_linear(x), embedding
+        logits = self.final_linear(x)
+        return (logits, embedding) if return_embedding else logits

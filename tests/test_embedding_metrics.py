@@ -13,8 +13,8 @@ from src.metrics.embedding import collect_embeddings, evaluate_embeddings
 class IdentityModel(torch.nn.Module):
     """Model whose embedding is the input feature of each entry."""
 
-    def forward_with_embedding(self, batch):
-        return batch.x, batch.x
+    def forward(self, batch, return_embedding=False):
+        return (batch.x, batch.x) if return_embedding else batch.x
 
     def eval(self):
         return self
@@ -75,7 +75,10 @@ class TestEvaluateEmbeddings:
         )
 
         metrics = evaluate_embeddings(
-            IdentityModel(), loader, loader, make_cfg(moves_per_step=3)
+            IdentityModel(),
+            loader,
+            {"test": loader},
+            make_cfg(moves_per_step=3),
         )
 
         assert metrics["test/emb_spearman"] == pytest.approx(1.0)
@@ -89,7 +92,7 @@ class TestEvaluateEmbeddings:
         loader = make_loader(features.tolist(), labels)
 
         metrics = evaluate_embeddings(
-            IdentityModel(), loader, loader, make_cfg(), prefix="ood"
+            IdentityModel(), loader, {"ood": loader}, make_cfg()
         )
 
         assert metrics["ood/emb_auroc"] == pytest.approx(1.0, abs=0.01)
@@ -104,7 +107,7 @@ class TestEvaluateEmbeddings:
         loader = make_loader(features.tolist(), labels)
 
         metrics = evaluate_embeddings(
-            IdentityModel(), loader, loader, make_cfg()
+            IdentityModel(), loader, {"test": loader}, make_cfg()
         )
 
         assert metrics["test/emb_auroc"] == pytest.approx(0.5, abs=0.15)

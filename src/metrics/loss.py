@@ -1,7 +1,7 @@
 """Training objectives combining the task loss with Pachner-walk terms.
 
 Every objective maps ``(logits, embedding, batch)`` to the total loss
-and a dictionary of detached components for logging. The pair
+and a dictionary of detached component tensors for logging. The pair
 structure of a batch is recovered from the ``walk_base``,
 ``walk_step`` and ``y`` attributes that :class:`PachnerWalkDataset`
 attaches to its entries; see :func:`pair_masks`.
@@ -22,11 +22,6 @@ NO_WALK_MESSAGE = (
 )
 
 
-def has_walk_attributes(batch) -> bool:
-    """Return whether the batch carries Pachner-walk metadata."""
-    return all(attribute in batch for attribute in WALK_ATTRIBUTES)
-
-
 def walk_attributes(batch, name: str) -> Tuple[Tensor, Tensor]:
     """Return ``(walk_base, walk_step)`` as ``[B]`` long tensors.
 
@@ -36,7 +31,7 @@ def walk_attributes(batch, name: str) -> Tuple[Tensor, Tensor]:
         If the batch has no walk attributes, i.e. the dataset was
         built with ``walk_length == 0``.
     """
-    if not has_walk_attributes(batch):
+    if not all(attribute in batch for attribute in WALK_ATTRIBUTES):
         raise ValueError(NO_WALK_MESSAGE.format(name=name))
     return (
         batch.walk_base.reshape(-1).long(),
@@ -94,10 +89,6 @@ def _masked_mean(values: Tensor, mask: Tensor) -> Tensor:
     return values[mask].sum() / count
 
 
-def _components(**terms: Tensor) -> Dict[str, float]:
-    return {name: float(term.detach()) for name, term in terms.items()}
-
-
 class Objective(nn.Module):
     """Base class of the training objectives.
 
@@ -113,7 +104,7 @@ class Objective(nn.Module):
 
     def forward(
         self, logits: Tensor, embedding: Tensor, batch
-    ) -> Tuple[Tensor, Dict[str, float]]:
+    ) -> Tuple[Tensor, Dict[str, Tensor]]:
         raise NotImplementedError
 
 
@@ -122,7 +113,7 @@ class CrossEntropyObjective(Objective):
 
     def forward(self, logits, embedding, batch):
         ce = self.base_loss(logits, batch.y)
-        return ce, _components(ce=ce)
+        return ce, {"ce": ce.detach()}
 
 
 class PachnerConsistency(Objective):
@@ -169,7 +160,7 @@ class PachnerConsistency(Objective):
             values = entropy[:, None] - cross + entropy[None, :] - cross.t()
         consistency = _masked_mean(values, mask)
         total = ce + self.weight * consistency
-        return total, _components(ce=ce, consistency=consistency)
+        return total, {"ce": ce.detach(), "consistency": consistency.detach()}
 
 
 class PachnerPairwise(Objective):
@@ -249,9 +240,12 @@ class PachnerPairwise(Objective):
             + w_diff * diff_class
             + self.ce_weight * ce
         )
-        return total, _components(
-            walk=walk, same_class=same_class, diff_class=diff_class, ce=ce
-        )
+        return total, {
+            "walk": walk.detach(),
+            "same_class": same_class.detach(),
+            "diff_class": diff_class.detach(),
+            "ce": ce.detach(),
+        }
 
 
 def supervised_contrastive(
@@ -317,4 +311,4 @@ class PachnerInfoNCE(Objective):
         )
         ce = self.base_loss(logits, batch.y)
         total = infonce + self.ce_weight * ce
-        return total, _components(infonce=infonce, ce=ce)
+        return total, {"infonce": infonce.detach(), "ce": ce.detach()}

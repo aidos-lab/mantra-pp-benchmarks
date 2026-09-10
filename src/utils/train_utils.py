@@ -10,9 +10,12 @@ from src.schema import RootConfig
 
 
 def _weighted_mean(values, sizes):
-    """Sample-weighted mean of per-batch values."""
-    total = sum(sizes)
-    return sum(value * size for value, size in zip(values, sizes)) / total
+    """Sample-weighted mean of per-batch tensors, synced once."""
+    values = torch.stack(values)
+    weights = torch.as_tensor(
+        sizes, device=values.device, dtype=values.dtype
+    )
+    return ((values * weights).sum() / weights.sum()).item()
 
 
 def train(model, optimizer, train_dataset, objective, accuracies, cfg):
@@ -36,12 +39,12 @@ def train(model, optimizer, train_dataset, objective, accuracies, cfg):
         batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
         optimizer.zero_grad(set_to_none=True)
 
-        y_hat, embedding = model.forward_with_embedding(batch)
+        y_hat, embedding = model(batch, return_embedding=True)
         y = batch.y
 
         loss, parts = objective(y_hat, embedding, batch)
 
-        losses.append(loss.detach().item())
+        losses.append(loss.detach())
         batch_sizes.append(y.shape[0])
         for name, value in parts.items():
             components[name].append(value)
@@ -82,7 +85,7 @@ def validate(model, val_dataset, objective, accuracies, cfg):
         for batch in val_dataset:
             batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
 
-            y_hat, embedding = model.forward_with_embedding(batch)
+            y_hat, embedding = model(batch, return_embedding=True)
             y = batch.y
 
             loss, parts = objective(y_hat, embedding, batch)
@@ -90,7 +93,7 @@ def validate(model, val_dataset, objective, accuracies, cfg):
             for _, acc in accuracies:
                 acc(y_hat.detach(), y)
 
-            losses.append(loss.detach().item())
+            losses.append(loss.detach())
             batch_sizes.append(y.shape[0])
             for name, value in parts.items():
                 components[name].append(value)

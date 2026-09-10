@@ -16,6 +16,8 @@ from torch.utils.data import Sampler
 
 PAIR_KINDS = ("walk", "class", "diff")
 
+MAX_REDRAWS = 16
+
 MISSING_WALKS_MESSAGE = (
     "trainer.sampler=pachner_pairs needs a dataset with Pachner walks, "
     "but its entries have no `walk_base`/`walk_step`. Set "
@@ -41,9 +43,16 @@ class PachnerPairSampler(Sampler):
     Each batch consists of ``batch_size // 2`` index pairs drawn in the
     proportions given by ``fractions``: two snapshots of one Pachner
     walk, two entries of one class from different walks, and two
-    entries of different classes. Indices within a batch are unique, so
-    a pair whose partner is already in the batch is redrawn. The pairs
-    are drawn afresh in every epoch.
+    entries of different classes. Pairs are redrawn until both indices
+    are new to the batch, so a batch normally holds distinct entries;
+    after ``MAX_REDRAWS`` failures the pair is kept as drawn, which
+    keeps every batch exactly ``2 * (batch_size // 2)`` long.
+
+    Note that an epoch here is **not** a pass over the dataset: pairs
+    are drawn with replacement, and ``__len__`` merely keeps the epoch
+    the same size as a shuffled one. Some entries are unseen in a given
+    epoch and others repeat, which is what "epoch" then means for
+    early stopping and the learning-rate schedule.
 
     Parameters
     ----------
@@ -108,19 +117,27 @@ class PachnerPairSampler(Sampler):
             if len({self.walk_base[i] for i in group}) > 1
         ]
         self.labels = sorted(self.by_label)
+        self.pair_plan = self._pair_plan()
 
     def __len__(self) -> int:
         return len(self.walk_base) // self.batch_size
 
     def _pair_plan(self) -> List[str]:
-        """Kinds of the pairs of one batch, in the configured fractions."""
+        """Kinds of the pairs of one batch, in the configured fractions.
+
+        The plan depends only on the batch size and the fractions, so it
+        is built once and reused for every batch.
+        """
         n_pairs = self.batch_size // 2
         counts = [int(round(f * n_pairs)) for f in self.fractions]
         # Rounding can miss or overshoot the batch; the walk pairs are
         # the objectives' primary signal, so they absorb the remainder.
         counts[0] += n_pairs - sum(counts)
         if counts[0] < 0:
-            counts = [max(0, count) for count in counts]
+            raise ValueError(
+                f"fractions {self.fractions} leave no room for walk pairs "
+                f"in a batch of {self.batch_size}"
+            )
         return [
             kind
             for kind, count in zip(PAIR_KINDS, counts)
@@ -158,14 +175,11 @@ class PachnerPairSampler(Sampler):
         for _ in range(len(self)):
             batch: List[int] = []
             seen = set()
-            for kind in self._pair_plan():
-                for _ in range(16):
+            for kind in self.pair_plan:
+                for _ in range(MAX_REDRAWS):
                     first, second = self._draw(kind, rng)
                     if first not in seen and second not in seen:
                         break
-                else:
-                    continue
                 seen.update((first, second))
                 batch.extend((first, second))
-            if batch:
-                yield batch
+            yield batch

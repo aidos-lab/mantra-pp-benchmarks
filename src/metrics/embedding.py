@@ -8,7 +8,7 @@ does it separate homeomorphism types, and is the type linearly
 decodable from the embedding.
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -41,26 +41,31 @@ def collect_embeddings(model, loader, cfg):
     """
     model.eval()
     embeddings, labels, bases, steps = [], [], [], []
+    has_walks = None
 
     for batch in loader:
         batch = batch.to(cfg.trainer.device)
-        _, embedding = model.forward_with_embedding(batch)
+        _, embedding = model(batch, return_embedding=True)
         embeddings.append(embedding.detach().cpu())
         labels.append(batch.y.detach().cpu().reshape(-1))
-        if "walk_base" in batch and "walk_step" in batch:
+
+        walks = "walk_base" in batch and "walk_step" in batch
+        if has_walks is None:
+            has_walks = walks
+        elif walks != has_walks:
+            raise ValueError(
+                "Some batches of this split carry walk metadata and "
+                "others do not; the split is inconsistent."
+            )
+        if walks:
             bases.append(batch.walk_base.detach().cpu().reshape(-1))
             steps.append(batch.walk_step.detach().cpu().reshape(-1))
 
     embedding = torch.cat(embeddings).numpy()
     y = torch.cat(labels).numpy()
-    if len(bases) == len(embeddings) and bases:
-        return (
-            embedding,
-            y,
-            torch.cat(bases).numpy(),
-            torch.cat(steps).numpy(),
-        )
-    return embedding, y, None, None
+    if not has_walks:
+        return embedding, y, None, None
+    return embedding, y, torch.cat(bases).numpy(), torch.cat(steps).numpy()
 
 
 def _distance_walk_correlation(
@@ -125,89 +130,82 @@ def _class_separation_auroc(
     return float(roc_auc_score(different, distance))
 
 
-def _probe_accuracies(
-    train_embedding: np.ndarray,
-    train_y: np.ndarray,
-    embedding: np.ndarray,
-    y: np.ndarray,
-) -> Dict[str, float]:
-    """Balanced accuracy of a 5-NN and a linear probe on the embedding."""
+def _fit_probes(train_embedding: np.ndarray, train_y: np.ndarray):
+    """Fit the k-NN and the linear probe on the training embeddings."""
     if len(np.unique(train_y)) < 2:
         return {}
 
-    n_neighbors = min(5, len(train_y))
-    knn = KNeighborsClassifier(n_neighbors=n_neighbors)
+    knn = KNeighborsClassifier(n_neighbors=min(5, len(train_y)))
     knn.fit(train_embedding, train_y)
     probe = LogisticRegression(max_iter=1000)
     probe.fit(train_embedding, train_y)
+    return {"emb_knn_bal_acc": knn, "emb_probe_bal_acc": probe}
 
+
+def _probe_accuracies(probes, embedding: np.ndarray, y: np.ndarray):
+    """Balanced accuracy of the fitted probes on one split."""
     return {
-        "emb_knn_bal_acc": float(
-            balanced_accuracy_score(y, knn.predict(embedding))
-        ),
-        "emb_probe_bal_acc": float(
-            balanced_accuracy_score(y, probe.predict(embedding))
-        ),
+        name: float(balanced_accuracy_score(y, probe.predict(embedding)))
+        for name, probe in probes.items()
     }
 
 
-def evaluate_embeddings(
-    model,
-    train_loader,
-    eval_loader,
-    cfg,
-    prefix: str = "test",
-) -> Dict[str, float]:
+def evaluate_embeddings(model, train_loader, eval_loaders, cfg):
     """Measure how well the embedding encodes walks and classes.
+
+    The training embeddings and the two probes fitted on them are shared
+    by every split, so the training set is embedded once no matter how
+    many OOD columns are evaluated.
 
     Parameters
     ----------
     model : nn.Module
-        Trained model with a ``forward_with_embedding`` method.
+        Trained model whose `forward` takes `return_embedding`.
     train_loader : DataLoader
         Loader whose embeddings serve as the index of the k-NN
         classifier and the training set of the linear probe.
-    eval_loader : DataLoader
-        Loader of the split to evaluate.
+    eval_loaders : dict of str to DataLoader
+        Splits to evaluate, keyed by their metric prefix.
     cfg : RootConfig
-        Composed config; the device and ``dataset.moves_per_step`` are
-        read.
-    prefix : str
-        Metric prefix, e.g. ``"test"`` or ``"ood"``.
+        Composed config; the device, the seed and
+        `dataset.moves_per_step` are read.
 
     Returns
     -------
     dict of str to float
-        ``<prefix>/emb_spearman`` (rank correlation of embedding
-        distance with the number of moves between two snapshots of one
-        walk), ``<prefix>/emb_auroc`` (separation of the homeomorphism
-        types by distance), ``<prefix>/emb_knn_bal_acc`` and
-        ``<prefix>/emb_probe_bal_acc``. Measures that the split cannot
+        For every split: `<prefix>/emb_spearman` (rank correlation of
+        embedding distance with the number of moves between two
+        snapshots of one walk), `<prefix>/emb_auroc` (separation of the
+        homeomorphism types by distance), `<prefix>/emb_knn_bal_acc`
+        and `<prefix>/emb_probe_bal_acc`. Measures that a split cannot
         support (no walks, a single class) are left out.
     """
     rng = np.random.default_rng(cfg.seed)
     train_embedding, train_y, _, _ = collect_embeddings(
         model, train_loader, cfg
     )
-    embedding, y, walk_base, walk_step = collect_embeddings(
-        model, eval_loader, cfg
-    )
+    probes = _fit_probes(train_embedding, train_y)
 
-    metrics = {}
-    spearman = _distance_walk_correlation(
-        embedding,
-        walk_base,
-        walk_step,
-        cfg.dataset.moves_per_step,
-        rng,
-    )
-    if spearman is not None:
-        metrics["emb_spearman"] = spearman
+    results = {}
+    for prefix, loader in eval_loaders.items():
+        embedding, y, walk_base, walk_step = collect_embeddings(
+            model, loader, cfg
+        )
 
-    auroc = _class_separation_auroc(embedding, y, rng)
-    if auroc is not None:
-        metrics["emb_auroc"] = auroc
+        metrics = {}
+        spearman = _distance_walk_correlation(
+            embedding, walk_base, walk_step, cfg.dataset.moves_per_step, rng
+        )
+        if spearman is not None:
+            metrics["emb_spearman"] = spearman
 
-    metrics.update(_probe_accuracies(train_embedding, train_y, embedding, y))
+        auroc = _class_separation_auroc(embedding, y, rng)
+        if auroc is not None:
+            metrics["emb_auroc"] = auroc
 
-    return {f"{prefix}/{name}": value for name, value in metrics.items()}
+        metrics.update(_probe_accuracies(probes, embedding, y))
+        results.update(
+            {f"{prefix}/{name}": value for name, value in metrics.items()}
+        )
+
+    return results
