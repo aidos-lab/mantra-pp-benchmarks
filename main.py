@@ -17,10 +17,6 @@ from torch_geometric.transforms import Compose
 from mantra.datasets import MantraDataset, CalabiYauDataset
 from mantra.representations.internal import SimplexTrie
 from mantra.representations.internal.simplex_trie import SimplexNode
-from mantra.transforms.node_task_transforms import (
-    AttributeToNodeClassTransform,
-    AttributeToNodeRegressionTransform,
-)
 from mantra.transforms.task_transforms import (
     AttributeToClassTransform,
     AttributeToNodeClassTransform,
@@ -170,11 +166,8 @@ def create_dataset(cfg):
 
     label_to_index = {}
 
-    if is_node_classification:
-        # Per-vertex targets are contiguous by construction of the mapping.
-        label_to_index = node_label_to_index
-    elif cfg.task.task_type == "classification":
-        labels = sorted({int(data.y.item()) for data in train_dataset})
+    if cfg.task.task_type == "classification":
+        labels = sorted(_target_values(train_dataset))
         label_to_index = {label: index for index, label in enumerate(labels)}
         unseen = (
             _target_values(val_dataset) | _target_values(test_dataset)

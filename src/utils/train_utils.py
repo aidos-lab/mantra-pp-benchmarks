@@ -111,9 +111,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
             y = batch.y.long() if is_classification else batch.y
 
             if is_classification:
-                # Per-sample labels exist for graph-level tasks only.
-                if cfg.task.task_level != "node":
-                    make_labels(index_to_label, y, batch.label)
+                make_labels(index_to_label, y, batch.label)
                 y_all.append(y)
                 y_hat_all.append(predictions.argmax(dim=1))
 
