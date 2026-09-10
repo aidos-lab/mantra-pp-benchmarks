@@ -2,7 +2,7 @@ from torch import nn
 from torch_geometric.utils import scatter
 
 def pool(x, batch, reduce="mean"):
-    assert reduce in ['mean', 'sum'], " Unknwon pooling methods"
+    assert reduce in ['mean', 'sum', 'max'], " Unknwon pooling methods"
     return scatter(x, batch, dim=-2, reduce=reduce)
 
 class SumReadout(nn.Module):
