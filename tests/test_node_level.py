@@ -339,8 +339,8 @@ class TestTrainingHelpersNodeLevel:
     def test_classification_test_names_classes_from_the_mapping(
         self, monkeypatch
     ):
-        """Node-level classification batches carry no per-sample
-        `label`; the confusion matrix is built from label_to_index."""
+        """Per-vertex `label` rows name the confusion-matrix classes,
+        as the per-sample `label` does at graph level."""
         captured = {}
 
         def fake_confusion_matrix(**kwargs):
@@ -356,7 +356,9 @@ class TestTrainingHelpersNodeLevel:
             def forward(self, batch):
                 return nn.functional.one_hot(batch.y, 3).float()
 
-        batch = Data(y=torch.tensor([2, 0, 1, 1]))
+        batch = Data(
+            y=torch.tensor([2, 0, 1, 1]), label=torch.tensor([4, -20, 2, 2])
+        )
         run = _FakeRun()
         cfg = SimpleNamespace(
             task=SimpleNamespace(task_type="classification", task_level="node"),
@@ -490,16 +492,13 @@ class TestTaskToTransformNodeLevel:
         data = transform(Data(c2=[-20, 2, 4]))
         assert data.y.flatten().tolist() == [-20.0, 2.0, 4.0]
 
-    def test_node_classification(self):
-        mapping = {-20: 0, 2: 1, 4: 2}
-        transform = main.task_to_transform(
-            self._cfg("classification"), mapping=mapping
-        )
+    def test_node_classification_stores_raw_values(self):
+        """Like graph-level: raw values in `y` and `label`, remapped over
+        the train split by `create_dataset`."""
+        transform = main.task_to_transform(self._cfg("classification"))
         assert isinstance(transform, AttributeToNodeClassTransform)
+        assert transform.mapping is None
 
         data = transform(Data(c2=[4, 2, -20]))
-        assert data.y.tolist() == [2, 1, 0]
-
-    def test_node_classification_needs_a_mapping(self):
-        with pytest.raises(ValueError, match="mapping"):
-            main.task_to_transform(self._cfg("classification"))
+        assert data.y.tolist() == [4, 2, -20]
+        assert data.label.tolist() == [4, 2, -20]

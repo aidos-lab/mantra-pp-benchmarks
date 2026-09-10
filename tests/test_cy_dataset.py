@@ -212,14 +212,14 @@ class TestCYNodeLevel:
                 seen.append(int(batch.h11[g]))
         assert sorted(seen) == sorted(int(data.h11) for data in train)
 
-    def test_node_classification_maps_every_vertex_value(self, tmp_path):
+    def test_node_classification_remaps_train_split_values(self, tmp_path):
         cfg = _cfg(
             tmp_path, "task=hodge_class", "task.target=c2",
             "task.task_level=node", ONE_SKELETON,
         )
         train, val, test, label_to_index = main.create_dataset(cfg)
 
-        values = sorted({v for i in range(N_ROWS) for v in _c2(i)})
+        values = sorted({v for data in train for v in _c2(int(data.h11))})
         assert label_to_index == {v: k for k, v in enumerate(values)}
         for dataset in (train, val, test):
             for data in dataset:
@@ -227,6 +227,20 @@ class TestCYNodeLevel:
                 assert data.y.tolist() == [
                     label_to_index[v] for v in _c2(int(data.h11))
                 ]
+                assert data.label.tolist() == _c2(int(data.h11))
+
+    def test_vertex_value_missing_from_train_raises(self, tmp_path):
+        # Vertex 4 carries a value unique to its sample, so every val
+        # and test sample holds a class the train split never saw.
+        rows = _rows()
+        for i, row in enumerate(rows):
+            row["c2"] = row["c2"][:4] + [100 + i]
+        cfg = _cfg(
+            tmp_path, "task=hodge_class", "task.target=c2",
+            "task.task_level=node", ONE_SKELETON, rows=rows,
+        )
+        with pytest.raises(ValueError, match="not in train"):
+            main.create_dataset(cfg)
 
     def test_graph_classification_keeps_the_train_split_remap(self, tmp_path):
         cfg = _cfg(tmp_path, "task=hodge_class", "task.target=h12")
