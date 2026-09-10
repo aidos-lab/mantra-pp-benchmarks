@@ -9,16 +9,16 @@ triangulation benchmarks.
 
 Deviations, for consistency with the other models of this repository:
 the graph readout pools only the final layer (Eq. 4.2 concatenates the
-readouts of every layer) with `pool_method` (the paper uses sum on the
-bioinformatics and mean on the social datasets), dropout follows every
-layer, and residual connections are available. The data carries no
+readouts of every layer) with `pool_method`, sum by default as in the
+paper's bioinformatics setting, dropout follows every layer, and
+residual connections are available. The data carries no
 `edge_attr`, so this is the plain GINConv.
 """
 
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch_geometric.nn import GINConv
+from torch_geometric.nn import MLP, GINConv
 
 from src.models.utils import pool
 
@@ -40,11 +40,10 @@ class GINLayer(nn.Module):
 
         # The 2-layer MLP update of the paper; train_eps learns the
         # self-loop weight (1 + eps).
-        mlp = nn.Sequential(
-            nn.Linear(in_dim, out_dim),
-            nn.BatchNorm1d(out_dim) if batch_norm else nn.Identity(),
-            nn.ReLU(),
-            nn.Linear(out_dim, out_dim),
+        mlp = MLP(
+            [in_dim, out_dim, out_dim],
+            norm="batch_norm" if batch_norm else None,
+            plain_last=True,
         )
         self.conv = GINConv(mlp, train_eps=True)
         self.batchnorm_h = (
@@ -90,7 +89,7 @@ class GIN(nn.Module):
         residuals: bool,
         batch_norm: bool,
         dropout: float = 0.5,
-        pool_method: str = "mean",
+        pool_method: str = "sum",
         task_level: str = "graph",
     ):
         super().__init__()

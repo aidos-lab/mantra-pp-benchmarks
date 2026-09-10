@@ -4,8 +4,8 @@ Zaheer et al., "Deep Sets", NeurIPS 2017 (arXiv:1703.06114), Theorem 2:
 a permutation-invariant set function is `rho(sum_i phi(x_i))` with a
 shared point-wise network `phi` and a network `rho` on the pooled
 feature. With max pooling this is PointNet (Qi et al., CVPR 2017,
-arXiv:1612.00593) without its input and feature transform networks;
-`config/model/pointnet.yaml` is that configuration. At node level a
+arXiv:1612.00593) without its input and feature transform networks
+(`model.pool_method=max`). At node level a
 point is predicted from its embedding concatenated with the pooled set
 feature, the segmentation head of PointNet (one permutation-equivariant
 layer in the terms of Deep Sets, Lemma 3). Deep Sets uses plain layers

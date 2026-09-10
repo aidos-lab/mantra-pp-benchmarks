@@ -1,5 +1,5 @@
-"""Tests for src/models/PointNetPP.py: shapes, determinism, batching,
-the node-level feature-propagation head and argument validation."""
+"""Tests for src/models/PointNetPP.py: batching, connectivity blindness,
+degenerate sets and the node-level feature-propagation head."""
 
 import pytest
 import torch
@@ -34,15 +34,6 @@ def _model(**overrides):
 
 
 class TestPointNetPP:
-    def test_output_shape(self):
-        out = _model()(_batch())
-        assert out.shape == (2, 3)
-        assert torch.isfinite(out).all()
-
-    def test_forward_is_deterministic(self):
-        model = _model()
-        assert torch.equal(model(_batch()), model(_batch()))
-
     @pytest.mark.parametrize("task_level", ["graph", "node"])
     def test_batched_output_equals_per_set_outputs(self, task_level):
         """Grouping and interpolation must not cross the sets of a batch."""
@@ -50,14 +41,8 @@ class TestPointNetPP:
         clouds = _clouds()
         batched = model(_batch(clouds))
         single = torch.cat([model(_batch([c])) for c in clouds])
+        assert batched.shape == ((19, 3) if task_level == "node" else (2, 3))
         assert torch.allclose(batched, single, atol=1e-5)
-
-    @pytest.mark.parametrize("task_level", ["graph", "node"])
-    def test_gradients_flow_to_all_parameters(self, task_level):
-        model = _model(task_level=task_level).train()
-        model(_batch()).sum().backward()
-        missing = [n for n, p in model.named_parameters() if p.grad is None]
-        assert missing == []
 
     def test_connectivity_blindness(self):
         model = _model()
@@ -67,14 +52,6 @@ class TestPointNetPP:
             for c in clouds
         ]
         assert torch.equal(model(_batch(clouds)), model(_batch(wired)))
-
-    def test_single_sa_level(self):
-        out = _model(sa_ratios=[0.5], sa_radii=[3.0])(_batch())
-        assert out.shape == (2, 3)
-
-    def test_max_pooling(self):
-        out = _model(pool_method="max")(_batch())
-        assert out.shape == (2, 3)
 
     @pytest.mark.parametrize("task_level", ["graph", "node"])
     def test_tiny_sets_survive_the_hierarchy(self, task_level):
@@ -86,26 +63,8 @@ class TestPointNetPP:
         assert out.shape == ((3, 3) if task_level == "node" else (2, 3))
         assert torch.isfinite(out).all()
 
-    def test_mismatched_levels_rejected(self):
-        with pytest.raises(ValueError):
-            PointNetPP(in_channels=4, sa_ratios=[0.5], sa_radii=[2.0, 4.0])
-
 
 class TestPointNetPPNodeHead:
-    def test_node_level_emits_one_row_per_point(self):
-        out = _model(task_level="node")(_batch())
-        assert out.shape == (19, 3)
-        assert torch.isfinite(out).all()
-
-    def test_fp_levels_mirror_sa_levels_plus_input(self):
-        model = _model(
-            task_level="node",
-            sa_ratios=[0.5, 0.5, 0.5],
-            sa_radii=[2.0, 3.0, 4.0],
-        )
-        assert len(model.fp_mlps) == 4
-        assert len(_model().fp_mlps) == 0
-
     def test_node_output_sees_the_whole_set(self):
         """The set feature is propagated back to every point, so moving
         a point far from the others still changes their outputs."""

@@ -68,11 +68,7 @@ class ModelMeta:
     residuals: bool = True
     batch_norm: bool = True
     dropout: float = 0.2
-    # Graph readout: 'mean', 'sum' to keep it extensive (targets that
-    # scale with the size of the complex), or 'max'.
     pool_method: str = "mean"
-    # Set from task.task_level by create_model; 'node' skips the graph
-    # readout and emits one output per vertex.
     task_level: str = "graph"
 
 @dataclass

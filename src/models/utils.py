@@ -20,11 +20,8 @@ def mlp(channels, dropout=0.0, layer_norm=True):
 
 def pool(x, batch, reduce="mean"):
     """Readout of the rows of `x` into one row per graph of `batch`."""
-    if reduce not in ("mean", "sum", "max"):
-        raise ValueError(
-            f"Unknown pooling method {reduce!r}; use 'mean', 'sum' or 'max'"
-        )
     return scatter(x, batch, dim=-2, reduce=reduce)
+
 
 class SumReadout(nn.Module):
     def __init__(self, in_features, out_features):
