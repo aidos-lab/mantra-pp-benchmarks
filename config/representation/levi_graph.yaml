@@ -1,0 +1,5 @@
+# @package transform
+# Bipartite graph of the 0-simplices and the maximal simplices; nodes
+# carry `node_type` (0 / 1). Combine with transform/append_node_type so
+# the model sees the type.
+_target_: mantra.representations.LeviGraph

@@ -1,0 +1,6 @@
+# Append the one-hot Levi-graph node type to a feature tensor; place it
+# after the embedding and before select_features in transform_order.
+_target_: src.transforms.AppendOneHot
+src: moment_curve_embedding
+attr: node_type
+num_classes: 2

@@ -179,8 +179,8 @@ Key Hydra groups:
 | Group                                         | Options                                                                                             |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `san`, `san_tmx`, `cwn`, `sccnn`                  |
-| `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
-| `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
+| `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `levi_graph`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
+| `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats`; `append_node_type` adds the Levi-graph node type to the features |
 | `task`                                        | `name`, `orientability`, `betti_numbers`                                                            |
 | `loss`                                        | `cross_entropy`, `pachner_consistency`                                                              |
 | `trainer`                                     | `default`                                                                                           |
