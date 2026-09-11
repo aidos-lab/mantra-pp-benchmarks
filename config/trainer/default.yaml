@@ -6,9 +6,7 @@ early_stopping: 10
 device: cpu
 num_workers: 0
 pin_memory: True
-# "random" or "pachner_pairs" (the latter needs dataset.walk_length > 0).
+# "random", or "walks" to batch whole Pachner walks so that the
+# consistency objective sees same-walk pairs (needs dataset.walk_length > 0).
 sampler: random
-# Fractions of [same-walk, same-class-other-base, different-class] pairs
-# per batch when sampler is pachner_pairs.
-pair_fractions: [0.5, 0.25, 0.25]
 eval_embeddings: True

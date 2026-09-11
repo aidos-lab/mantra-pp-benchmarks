@@ -14,9 +14,6 @@ class TrainerMeta:
     num_workers: int = 0
     pin_memory: bool = True
     sampler: str = "random"
-    pair_fractions: List[float] = field(
-        default_factory=lambda: [0.5, 0.25, 0.25]
-    )
     eval_embeddings: bool = True
 
 @dataclass
@@ -77,6 +74,9 @@ class ModelMeta:
     residuals: bool = True
     batch_norm: bool = True
     dropout: float = 0.2
+    pool_method: str = "sum"
+    # Simplicial models only: "concat" or "alternating".
+    rank_readout: str = "concat"
 
 @dataclass
 class LoggerMeta:

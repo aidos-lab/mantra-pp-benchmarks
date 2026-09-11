@@ -23,7 +23,7 @@ from src.schema import RootConfig
 from src.transforms import RemapLabels
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
-from src.utils.sampling import PachnerPairSampler
+from src.utils.sampling import WalkBatchSampler
 from src.utils.train_utils import train, validate, test, init_metrics
 from src.utils.gpu_utils import is_blackwell_gpu, set_gpu_configs
 
@@ -184,7 +184,7 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
     if not is_graph_representation:
         loader_kwargs["collate_fn"] = collate_simplicial
 
-    train_sampler = create_pair_sampler(cfg, train_dataset)
+    train_sampler = create_batch_sampler(cfg, train_dataset)
     if train_sampler is None:
         train_loader = loader_cls(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, **loader_kwargs)
     else:
@@ -201,21 +201,18 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
     return train_loader, val_loader, test_loader, ood_loaders
 
 
-def create_pair_sampler(cfg, train_dataset):
+def create_batch_sampler(cfg, train_dataset):
     """Build the batch sampler for the training loader, if configured."""
     sampler_name = cfg.trainer.sampler
     if sampler_name == "random":
         return None
-    if sampler_name != "pachner_pairs":
+    if sampler_name != "walks":
         raise ValueError(
             f"Unknown trainer.sampler '{sampler_name}', expected "
-            "'random' or 'pachner_pairs'"
+            "'random' or 'walks'"
         )
-    return PachnerPairSampler(
-        train_dataset,
-        batch_size=cfg.trainer.batch_size,
-        fractions=list(cfg.trainer.pair_fractions),
-        seed=cfg.seed,
+    return WalkBatchSampler(
+        train_dataset, batch_size=cfg.trainer.batch_size, seed=cfg.seed
     )
 
 def create_model(cfg, num_features, label_to_index):

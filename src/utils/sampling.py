@@ -1,185 +1,89 @@
-"""Batch sampler that fills a batch with informative index pairs.
+"""Batch sampler that keeps the snapshots of a Pachner walk together.
 
-The Pachner objectives in :mod:`src.metrics.loss` read their pair
-structure off the batch, so a batch is only useful to them if it
-actually contains pairs of the right kinds. Shuffling alone rarely puts
-two snapshots of one walk into the same batch: with ``n`` walks in the
-dataset the expected number of same-walk pairs in a batch of size ``B``
-is ``O(B^2 / n)``, which is below one for the dataset sizes used here.
-This sampler draws the pairs explicitly instead.
+The consistency objective in :mod:`src.metrics.loss` reads same-walk
+pairs off the batch, so a batch is only useful to it if it contains
+several snapshots of one walk. Shuffling alone rarely does that: with
+``n`` walks the expected number of same-walk pairs in a batch of size
+``B`` is ``O(B^2 / n)``, below one for the dataset sizes used here.
+This sampler shuffles the *walks* instead and puts every snapshot of a
+drawn walk into the same batch.
 """
 
-import random
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Sequence
 
+import torch
 from torch.utils.data import Sampler
 
-PAIR_KINDS = ("walk", "class", "diff")
-
-MAX_REDRAWS = 16
-
 MISSING_WALKS_MESSAGE = (
-    "trainer.sampler=pachner_pairs needs a dataset with Pachner walks, "
-    "but its entries have no `walk_base`/`walk_step`. Set "
-    "dataset.walk_length > 0."
+    "trainer.sampler=walks needs a dataset with Pachner walks, but its "
+    "entries have no `walk_base`. Set dataset.walk_length > 0."
 )
 
 
-def _entry_metadata(dataset) -> Tuple[List[int], List[int], List[int]]:
-    """Return the per-entry base index, walk step and class label."""
-    walk_base, walk_step, label = [], [], []
-    for data in dataset:
-        if "walk_base" not in data or "walk_step" not in data:
+def walks_of(dataset) -> Dict[int, List[int]]:
+    """Group the dataset indices by ``walk_base``."""
+    walks: Dict[int, List[int]] = {}
+    for index, data in enumerate(dataset):
+        if "walk_base" not in data:
             raise ValueError(MISSING_WALKS_MESSAGE)
-        walk_base.append(int(data.walk_base))
-        walk_step.append(int(data.walk_step))
-        label.append(int(data.y.reshape(-1)[0]))
-    return walk_base, walk_step, label
+        walks.setdefault(int(data.walk_base), []).append(index)
+    return walks
 
 
-class PachnerPairSampler(Sampler):
-    """Yield batches built from same-walk, same-class and cross-class pairs.
+class WalkBatchSampler(Sampler):
+    """Yield batches made of whole Pachner walks.
 
-    Each batch consists of ``batch_size // 2`` index pairs drawn in the
-    proportions given by ``fractions``: two snapshots of one Pachner
-    walk, two entries of one class from different walks, and two
-    entries of different classes. Pairs are redrawn until both indices
-    are new to the batch, so a batch normally holds distinct entries;
-    after ``MAX_REDRAWS`` failures the pair is kept as drawn, which
-    keeps every batch exactly ``2 * (batch_size // 2)`` long.
-
-    Note that an epoch here is **not** a pass over the dataset: pairs
-    are drawn with replacement, and ``__len__`` merely keeps the epoch
-    the same size as a shuffled one. Some entries are unseen in a given
-    epoch and others repeat, which is what "epoch" then means for
-    early stopping and the learning-rate schedule.
+    Every epoch permutes the walks and cuts the permutation into groups
+    of ``batch_size // walk_size`` walks, ``walk_size`` being the
+    number of snapshots per walk (``walk_length + 1``). A batch thus
+    holds all snapshots of its walks and every same-walk pair of the
+    dataset is seen exactly once per epoch; an epoch is a pass over the
+    data, as with a shuffled loader. The last, shorter group is kept.
 
     Parameters
     ----------
     dataset : Sequence
-        Dataset whose entries carry ``walk_base``, ``walk_step`` and
-        ``y``; that is a
+        Dataset whose entries carry ``walk_base``, i.e. a
         :class:`mantra.datasets.PachnerWalkDataset` with
         ``walk_length > 0``.
     batch_size : int
-        Number of entries per batch. Odd sizes lose the last entry.
-    fractions : sequence of float
-        Fractions of walk, class and cross-class pairs; must sum to 1.
+        Upper bound on the number of entries per batch. Batches hold
+        ``walks_per_batch * walk_size <= batch_size`` entries, so a
+        batch size that is not a multiple of the walk size is rounded
+        down.
     seed : int
-        Seed of the pair sampling. Every epoch draws from a generator
-        seeded with ``seed + epoch``, so the batches are reproducible
-        and differ between epochs.
+        Seed of the walk permutation; epoch ``e`` uses ``seed + e``.
 
     Raises
     ------
     ValueError
-        If the dataset carries no walk metadata, the fractions do not
-        sum to one, or the batch holds fewer than two entries.
+        If the dataset carries no walk metadata or one walk does not
+        fit into a batch.
     """
 
-    def __init__(
-        self,
-        dataset: Sequence,
-        batch_size: int,
-        fractions: Sequence[float] = (0.5, 0.25, 0.25),
-        seed: int = 42,
-    ):
-        if batch_size < 2:
-            raise ValueError(f"batch_size must be >= 2, got {batch_size}")
-        if len(fractions) != len(PAIR_KINDS):
+    def __init__(self, dataset: Sequence, batch_size: int, seed: int = 42):
+        self.walks = list(walks_of(dataset).values())
+        walk_size = max(len(walk) for walk in self.walks)
+        self.walks_per_batch = batch_size // walk_size
+        if self.walks_per_batch < 1:
             raise ValueError(
-                f"fractions needs {len(PAIR_KINDS)} entries "
-                f"({', '.join(PAIR_KINDS)}), got {list(fractions)}"
+                f"trainer.batch_size={batch_size} is smaller than a walk of "
+                f"{walk_size} snapshots"
             )
-        if abs(sum(fractions) - 1.0) > 1e-6:
-            raise ValueError(f"fractions must sum to 1, got {list(fractions)}")
-
-        self.walk_base, self.walk_step, self.label = _entry_metadata(dataset)
-        self.batch_size = batch_size
-        self.fractions = [float(f) for f in fractions]
         self.seed = seed
         self.epoch = 0
 
-        self.by_base: Dict[int, List[int]] = {}
-        self.by_label: Dict[int, List[int]] = {}
-        for index, (base, label) in enumerate(zip(self.walk_base, self.label)):
-            self.by_base.setdefault(base, []).append(index)
-            self.by_label.setdefault(label, []).append(index)
-
-        self.walk_bases = [
-            base for base, group in self.by_base.items() if len(group) > 1
-        ]
-        if not self.walk_bases:
-            raise ValueError(MISSING_WALKS_MESSAGE)
-        self.multi_base_labels = [
-            label
-            for label, group in self.by_label.items()
-            if len({self.walk_base[i] for i in group}) > 1
-        ]
-        self.labels = sorted(self.by_label)
-        self.pair_plan = self._pair_plan()
-
     def __len__(self) -> int:
-        return len(self.walk_base) // self.batch_size
-
-    def _pair_plan(self) -> List[str]:
-        """Kinds of the pairs of one batch, in the configured fractions.
-
-        The plan depends only on the batch size and the fractions, so it
-        is built once and reused for every batch.
-        """
-        n_pairs = self.batch_size // 2
-        counts = [int(round(f * n_pairs)) for f in self.fractions]
-        # Rounding can miss or overshoot the batch; the walk pairs are
-        # the objectives' primary signal, so they absorb the remainder.
-        counts[0] += n_pairs - sum(counts)
-        if counts[0] < 0:
-            raise ValueError(
-                f"fractions {self.fractions} leave no room for walk pairs "
-                f"in a batch of {self.batch_size}"
-            )
-        return [
-            kind
-            for kind, count in zip(PAIR_KINDS, counts)
-            for _ in range(count)
-        ]
-
-    def _draw(self, kind: str, rng: random.Random) -> Tuple[int, int]:
-        """Draw one index pair of the given kind."""
-        if kind == "walk":
-            group = self.by_base[rng.choice(self.walk_bases)]
-            return tuple(rng.sample(group, 2))
-        if kind == "class":
-            if not self.multi_base_labels:
-                return self._draw("walk", rng)
-            label = rng.choice(self.multi_base_labels)
-            group = self.by_label[label]
-            first = rng.choice(group)
-            others = [
-                index
-                for index in group
-                if self.walk_base[index] != self.walk_base[first]
-            ]
-            return first, rng.choice(others)
-        if len(self.labels) < 2:
-            return self._draw("walk", rng)
-        first_label, second_label = rng.sample(self.labels, 2)
-        return (
-            rng.choice(self.by_label[first_label]),
-            rng.choice(self.by_label[second_label]),
-        )
+        n = len(self.walks)
+        return (n + self.walks_per_batch - 1) // self.walks_per_batch
 
     def __iter__(self):
-        rng = random.Random(self.seed + self.epoch)
+        generator = torch.Generator().manual_seed(self.seed + self.epoch)
         self.epoch += 1
-        for _ in range(len(self)):
-            batch: List[int] = []
-            seen = set()
-            for kind in self.pair_plan:
-                for _ in range(MAX_REDRAWS):
-                    first, second = self._draw(kind, rng)
-                    if first not in seen and second not in seen:
-                        break
-                seen.update((first, second))
-                batch.extend((first, second))
-            yield batch
+        order = torch.randperm(len(self.walks), generator=generator).tolist()
+        for start in range(0, len(order), self.walks_per_batch):
+            yield [
+                index
+                for walk in order[start : start + self.walks_per_batch]
+                for index in self.walks[walk]
+            ]
