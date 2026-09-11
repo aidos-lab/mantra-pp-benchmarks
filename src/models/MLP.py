@@ -3,7 +3,8 @@ Multi-Layer Perceptron implementation.
 """
 
 import torch.nn as nn
-from torch_geometric.utils import scatter
+
+from src.models.readout import Readout
 
 
 class MLPLayer(nn.Module):
@@ -38,7 +39,7 @@ class MLPLayer(nn.Module):
         return h
 
 class MLP(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals, pool_method: str = "sum"):
         super().__init__()
 
         self.hidden_layers = nn.ModuleList()
@@ -50,17 +51,13 @@ class MLP(nn.Module):
         # Input layer
         self.hidden_layers.insert(0, MLPLayer(in_channels, hidden_channels, batch_norm=batch_norm, residuals=False, dropout=dropout))
 
-        # Readout layer
-        self.readout = MLPLayer(hidden_channels, out_channels, batch_norm=False, residuals=False, dropout=None)
-
-
+        self.readout = Readout(hidden_channels, out_channels, pool_method)
 
     def forward(self, batch, return_embedding: bool = False):
         """Return the logits, and with `return_embedding` the pooled
-        graph embedding alongside them."""
+        graph embedding that feeds the linear head alongside them."""
         x = batch.x
         for layer in self.hidden_layers:
             x = layer(x)
-        embedding = scatter(x, batch.batch, reduce='mean')
-        logits = scatter(self.readout(x), batch.batch, reduce='mean')
+        logits, embedding = self.readout(x, batch.batch)
         return (logits, embedding) if return_embedding else logits

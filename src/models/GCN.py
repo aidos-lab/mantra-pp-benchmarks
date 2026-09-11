@@ -5,7 +5,7 @@ Implementation for Graph Convolutional Neural Network.
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import GCNConv
-from src.models.utils import pool
+from src.models.readout import Readout
 
 
 
@@ -45,9 +45,8 @@ class GCNLayer(nn.Module):
 
 
 class GCN(nn.Module):
-    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,  n_layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5, pool_method: str = "mean"):
+    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,  n_layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5, pool_method: str = "sum"):
         super().__init__()
-        self.pool_method = pool_method
 
         self.hidden_layers = nn.ModuleList(
             [
@@ -57,21 +56,13 @@ class GCN(nn.Module):
         )
         self.hidden_layers.insert(0, GCNLayer(in_channels, hidden_channels, batch_norm, residual=False, dropout=dropout))
 
-        self.final_linear = nn.Linear(
-            hidden_channels, out_channels
-        )
+        self.readout = Readout(hidden_channels, out_channels, pool_method)
 
     def forward(self, batch, return_embedding: bool = False):
         """Return the logits, and with `return_embedding` the pooled
-        graph embedding that feeds the classifier alongside them."""
+        graph embedding that feeds the linear head alongside them."""
         x, edge_index, batch = batch.x, batch.edge_index, batch.batch
-        # 1. Obtain node embeddings
-        #x = self.conv_input(x, edge_index)
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
-
-        # 2. Readout layer
-        embedding = pool(x, batch, self.pool_method)  # [batch_size, hidden_channels]
-        # 3. Apply a final classifier
-        logits = self.final_linear(embedding)
+        logits, embedding = self.readout(x, batch)
         return (logits, embedding) if return_embedding else logits

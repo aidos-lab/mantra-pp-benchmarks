@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from pydantic import BaseModel
 from torch import nn
 
-from src.models.utils import pool
+from src.models.readout import Readout
 
 
 class ResidualGatedGCNConfig(BaseModel):
@@ -69,10 +69,9 @@ class ResidualGatedGCN(nn.Module):
         batch_norm: bool = True,
         residuals: bool = True,
         dropout: float = 0.5,
-        pool_method: str = "mean"
+        pool_method: str = "sum",
     ):
         super().__init__()
-        self.pool_method = pool_method
         self.input_proj = nn.Linear(
             in_channels, hidden_channels
         )
@@ -87,25 +86,21 @@ class ResidualGatedGCN(nn.Module):
                 for _ in range(n_layers)
             ]
         )
-        self.final_linear = nn.Linear(
-            hidden_channels, out_channels
-        )
+        self.readout = Readout(hidden_channels, out_channels, pool_method)
         self.dropout = dropout
 
     def forward(self, batch, return_embedding: bool = False):
         """Return the logits, and with `return_embedding` the pooled
-        graph embedding alongside them.
+        graph embedding that feeds the linear head alongside them.
 
-        The embedding is taken before the dropout, so that it does not
-        carry dropout noise into a pairwise objective. In training the
-        classifier therefore sees a dropped-out copy of the vector the
-        pair losses act on; in eval the two coincide.
+        Dropout acts on the node features before pooling, so the
+        embedding is the vector the head consumes in training and in
+        eval alike.
         """
         x, edge_index, batch_idx = batch.x, batch.edge_index, batch.batch
         x = self.input_proj(x)
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
-        embedding = pool(x, batch_idx, self.pool_method)
-        x = F.dropout(embedding, p=self.dropout, training=self.training)
-        logits = self.final_linear(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        logits, embedding = self.readout(x, batch_idx)
         return (logits, embedding) if return_embedding else logits

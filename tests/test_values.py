@@ -17,7 +17,8 @@ from src.models.MLP import MLP, MLPLayer
 from src.models.ResidualGatedGCN import ResidualGatedGCN, ResidualGatedGCNLayer
 from src.models.Graphormer import Graphormer, GraphormerLayer
 from src.metrics.loss import CrossEntropyObjective
-from src.models.utils import pool, SumReadout
+from src.models.readout import pool
+from src.models.utils import SumReadout
 from src.utils.graphormer_spd import GraphormerSPDPreTransform
 from src.utils.train_utils import train, validate, init_metrics
 
@@ -74,20 +75,20 @@ class TestPoolValues:
         """Graph 0 has nodes [1,1,1,1], graph 1 has nodes [2,2]. Mean should be [1] and [2]."""
         x = torch.tensor([[1.0], [1.0], [1.0], [1.0], [2.0], [2.0]])
         batch = torch.tensor([0, 0, 0, 0, 1, 1])
-        out = pool(x, batch)
+        out = pool(x, batch, reduce="mean")
         assert torch.allclose(out, torch.tensor([[1.0], [2.0]]))
 
     def test_single_graph_mean_pool(self):
         x = torch.tensor([[2.0, 4.0], [6.0, 8.0]])
         batch = torch.tensor([0, 0])
-        out = pool(x, batch)
+        out = pool(x, batch, reduce="mean")
         assert torch.allclose(out, torch.tensor([[4.0, 6.0]]))
 
     def test_heterogeneous_features_mean_pool(self):
         """Three graphs with 1, 2, 3 nodes."""
         x = torch.tensor([[10.0], [20.0], [30.0], [1.0], [2.0], [3.0]])
         batch = torch.tensor([0, 1, 1, 2, 2, 2])
-        out = pool(x, batch)
+        out = pool(x, batch, reduce="mean")
         expected = torch.tensor([[10.0], [25.0], [2.0]])
         assert torch.allclose(out, expected)
 
@@ -178,7 +179,7 @@ class TestGCNValues:
         assert not torch.allclose(out[0], out[1])
 
     def test_gcn_single_node_graph(self):
-        """Single node with no edges: GCN should still produce output via mean pool."""
+        """Single node with no edges: GCN should still produce output."""
         model = GCN(in_channels=2, hidden_channels=4, out_channels=2,
                      n_layers=1, residuals=False, batch_norm=True, dropout=0.0)
         model.eval()
@@ -210,7 +211,7 @@ class TestMLPValues:
         assert torch.allclose(out, expected)
 
     def test_mlp_scatter_pooling(self):
-        """MLP pools per-node outputs via scatter mean."""
+        """MLP sum-pools the node features before its linear head."""
         torch.manual_seed(7)
         model = MLP(in_channels=2, hidden_channels=8, out_channels=3,
                      n_layers=1, dropout=0.0, batch_norm=False, residuals=False)
@@ -222,16 +223,15 @@ class TestMLPValues:
         g2 = Data(x=torch.tensor([[0.0, 5.0]]),
                   edge_index=torch.empty(2, 0, dtype=torch.long))
         batch = _make_batch(g1, g2)
-        out = model(batch)
+        out, embedding = model(batch, return_embedding=True)
 
         assert out.shape == (2, 3)
-        # Graph 1 has 3 identical nodes => mean pool = single node output
-        # Verify by running a single-node graph with same features
+        # Graph 1 has 3 identical nodes => its sum-pooled embedding is
+        # three times that of a single-node graph with the same features.
         g1_single = Data(x=torch.tensor([[1.0, 0.0]]),
                          edge_index=torch.empty(2, 0, dtype=torch.long))
-        batch_single = _make_batch(g1_single)
-        out_single = model(batch_single)
-        assert torch.allclose(out[0], out_single[0], atol=1e-5)
+        _, embedding_single = model(_make_batch(g1_single), return_embedding=True)
+        assert torch.allclose(embedding[0], 3 * embedding_single[0], atol=1e-5)
 
     def test_mlp_residual_disabled_on_dim_mismatch(self):
         """Residuals are disabled when in != out."""

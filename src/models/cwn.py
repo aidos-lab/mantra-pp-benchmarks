@@ -6,10 +6,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import List
 from torch_sparse import SparseTensor
-from torch_scatter import scatter_add
-from torch_geometric.nn import MLP
 
 from src.models.conv_down import Conv, PropagateSignalDown
+from src.models.readout import RankReadout
 
 
 class CWNLayer(nn.Module):
@@ -362,8 +361,12 @@ class CWN(torch.nn.Module):
         Dimension of hidden features.
     n_layers : int
         Number of CWN layers.
-    **kwargs : optional
-        Additional arguments CWNLayer.
+    out_channels : int
+        Number of outputs (classes).
+    pool_method : str
+        Pooling over the cells of each rank, see :mod:`src.models.readout`.
+    rank_readout : str
+        ``concat`` or ``alternating`` combination of the pooled ranks.
 
     References
     ----------
@@ -378,7 +381,9 @@ class CWN(torch.nn.Module):
         in_channels: List[int],
         hidden_channels: List[int],
         n_layers,
-        **kwargs,
+        out_channels: int,
+        pool_method: str = "sum",
+        rank_readout: str = "concat",
     ):
         super().__init__()
 
@@ -393,8 +398,15 @@ class CWN(torch.nn.Module):
             )
             for _ in range(n_layers)
         )
-        self.readout = PropagateSignalDown(max_dimension=3, hidden_channel=hidden_channels[0])
-        self.graph_readout = MLP(in_channels=hidden_channels[0], hidden_channels=hidden_channels[0], out_channels=kwargs['out_channels'], num_layers=2)
+        self.propagate_down = PropagateSignalDown(max_dimension=3, hidden_channel=hidden_channels[0])
+        # PropagateSignalDown leaves ranks 0 and 1 at hidden_channels[0]
+        # and rank 2 untouched.
+        self.readout = RankReadout(
+            [hidden_channels[0], hidden_channels[0], hidden_channels[2]],
+            out_channels,
+            pool_method,
+            rank_readout,
+        )
 
     def _reconstruct(self, batch, name):
         idx = batch[f"{name}_idx"]
@@ -418,7 +430,7 @@ class CWN(torch.nn.Module):
         batch,
         return_embedding: bool = False
     ):
-        """Forward computation through projection, convolutions, linear layers and average pooling.
+        """Forward computation through projection, convolutions, signal propagation, pooling and the linear head.
 
         Parameters
         ----------
@@ -437,12 +449,9 @@ class CWN(torch.nn.Module):
 
         Returns
         -------
-        x_0 : torch.Tensor, shape = (n_nodes, in_channels_0)
-            Final hidden states of the nodes (0-cells).
-        x_1 : torch.Tensor, shape = (n_edges, in_channels_1)
-            Final hidden states the edges (1-cells).
-        x_2 : torch.Tensor, shape = (n_edges, in_channels_2)
-            Final hidden states of the faces (2-cells).
+        logits : torch.Tensor, shape = (n_complexes, out_channels)
+            Class logits; with ``return_embedding`` also the pooled
+            embedding the linear head consumes.
         """
 
         x_0 = batch['x_0']
@@ -478,12 +487,12 @@ class CWN(torch.nn.Module):
             'incidence_1': incidence_1,
             'incidence_2': incidence_2
         }
-        out = self.readout(model_out, incidence_map)
-        # The head is applied per 0-cell and summed, so the complex-level
-        # vector it effectively consumes is the sum over 0-cells.
-        embedding = scatter_add(out['x_0'], batch['batch_0'], dim=-2)
-        out = self.graph_readout(out['x_0'])
-
-        out = scatter_add(out, batch['batch_0'], dim=-2)
+        # Propagate the edge signal down to the vertices, then pool every
+        # rank and apply the shared linear head.
+        model_out = self.propagate_down(model_out, incidence_map)
+        out, embedding = self.readout(
+            [model_out['x_0'], model_out['x_1'], model_out['x_2']],
+            [batch['batch_0'], batch['batch_1'], batch['batch_2']],
+        )
 
         return (out, embedding) if return_embedding else out 

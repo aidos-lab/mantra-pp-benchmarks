@@ -7,7 +7,7 @@ import torch
 from torch_sparse import SparseTensor
 
 from torch_geometric.utils import coalesce, scatter, to_dense_adj
-from src.models.utils import SumReadout
+from src.models.readout import RankReadout
 
 
 class SCCNNLayer(nn.Module):
@@ -509,7 +509,7 @@ class SCCNN(nn.Module):
          Number of layers (default: 2).
     """
 
-    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2):
+    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2, pool_method: str = "sum", rank_readout: str = "concat"):
         super().__init__()
         self.sc_order = sc_order
 
@@ -522,14 +522,8 @@ class SCCNN(nn.Module):
             n_layers,
         )
 
-        self.readout_0 = SumReadout(
-            hidden_channels[0], out_channels
-        )
-        self.readout_1 = SumReadout(
-            hidden_channels[1], out_channels
-        )
-        self.readout_2 = SumReadout(
-            hidden_channels[2], out_channels
+        self.readout = RankReadout(
+            hidden_channels[:3], out_channels, pool_method, rank_readout
         )
 
     def _reconstruct(self, batch, name):
@@ -550,12 +544,7 @@ class SCCNN(nn.Module):
 
     def forward(self, batch, return_embedding: bool = False):
         """Return the logits, and with `return_embedding` the pooled
-        complex embedding alongside them.
-
-        Each rank's readout is a linear map followed by a sum over the
-        complex, so the vector the head consumes is the concatenation
-        of the sum-pooled backbone features per rank.
-        """
+        complex embedding that feeds the linear head alongside them."""
         x = {
             int(x_key.split('_')[-1]): batch[x_key]
             for x_key in batch.keys() if isinstance(x_key, str) and x_key.split('_')[0] == 'x' and x_key.split('_')[1].isdigit()
@@ -604,20 +593,7 @@ class SCCNN(nn.Module):
             x_all, laplacian_all, incidence_all
         )
 
-        #TODO: Figure out what to do about this readout
-        out_0 = self.readout_0(x_0, x_bel_0)
-        out_1 = self.readout_1(x_1, x_bel_1)
-        out_2 = self.readout_2(x_2, x_bel_2)
-
-        embedding = torch.cat(
-            [
-                scatter(x_r, x_bel_r, dim=-2, reduce='sum')
-                for x_r, x_bel_r in (
-                    (x_0, x_bel_0), (x_1, x_bel_1), (x_2, x_bel_2)
-                )
-            ],
-            dim=-1,
+        out, embedding = self.readout(
+            [x_0, x_1, x_2], [x_bel_0, x_bel_1, x_bel_2]
         )
-
-        out = out_0 + out_1 + out_2
         return (out, embedding) if return_embedding else out

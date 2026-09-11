@@ -1,11 +1,12 @@
-from torch import nn 
+from torch import nn
 from torch_geometric.utils import scatter
 
-def pool(x, batch, reduce="mean"):
-    assert reduce in ['mean', 'sum', 'max'], " Unknwon pooling methods"
-    return scatter(x, batch, dim=-2, reduce=reduce)
+from src.models.readout import pool  # noqa: F401  (re-export)
+
 
 class SumReadout(nn.Module):
+    """Per-cell linear map followed by a sum; used by SAN and SAN-TMX."""
+
     def __init__(self, in_features, out_features):
         super(SumReadout, self).__init__()
         self.in_features = in_features

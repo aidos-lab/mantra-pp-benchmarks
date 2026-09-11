@@ -182,9 +182,19 @@ Key Hydra groups:
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
 | `task`                                        | `name`, `orientability`, `betti_numbers`                                                            |
-| `loss`                                        | `cross_entropy`, `pachner_consistency`, `pachner_pairwise`, `pachner_infonce`                       |
+| `loss`                                        | `cross_entropy`, `pachner_consistency`                                                              |
 | `trainer`                                     | `default`                                                                                           |
 | `logger`                                      | `wandb`                                                                                             |
+
+Readout (`model.pool_method`, `model.rank_readout`): every model ends in
+the same readout so that architecture and readout can be varied
+independently. The node (graph models) or per-rank simplex features
+(CWN, SCCNN) are pooled over the complex with `model.pool_method`
+(`sum`, default; `mean`; `max`) and fed to one linear head. The
+simplicial models combine their pooled ranks with `model.rank_readout`:
+`concat` (default) keeps them side by side, `alternating` forms
+Σ_r (−1)^r Σ_{σ∈K_r} h_σ, which with constant features per rank is the
+Euler characteristic times that constant.
 
 Outputs:
 
@@ -283,7 +293,7 @@ apart:
     ... \
     dataset.walk_length=2 \
     dataset.moves_per_step=3 \
-    trainer.sampler=pachner_pairs \
+    trainer.sampler=walks \
     loss=pachner_consistency
 ```
 
@@ -297,36 +307,29 @@ That is an upper bound on their Pachner distance, not the distance
 itself: a random walk can undo its own moves. Treat it as a monotone
 proxy.
 
-An epoch under `trainer.sampler=pachner_pairs` is not a pass over the
-dataset: pairs are drawn with replacement and the epoch is merely given
-the same length as a shuffled one, so some entries are unseen in a
-given epoch and others repeat. Early stopping and the learning-rate
-schedule count these epochs.
-
-`trainer.sampler=pachner_pairs` fills each training batch with index
-pairs instead of a random sample — same walk, same class from a
-different walk, and different class — in the proportions
-`trainer.pair_fractions` (default `[0.5, 0.25, 0.25]`). Without it a
+`trainer.sampler=walks` shuffles the *walks* rather than the entries
+and puts all snapshots of a drawn walk into the same batch
+(`batch_size // (walk_length + 1)` walks per batch). Every same-walk
+pair of the training set is then seen exactly once per epoch, and an
+epoch is still a pass over the data. Without it a randomly shuffled
 batch almost never contains two snapshots of one walk, and the
-objectives below have nothing to work with. The validation batches are
-sequential, but the snapshots of a walk are stored consecutively, so
-they contain same-walk pairs by construction.
+consistency objective has nothing to work with. The validation batches
+are sequential, but the snapshots of a walk are stored consecutively,
+so they contain same-walk pairs by construction.
 
 | `loss=`               | objective |
 | --------------------- | --------- |
 | `cross_entropy`       | the task loss alone (baseline) |
 | `pachner_consistency` | task loss + `weight` · mean over same-walk pairs of ‖g(T_a) − g(T_b)‖² (`target=embedding`) or of the symmetric KL of the softmax outputs (`target=logits`) |
-| `pachner_pairwise`    | (‖g(T_a) − g(T_b)‖ − `alpha`·d_ab)² on same-walk pairs, `relu(‖·‖ − radius)²` on same-class pairs, `relu(margin − ‖·‖)²` across classes, plus `ce_weight` · task loss |
-| `pachner_infonce`     | supervised contrastive loss with same-class positives, temperature `temperature`, plus `ce_weight` · task loss |
 
 Every objective returns its components, which are logged as
 `train/loss_<name>` and `val/loss_<name>`. Early stopping and the LR
 schedule key on `val/loss`, i.e. on the objective that is being trained.
 
-Because the objectives shape the embedding rather than the classifier,
+Because the objective shapes the embedding rather than the classifier,
 each run also reports (unless `trainer.eval_embeddings=False`), for the
 test and OOD splits — the embedding being what `forward(batch,
-return_embedding=True)` returns, i.e. the vector the classifier head
+return_embedding=True)` returns, i.e. the pooled vector the linear head
 consumes:
 
 - `<split>/emb_spearman` — rank correlation of embedding distance with

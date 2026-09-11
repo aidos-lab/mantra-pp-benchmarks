@@ -1,8 +1,9 @@
-"""Every model must expose an embedding without changing its logits.
+"""Every model must expose the embedding its linear head consumes.
 
-The Pachner objectives read the embedding that feeds the classifier
-head, so ``forward(batch, return_embedding=True)`` has to return
-exactly the logits the plain call returns.
+The Pachner objectives act on that embedding, so
+``forward(batch, return_embedding=True)`` has to return exactly the
+logits the plain call returns, and the logits must be the head applied
+to the embedding.
 """
 
 import pytest
@@ -105,9 +106,8 @@ def test_graph_models_keep_their_logits(model):
 
     assert torch.equal(logits, model(batch))
     assert logits.shape == (BATCH_SIZE, 5)
-    assert embedding.shape[0] == BATCH_SIZE
-    assert embedding.shape[1] > 0
-    assert torch.isfinite(embedding).all()
+    assert embedding.shape == (BATCH_SIZE, 8)
+    assert torch.allclose(logits, model.readout.head(embedding))
 
 
 def test_cwn_keeps_its_logits():
@@ -125,7 +125,9 @@ def test_cwn_keeps_its_logits():
 
     assert torch.equal(logits, model(batch))
     assert logits.shape == (BATCH_SIZE, 5)
-    assert embedding.shape == (BATCH_SIZE, 4)
+    # One block of pooled features per rank.
+    assert embedding.shape == (BATCH_SIZE, 12)
+    assert torch.allclose(logits, model.readout.head(embedding))
 
 
 def test_sccnn_keeps_its_logits():
@@ -145,8 +147,46 @@ def test_sccnn_keeps_its_logits():
 
     assert torch.equal(logits, model(batch))
     assert logits.shape == (BATCH_SIZE, 5)
-    # One block of sum-pooled features per rank.
+    # One block of pooled features per rank.
     assert embedding.shape == (BATCH_SIZE, 12)
+    assert torch.allclose(logits, model.readout.head(embedding))
+
+
+@pytest.mark.parametrize("pool_method", ["sum", "mean", "max"])
+def test_graph_models_honour_pool_method(pool_method):
+    torch.manual_seed(0)
+    model = GCN(
+        in_channels=3, hidden_channels=8, out_channels=5, n_layers=1,
+        residuals=True, batch_norm=False, dropout=0.0, pool_method=pool_method,
+    )
+    model.eval()
+    batch = graph_batch()
+    _, embedding = model(batch, return_embedding=True)
+
+    node_features = batch.x
+    for layer in model.hidden_layers:
+        node_features = layer(node_features, batch.edge_index)
+    first = node_features[batch.batch == 0]
+    expected = {"sum": first.sum(0), "mean": first.mean(0), "max": first.max(0).values}
+    assert torch.allclose(embedding[0], expected[pool_method], atol=1e-6)
+
+
+@pytest.mark.parametrize("cls", [CWN, SCCNN])
+def test_simplicial_models_alternating_readout(cls):
+    torch.manual_seed(0)
+    kwargs = dict(in_channels=[3, 3, 3], hidden_channels=[4, 4, 4], n_layers=1, out_channels=5)
+    if cls is SCCNN:
+        kwargs.update(conv_order=1, sc_order=2)
+    model = cls(rank_readout="alternating", **kwargs)
+    model.eval()
+    batch = simplicial_batch(with_laplacians=cls is SCCNN)
+
+    logits, embedding = model(batch, return_embedding=True)
+
+    assert torch.equal(logits, model(batch))
+    # The alternating sum keeps the width of one rank.
+    assert embedding.shape == (BATCH_SIZE, 4)
+    assert torch.allclose(logits, model.readout.head(embedding))
 
 
 def test_embeddings_separate_different_inputs():
