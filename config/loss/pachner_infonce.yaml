@@ -1,6 +1,0 @@
-# Supervised contrastive objective; positives are entries of the same
-# homeomorphism type, which includes the snapshots of one walk.
-_target_: src.metrics.loss.PachnerInfoNCE
-
-temperature: 0.1
-ce_weight: 0.0
