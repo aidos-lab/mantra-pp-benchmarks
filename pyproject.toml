@@ -96,3 +96,7 @@ torch-scatter = [
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Darwin'"},
     { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"},
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
