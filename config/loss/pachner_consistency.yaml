@@ -4,5 +4,7 @@
 _target_: src.metrics.loss.PachnerConsistency
 
 weight: 1.0
-# "embedding" penalises ||g(T_a) - g(T_b)||^2, "logits" the symmetric KL.
+# "embedding" penalises ||g(T_a) - g(T_b)||^2, "relative" the scale-free
+# ||g_a - g_b||^2 / (||g_a||^2 + ||g_b||^2), "logits" the symmetric KL.
 target: embedding
+eps: 1.0e-8

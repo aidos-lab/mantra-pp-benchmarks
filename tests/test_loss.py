@@ -96,6 +96,30 @@ class TestPachnerConsistency:
         assert same["consistency"] > 10.0
         assert differing["consistency"] == pytest.approx(0.0)
 
+    def test_relative_target_is_scale_free(self):
+        batch = make_batch([0, 0], [0, 1], [0, 0])
+        embedding = torch.tensor([[3.0, 0.0], [0.0, 4.0]])
+        objective = PachnerConsistency(base_loss(), target="relative")
+
+        _, small = objective(torch.zeros(2, 2), embedding, batch)
+        _, large = objective(torch.zeros(2, 2), 1000 * embedding, batch)
+
+        # ||a - b||^2 / (||a||^2 + ||b||^2) = 25 / 25.
+        assert small["consistency"] == pytest.approx(1.0)
+        assert large["consistency"] == pytest.approx(1.0)
+
+    def test_relative_target_is_not_minimised_by_shrinking(self):
+        batch = make_batch([0, 0], [0, 1], [0, 0])
+        embedding = torch.tensor([[1.0, 0.0], [0.0, 1.0]], requires_grad=True)
+        objective = PachnerConsistency(base_loss(), target="relative")
+
+        loss, _ = objective(torch.zeros(2, 2), embedding, batch)
+        loss.backward()
+
+        # Scaling the embedding leaves the loss unchanged, so the gradient
+        # has no radial component.
+        assert (embedding.grad * embedding).sum().item() == pytest.approx(0.0, abs=1e-6)
+
     def test_unknown_target_raises(self):
         with pytest.raises(ValueError, match="target"):
             PachnerConsistency(base_loss(), target="something")

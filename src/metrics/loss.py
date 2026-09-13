@@ -97,8 +97,15 @@ class PachnerConsistency(Objective):
         Weight of the consistency term.
     target : str
         ``"embedding"`` penalises the squared L2 distance between the
-        embeddings of two snapshots of the same walk; ``"logits"`` the
-        symmetric KL divergence between their softmax outputs.
+        embeddings of two snapshots of the same walk;
+        ``"relative"`` the scale-free ratio
+        ``||g_a - g_b||^2 / (||g_a||^2 + ||g_b||^2 + eps)``, which lies
+        in [0, 2] and cannot be minimised by shrinking the embedding,
+        so it does not collapse a sum readout the way the absolute
+        distance can; ``"logits"`` the symmetric KL divergence between
+        the softmax outputs.
+    eps : float
+        Stabiliser of the ``"relative"`` denominator.
     """
 
     def __init__(
@@ -106,21 +113,27 @@ class PachnerConsistency(Objective):
         base_loss: nn.Module,
         weight: float = 1.0,
         target: str = "embedding",
+        eps: float = 1e-8,
     ):
         super().__init__(base_loss)
-        if target not in ("embedding", "logits"):
+        if target not in ("embedding", "relative", "logits"):
             raise ValueError(
-                f"target must be 'embedding' or 'logits', got '{target}'"
+                "target must be 'embedding', 'relative' or 'logits', "
+                f"got '{target}'"
             )
         self.weight = weight
         self.target = target
+        self.eps = eps
 
     def forward(self, logits, embedding, batch):
         ce = self.base_loss(logits, batch.y)
         mask = same_walk_mask(batch, type(self).__name__)
-        if self.target == "embedding":
+        if self.target in ("embedding", "relative"):
             diff = embedding[:, None, :] - embedding[None, :, :]
             values = (diff * diff).sum(-1)
+            if self.target == "relative":
+                norms = (embedding * embedding).sum(-1)
+                values = values / (norms[:, None] + norms[None, :] + self.eps)
         else:
             log_p = F.log_softmax(logits, dim=-1)
             p = log_p.exp()
