@@ -14,3 +14,10 @@ eval_embeddings: True
 # access (they are deterministic and dominate the epoch time). Leave off
 # for transforms that should be resampled each epoch (random features).
 materialize: False
+# Randomise the positional node IDs (moment-curve features) per training
+# batch: permute them among the nodes/vertices of each complex and
+# recompute the barycentric higher-rank features. id_columns = number of
+# leading feature columns that are IDs (null: all; 2 on the Levi graph,
+# where the one-hot node type follows the 2-dim moment curve).
+permute_ids: False
+id_columns: null

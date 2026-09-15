@@ -4,6 +4,7 @@ import hydra
 
 from collections import defaultdict
 
+from src.utils.augment import permute_ids
 from src.utils.logging import log_metrics
 from src.schema import RootConfig
 
@@ -37,6 +38,10 @@ def train(model, optimizer, train_dataset, objective, accuracies, cfg):
     # Go over each batch
     for batch in train_dataset:
         batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
+        if getattr(cfg.trainer, "permute_ids", False):
+            # Fresh random vertex labelling for every batch; evaluation
+            # keeps the canonical one.
+            batch = permute_ids(batch, getattr(cfg.trainer, "id_columns", None))
         optimizer.zero_grad(set_to_none=True)
 
         y_hat, embedding = model(batch, return_embedding=True)

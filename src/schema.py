@@ -16,6 +16,8 @@ class TrainerMeta:
     sampler: str = "random"
     eval_embeddings: bool = True
     materialize: bool = False
+    permute_ids: bool = False
+    id_columns: int | None = None
 
 @dataclass
 class MetricMeta:
