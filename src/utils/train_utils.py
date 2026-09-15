@@ -38,10 +38,10 @@ def train(model, optimizer, train_dataset, objective, accuracies, cfg):
     # Go over each batch
     for batch in train_dataset:
         batch = batch.to(cfg.trainer.device, non_blocking=(cfg.trainer.device != 'cpu'))
-        if getattr(cfg.trainer, "permute_ids", False):
+        if cfg.trainer.permute_ids:
             # Fresh random vertex labelling for every batch; evaluation
             # keeps the canonical one.
-            batch = permute_ids(batch, getattr(cfg.trainer, "id_columns", None))
+            batch = permute_ids(batch, cfg.trainer.id_columns)
         optimizer.zero_grad(set_to_none=True)
 
         y_hat, embedding = model(batch, return_embedding=True)

@@ -1,8 +1,6 @@
 from torch import nn
 from torch_geometric.utils import scatter
 
-from src.models.readout import pool  # noqa: F401  (re-export)
-
 
 class SumReadout(nn.Module):
     """Per-cell linear map followed by a sum; used by SAN and SAN-TMX."""

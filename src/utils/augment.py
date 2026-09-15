@@ -1,20 +1,13 @@
 """Per-batch randomisation of the positional node identities.
 
-The moment-curve features are a positional ID: point ``i`` of the curve
-is attached to the ``i``-th vertex (Levi graph, 1-skeleton) or to the
-``i``-th lexicographically sorted top simplex (dual graph), and the
-higher-rank features of a complex are the barycentres of the vertex
-IDs. Nothing about that order is topological, so a model may fit the
-vertex labelling of the release. Re-drawing the assignment for every
-batch — a random vertex relabelling per iteration — removes that
-shortcut.
-
-Graphs: the ID columns of ``x`` are permuted among the nodes of each
-graph. Complexes: the ID columns of ``x_0`` are permuted among the
-vertices of each complex and the barycentres are recomputed with the
-unsigned boundary matrices, ``x_1 = |B_1|^T x_0 / 2`` and
-``x_2 = |B_2|^T x_1 / 3`` (the mean of the edge barycentres of a
-triangle is its vertex barycentre).
+The moment-curve features are a positional ID tied to the vertex order
+of the release, which is not topological, so a model may fit that
+labelling. Re-drawing the assignment for every batch removes the
+shortcut. On graphs the ID columns of ``x`` are permuted among the
+nodes of each graph; on complexes the ID columns of ``x_0`` are
+permuted among the vertices of each complex and the barycentric
+higher-rank features are recomputed with the unsigned boundary
+matrices, ``x_1 = |B_1|^T x_0 / 2`` and ``x_2 = |B_2|^T x_1 / 3``.
 """
 
 from typing import Optional
@@ -25,21 +18,13 @@ from torch_geometric.utils import scatter
 
 
 def _within_group_permutation(group: Tensor, generator=None) -> Tensor:
-    """Random permutation that keeps every row inside its group.
+    """Random permutation that keeps every row inside its (sorted) group.
 
-    ``group`` must be sorted (rows of one group contiguous), as PyG
-    batches are. Sorting ``group + U(0, 1)`` orders rows by group with a
-    random order inside each group, so position ``i`` receives a random
-    member of its own group.
+    Sorting ``group + U(0, 1)`` orders rows by group with a random order
+    inside each group.
     """
     noise = torch.rand(group.shape[0], generator=generator, device=group.device)
     return torch.argsort(group.double() + noise.double())
-
-
-def _permute_columns(x: Tensor, perm: Tensor, n_columns: Optional[int]) -> Tensor:
-    if n_columns is None:
-        return x[perm]
-    return torch.cat([x[perm, :n_columns], x[:, n_columns:]], dim=-1)
 
 
 def _propagate(x_lower: Tensor, idx: Tensor, val: Tensor, n_upper: int, k: int) -> Tensor:
@@ -61,8 +46,8 @@ def permute_ids(batch, n_columns: Optional[int] = None, generator=None):
         ``incidence_2_idx/_val``).
     n_columns : int or None
         Number of leading feature columns that are IDs; ``None`` means
-        all columns. On the Levi graph the moment curve occupies the
-        first ``d`` columns and the one-hot node type follows.
+        all columns. Graphs only: on the Levi graph the one-hot node
+        type follows the moment curve.
     generator : torch.Generator, optional
         Source of the permutations.
     """
@@ -85,5 +70,8 @@ def permute_ids(batch, n_columns: Optional[int] = None, generator=None):
             )
         return batch
     perm = _within_group_permutation(batch.batch, generator)
-    batch.x = _permute_columns(batch.x, perm, n_columns)
+    if n_columns is None:
+        batch.x = batch.x[perm]
+    else:
+        batch.x = torch.cat([batch.x[perm, :n_columns], batch.x[:, n_columns:]], dim=-1)
     return batch

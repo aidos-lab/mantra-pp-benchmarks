@@ -62,7 +62,6 @@ class DatasetMeta:
     ood_evaluations: Dict[str, Any] = field(default_factory=dict)
     walk_length: int = 0
     moves_per_step: int = 1
-    walk_seed: int | None = None
     move_weights: List[float] | None = None
 
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
@@ -78,8 +77,11 @@ class ModelMeta:
     residuals: bool = True
     batch_norm: bool = True
     dropout: float = 0.2
+    # Readout shared by all models (src/models/readout.py): pool the
+    # node or simplex features per complex ("sum" or "mean"), then one
+    # linear head. Simplicial models combine the pooled ranks with
+    # rank_readout, "concat" or "alternating".
     pool_method: str = "sum"
-    # Simplicial models only: "concat" or "alternating".
     rank_readout: str = "concat"
 
 @dataclass

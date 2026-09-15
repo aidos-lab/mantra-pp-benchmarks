@@ -81,21 +81,6 @@ class TestPachnerConsistency:
 
         assert parts["consistency"] == pytest.approx(25.0)
 
-    def test_logit_target_uses_symmetric_kl(self):
-        batch = make_batch([0, 0], [0, 1], [0, 0])
-        logits = torch.tensor([[0.0, 10.0], [10.0, 0.0]])
-        embedding = torch.zeros(2, 2)
-
-        _, same = PachnerConsistency(base_loss(), target="logits")(
-            logits, torch.ones(2, 2), batch
-        )
-        _, differing = PachnerConsistency(base_loss(), target="logits")(
-            logits.flip(0) * 0, embedding, batch
-        )
-
-        assert same["consistency"] > 10.0
-        assert differing["consistency"] == pytest.approx(0.0)
-
     def test_relative_target_is_scale_free(self):
         batch = make_batch([0, 0], [0, 1], [0, 0])
         embedding = torch.tensor([[3.0, 0.0], [0.0, 4.0]])

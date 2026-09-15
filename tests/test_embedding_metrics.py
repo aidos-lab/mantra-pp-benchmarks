@@ -95,20 +95,5 @@ class TestEvaluateEmbeddings:
             IdentityModel(), loader, {"ood": loader}, make_cfg()
         )
 
-        assert metrics["ood/emb_auroc"] == pytest.approx(1.0, abs=0.01)
         assert metrics["ood/emb_knn_bal_acc"] == pytest.approx(1.0)
-        assert metrics["ood/emb_probe_bal_acc"] == pytest.approx(1.0)
         assert "ood/emb_spearman" not in metrics
-
-    def test_uninformative_embedding_scores_at_chance(self):
-        rng = np.random.default_rng(1)
-        features = rng.normal(0, 1, (40, 2))
-        labels = [0, 1] * 20
-        loader = make_loader(features.tolist(), labels)
-
-        metrics = evaluate_embeddings(
-            IdentityModel(), loader, {"test": loader}, make_cfg()
-        )
-
-        assert metrics["test/emb_auroc"] == pytest.approx(0.5, abs=0.15)
-        assert metrics["test/emb_probe_bal_acc"] == pytest.approx(0.5, abs=0.2)

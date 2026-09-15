@@ -1,27 +1,11 @@
-"""The one readout every model shares.
+"""The readout every model shares: pool per complex, then one linear head.
 
-A model turns its input into features on nodes (graph models) or on the
-simplices of every rank (simplicial models). Everything after that is
-the same for all of them, so that architecture and readout can be
-varied independently:
-
-1. pool the features of each rank over the complex with ``pool_method``
-   (``sum``, ``mean`` or ``max``),
-2. for several ranks, combine the pooled vectors with ``rank_readout``:
-   ``concat`` keeps them side by side, ``alternating`` forms
-
-   .. math::
-
-       e = \\sum_{r} (-1)^r \\sum_{\\sigma \\in K_r} h_\\sigma ,
-
-   which with constant features per rank equals the Euler
-   characteristic times that constant (and, unlike ``concat``, has the
-   same width whatever the number of ranks),
-3. apply one linear layer to the resulting embedding.
-
-``forward`` returns ``(logits, embedding)`` where ``embedding`` is
-exactly the vector the linear head consumes; the Pachner objectives act
-on it.
+Graph models pool their node features; simplicial models pool every
+rank and combine the ranks with ``rank_readout``, either ``concat`` or
+``alternating``, i.e. ``sum_r (-1)^r pooled_r``, which for constant
+features equals the Euler characteristic times that constant.
+``forward`` returns ``(logits, embedding)``, ``embedding`` being the
+vector the head consumes; the Pachner objectives act on it.
 """
 
 from typing import List, Sequence
@@ -30,7 +14,7 @@ import torch
 from torch import Tensor, nn
 from torch_geometric.utils import scatter
 
-POOL_METHODS = ("sum", "mean", "max")
+POOL_METHODS = ("sum", "mean")
 RANK_READOUTS = ("concat", "alternating")
 
 
@@ -44,24 +28,10 @@ def pool(x: Tensor, batch: Tensor, reduce: str = "sum", dim_size=None) -> Tensor
 
 
 class Readout(nn.Module):
-    """Pool one rank of features and apply the linear head.
-
-    Parameters
-    ----------
-    in_features : int
-        Width of the per-node features.
-    out_features : int
-        Number of outputs (classes).
-    pool_method : str
-        One of ``sum``, ``mean``, ``max``.
-    """
+    """Pool one rank of features and apply the linear head."""
 
     def __init__(self, in_features: int, out_features: int, pool_method: str = "sum"):
         super().__init__()
-        if pool_method not in POOL_METHODS:
-            raise ValueError(
-                f"pool_method must be one of {POOL_METHODS}, got '{pool_method}'"
-            )
         self.pool_method = pool_method
         self.head = nn.Linear(in_features, out_features)
 
@@ -80,7 +50,7 @@ class RankReadout(nn.Module):
     out_features : int
         Number of outputs (classes).
     pool_method : str
-        One of ``sum``, ``mean``, ``max``, applied per rank.
+        Pooling applied per rank, see :func:`pool`.
     rank_readout : str
         ``concat`` or ``alternating``; the latter needs every rank to
         have the same width.
@@ -94,10 +64,6 @@ class RankReadout(nn.Module):
         rank_readout: str = "concat",
     ):
         super().__init__()
-        if pool_method not in POOL_METHODS:
-            raise ValueError(
-                f"pool_method must be one of {POOL_METHODS}, got '{pool_method}'"
-            )
         if rank_readout not in RANK_READOUTS:
             raise ValueError(
                 f"rank_readout must be one of {RANK_READOUTS}, got '{rank_readout}'"
@@ -124,7 +90,5 @@ class RankReadout(nn.Module):
         if self.rank_readout == "concat":
             embedding = torch.cat(pooled, dim=-1)
         else:
-            embedding = sum(
-                (-1) ** r * p for r, p in enumerate(pooled)
-            )
+            embedding = sum((-1) ** r * p for r, p in enumerate(pooled))
         return self.head(embedding), embedding

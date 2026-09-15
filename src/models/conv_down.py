@@ -23,9 +23,6 @@ class Conv(nn.Module):
         )
 
     def forward(self, x_source, neighborhood: SparseTensor):
-        # No coalesce here: SparseTensor.coalesce() returns a new tensor
-        # (its result used to be discarded), and spmm sums duplicate
-        # entries anyway.
         row, col, val = neighborhood.coo()
         m, n = neighborhood.sparse_sizes()
         index = torch.stack([row, col], dim=0)

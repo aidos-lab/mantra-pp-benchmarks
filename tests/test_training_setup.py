@@ -6,7 +6,7 @@ import torch
 from omegaconf import OmegaConf
 from torch_geometric.data import Data
 
-from main import create_loaders, create_model, training_loop
+from main import create_loaders, create_model, materialize, training_loop
 
 
 def test_create_loaders_disables_persistence_without_workers():
@@ -110,6 +110,7 @@ def test_training_loop_saves_typed_label_mapping(tmp_path):
                 "device": "cpu",
                 "learning_rate": 0.01,
                 "weight_decay": 0.0,
+                "permute_ids": False,
             },
             "task": {"loss": {"_target_": "torch.nn.CrossEntropyLoss"}},
             "loss": {"_target_": "src.metrics.loss.CrossEntropyObjective"},
@@ -129,36 +130,12 @@ def test_training_loop_saves_typed_label_mapping(tmp_path):
     assert records == [{"label": 4, "index": 0}, {"label": 12, "index": 1}]
 
 
-def test_materialize_applies_transforms_once():
-    from src.utils.materialize import MaterializedDataset
-
-    calls = []
-
-    class Counting:
-        def __len__(self):
-            return 3
-
-        def __getitem__(self, index):
-            calls.append(index)
-            return Data(x=torch.full((1, 1), float(index)), y=torch.tensor(index))
-
-    materialized = MaterializedDataset(Counting())
-    for _ in range(3):
-        for i in range(3):
-            assert materialized[i].y.item() == i
-
-    assert len(materialized) == 3
-    assert calls == [0, 1, 2]
-
-
 def test_materialize_drops_the_raw_payload():
-    from src.utils.materialize import MaterializedDataset
-
     dataset = [
         Data(x=torch.ones(1, 1), y=torch.tensor(0), triangulation=[[1, 2, 3]], n_vertices=3)
     ]
 
-    entry = MaterializedDataset(dataset)[0]
+    entry = materialize(dataset, "x")[0]
 
     assert "triangulation" not in entry
     assert int(entry.n_vertices) == 3
@@ -184,6 +161,6 @@ def test_create_loaders_materializes_every_split():
     # Materializing forces in-process loading.
     assert train_loader.num_workers == 0
     assert len(train_loader.dataset) == 4
-    assert type(train_loader.dataset).__name__ == "MaterializedDataset"
-    assert type(ood_loaders["ood_x"].dataset).__name__ == "MaterializedDataset"
+    assert isinstance(train_loader.dataset, list)
+    assert isinstance(ood_loaders["ood_x"].dataset, list)
     assert sum(len(b.y) for b in train_loader) == 4

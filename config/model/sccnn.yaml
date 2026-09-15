@@ -6,8 +6,5 @@ out_channels: 1 # Get from task
 conv_order: 1
 sc_order: 2
 aggr_norm: False
-# Readout shared by all models: pool the node/simplex features over the
-# complex (sum, mean or max), then one linear head.
 pool_method: sum
-# How the pooled ranks are combined: concat or alternating (sum_r (-1)^r).
 rank_readout: concat

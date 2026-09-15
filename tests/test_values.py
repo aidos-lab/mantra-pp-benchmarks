@@ -893,7 +893,7 @@ class TestTrainValidateValues:
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         objective = CrossEntropyObjective(nn.CrossEntropyLoss())
 
-        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
+        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu', permute_ids=False))
         accuracies = [('acc', self._make_accuracy())]
 
         metrics = train(model, optimizer, data, objective, accuracies, cfg)
@@ -908,7 +908,7 @@ class TestTrainValidateValues:
         model, data = self._make_model_and_data()
         objective = CrossEntropyObjective(nn.CrossEntropyLoss())
 
-        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
+        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu', permute_ids=False))
         accuracies = [('acc', self._make_accuracy())]
 
         model.eval()
@@ -923,7 +923,7 @@ class TestTrainValidateValues:
         model, data = self._make_model_and_data()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         objective = CrossEntropyObjective(nn.CrossEntropyLoss())
-        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
+        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu', permute_ids=False))
         accuracies = [('acc', self._make_accuracy())]
 
         params_before = {n: p.clone() for n, p in model.named_parameters()}
@@ -940,7 +940,7 @@ class TestTrainValidateValues:
         """Validation should not change model parameters."""
         model, data = self._make_model_and_data()
         objective = CrossEntropyObjective(nn.CrossEntropyLoss())
-        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu'))
+        cfg = SimpleNamespace(trainer=SimpleNamespace(device='cpu', permute_ids=False))
         accuracies = [('acc', self._make_accuracy())]
 
         model.eval()

@@ -23,7 +23,6 @@ from src.schema import RootConfig
 from src.transforms import RemapLabels
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
-from src.utils.materialize import MaterializedDataset
 from src.utils.sampling import WalkBatchSampler
 from src.utils.train_utils import train, validate, test, init_metrics
 from src.utils.gpu_utils import is_blackwell_gpu, set_gpu_configs
@@ -96,7 +95,6 @@ def create_dataset(cfg):
             "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
             "walk_length": dataset_cfg.walk_length,
             "moves_per_step": dataset_cfg.moves_per_step,
-            "walk_seed": dataset_cfg.walk_seed,
             "move_weights": dataset_cfg.move_weights,
             "transform": transforms,
             # MantraDataset names its processed files after the
@@ -178,23 +176,14 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
     is_graph_representation = "x_0" not in train_dataset[0]
 
     if trainer_cfg.materialize:
-        # Run the (deterministic) transforms once, not once per epoch
-        # and worker. Not for transforms meant to be resampled per
-        # epoch, e.g. random node features. Loader workers would each
-        # hold a copy of the materialized list, so collate in-process.
+        # Run the (deterministic) transforms once instead of on every
+        # access, and collate in-process: forked workers would each copy
+        # the materialized lists.
         num_workers = 0
-        ood_datasets = {
-            name: MaterializedDataset(dataset, desc=f"Materializing {name}")
-            for name, dataset in (ood_datasets or {}).items()
-        }
-        train_dataset, val_dataset, test_dataset = (
-            MaterializedDataset(dataset, desc=f"Materializing {name}")
-            for name, dataset in (
-                ("train", train_dataset),
-                ("val", val_dataset),
-                ("test", test_dataset),
-            )
-        )
+        ood_datasets = {name: materialize(dataset, name) for name, dataset in (ood_datasets or {}).items()}
+        train_dataset = materialize(train_dataset, "train")
+        val_dataset = materialize(val_dataset, "val")
+        test_dataset = materialize(test_dataset, "test")
 
     loader_cls = PyGDataLoader if is_graph_representation else DataLoader
     loader_kwargs = {
@@ -205,12 +194,14 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
     if not is_graph_representation:
         loader_kwargs["collate_fn"] = collate_simplicial
 
-    train_sampler = create_batch_sampler(cfg, train_dataset)
-    if train_sampler is None:
+    if trainer_cfg.sampler == "random":
         train_loader = loader_cls(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, **loader_kwargs)
-    else:
+    elif trainer_cfg.sampler == "walks":
         # batch_sampler is mutually exclusive with batch_size and shuffle.
+        train_sampler = WalkBatchSampler(train_dataset, batch_size=trainer_cfg.batch_size, seed=cfg.seed)
         train_loader = loader_cls(train_dataset, batch_sampler=train_sampler, **loader_kwargs)
+    else:
+        raise ValueError(f"Unknown trainer.sampler '{trainer_cfg.sampler}', expected 'random' or 'walks'")
 
     val_loader = loader_cls(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, **loader_kwargs)
     test_loader = loader_cls(test_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, **loader_kwargs)
@@ -222,19 +213,21 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
     return train_loader, val_loader, test_loader, ood_loaders
 
 
-def create_batch_sampler(cfg, train_dataset):
-    """Build the batch sampler for the training loader, if configured."""
-    sampler_name = cfg.trainer.sampler
-    if sampler_name == "random":
-        return None
-    if sampler_name != "walks":
-        raise ValueError(
-            f"Unknown trainer.sampler '{sampler_name}', expected "
-            "'random' or 'walks'"
-        )
-    return WalkBatchSampler(
-        train_dataset, batch_size=cfg.trainer.batch_size, seed=cfg.seed
-    )
+def materialize(dataset, name):
+    """Apply the dataset's transforms once and return the entries as a list.
+
+    The raw payload the transforms consume (`triangulation`, `simplex_trie`)
+    is dropped; nothing downstream reads it and it is about half of an
+    entry's memory.
+    """
+    entries = []
+    for i in tqdm(range(len(dataset)), desc=f"Materializing {name}"):
+        data = dataset[i]
+        for key in ("triangulation", "simplex_trie"):
+            if key in data:
+                del data[key]
+        entries.append(data)
+    return entries
 
 def create_model(cfg, num_features, label_to_index):
     cfg.model.out_channels = (

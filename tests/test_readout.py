@@ -34,10 +34,6 @@ class TestReadout:
         assert torch.equal(embedding, torch.tensor([[4.0, 6.0], [5.0, 6.0]]))
         assert torch.allclose(logits, readout.head(embedding))
 
-    def test_unknown_method_raises(self):
-        with pytest.raises(ValueError, match="pool_method"):
-            Readout(2, 3, "median")
-
 
 class TestRankReadout:
     def two_complexes(self):

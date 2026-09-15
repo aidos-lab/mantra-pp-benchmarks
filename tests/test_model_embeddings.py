@@ -152,7 +152,7 @@ def test_sccnn_keeps_its_logits():
     assert torch.allclose(logits, model.readout.head(embedding))
 
 
-@pytest.mark.parametrize("pool_method", ["sum", "mean", "max"])
+@pytest.mark.parametrize("pool_method", ["sum", "mean"])
 def test_graph_models_honour_pool_method(pool_method):
     torch.manual_seed(0)
     model = GCN(
@@ -167,7 +167,7 @@ def test_graph_models_honour_pool_method(pool_method):
     for layer in model.hidden_layers:
         node_features = layer(node_features, batch.edge_index)
     first = node_features[batch.batch == 0]
-    expected = {"sum": first.sum(0), "mean": first.mean(0), "max": first.max(0).values}
+    expected = {"sum": first.sum(0), "mean": first.mean(0)}
     assert torch.allclose(embedding[0], expected[pool_method], atol=1e-6)
 
 

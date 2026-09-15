@@ -1,16 +1,10 @@
 """Training objectives: the task loss, optionally with a Pachner term.
 
 Every objective maps ``(logits, embedding, batch)`` to the total loss
-and a dictionary of detached component tensors for logging. Same-walk
-pairs are recovered from the ``walk_base`` and ``walk_step``
-attributes that :class:`PachnerWalkDataset` attaches to its entries;
-see :func:`same_walk_mask`.
+and a dictionary of detached component tensors for logging.
 """
 
-from typing import Dict, Tuple
-
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
 
 WALK_ATTRIBUTES = ("walk_base", "walk_step")
@@ -59,51 +53,34 @@ def _masked_mean(values: Tensor, mask: Tensor) -> Tensor:
     return values[mask].sum() / count
 
 
-class Objective(nn.Module):
-    """Base class of the training objectives.
-
-    Parameters
-    ----------
-    base_loss : nn.Module
-        Per-task loss on ``(logits, y)``, e.g. cross-entropy.
-    """
+class CrossEntropyObjective(nn.Module):
+    """The plain task loss on ``(logits, y)``; the baseline objective."""
 
     def __init__(self, base_loss: nn.Module):
         super().__init__()
         self.base_loss = base_loss
-
-    def forward(
-        self, logits: Tensor, embedding: Tensor, batch
-    ) -> Tuple[Tensor, Dict[str, Tensor]]:
-        raise NotImplementedError
-
-
-class CrossEntropyObjective(Objective):
-    """The plain task loss; the baseline objective."""
 
     def forward(self, logits, embedding, batch):
         ce = self.base_loss(logits, batch.y)
         return ce, {"ce": ce.detach()}
 
 
-class PachnerConsistency(Objective):
+class PachnerConsistency(nn.Module):
     """Task loss plus a consistency term over same-walk pairs.
 
     Parameters
     ----------
     base_loss : nn.Module
-        Per-task loss.
+        Per-task loss on ``(logits, y)``.
     weight : float
         Weight of the consistency term.
     target : str
         ``"embedding"`` penalises the squared L2 distance between the
-        embeddings of two snapshots of the same walk;
-        ``"relative"`` the scale-free ratio
-        ``||g_a - g_b||^2 / (||g_a||^2 + ||g_b||^2 + eps)``, which lies
-        in [0, 2] and cannot be minimised by shrinking the embedding,
-        so it does not collapse a sum readout the way the absolute
-        distance can; ``"logits"`` the symmetric KL divergence between
-        the softmax outputs.
+        embeddings of two snapshots of the same walk; ``"relative"``
+        the ratio ``||g_a - g_b||^2 / (||g_a||^2 + ||g_b||^2 + eps)``,
+        which cannot be minimised by shrinking the embedding and so
+        does not collapse a sum readout the way the absolute distance
+        can.
     eps : float
         Stabiliser of the ``"relative"`` denominator.
     """
@@ -115,12 +92,12 @@ class PachnerConsistency(Objective):
         target: str = "embedding",
         eps: float = 1e-8,
     ):
-        super().__init__(base_loss)
-        if target not in ("embedding", "relative", "logits"):
+        super().__init__()
+        if target not in ("embedding", "relative"):
             raise ValueError(
-                "target must be 'embedding', 'relative' or 'logits', "
-                f"got '{target}'"
+                f"target must be 'embedding' or 'relative', got '{target}'"
             )
+        self.base_loss = base_loss
         self.weight = weight
         self.target = target
         self.eps = eps
@@ -128,19 +105,11 @@ class PachnerConsistency(Objective):
     def forward(self, logits, embedding, batch):
         ce = self.base_loss(logits, batch.y)
         mask = same_walk_mask(batch, type(self).__name__)
-        if self.target in ("embedding", "relative"):
-            diff = embedding[:, None, :] - embedding[None, :, :]
-            values = (diff * diff).sum(-1)
-            if self.target == "relative":
-                norms = (embedding * embedding).sum(-1)
-                values = values / (norms[:, None] + norms[None, :] + self.eps)
-        else:
-            log_p = F.log_softmax(logits, dim=-1)
-            p = log_p.exp()
-            # KL(a || b) + KL(b || a) written with the log-probabilities.
-            cross = (p[:, None, :] * log_p[None, :, :]).sum(-1)
-            entropy = (p * log_p).sum(-1)
-            values = entropy[:, None] - cross + entropy[None, :] - cross.t()
+        diff = embedding[:, None, :] - embedding[None, :, :]
+        values = (diff * diff).sum(-1)
+        if self.target == "relative":
+            norms = (embedding * embedding).sum(-1)
+            values = values / (norms[:, None] + norms[None, :] + self.eps)
         consistency = _masked_mean(values, mask)
         total = ce + self.weight * consistency
         return total, {"ce": ce.detach(), "consistency": consistency.detach()}

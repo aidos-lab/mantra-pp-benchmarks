@@ -190,7 +190,7 @@ Readout (`model.pool_method`, `model.rank_readout`): every model ends in
 the same readout so that architecture and readout can be varied
 independently. The node (graph models) or per-rank simplex features
 (CWN, SCCNN) are pooled over the complex with `model.pool_method`
-(`sum`, default; `mean`; `max`) and fed to one linear head. The
+(`sum`, default; `mean`) and fed to one linear head. The
 simplicial models combine their pooled ranks with `model.rank_readout`:
 `concat` (default) keeps them side by side, `alternating` forms
 Σ_r (−1)^r Σ_{σ∈K_r} h_σ, which with constant features per rank is the
@@ -323,7 +323,7 @@ so they contain same-walk pairs by construction.
 | `loss=`               | objective |
 | --------------------- | --------- |
 | `cross_entropy`       | the task loss alone (baseline) |
-| `pachner_consistency` | task loss + `weight` · mean over same-walk pairs of ‖g(T_a) − g(T_b)‖² (`target=embedding`) or of the symmetric KL of the softmax outputs (`target=logits`) |
+| `pachner_consistency` | task loss + `weight` · mean over same-walk pairs of ‖g(T_a) − g(T_b)‖² (`target=embedding`) or of the scale-free ratio ‖g(T_a) − g(T_b)‖² / (‖g(T_a)‖² + ‖g(T_b)‖²) (`target=relative`) |
 
 Every objective returns its components, which are logged as
 `train/loss_<name>` and `val/loss_<name>`. Early stopping and the LR
@@ -337,11 +337,8 @@ consumes:
 
 - `<split>/emb_spearman` — rank correlation of embedding distance with
   the number of moves between two snapshots of one walk,
-- `<split>/emb_auroc` — how well the distance separates homeomorphism
-  types,
-- `<split>/emb_knn_bal_acc`, `<split>/emb_probe_bal_acc` — balanced
-  accuracy of a 5-NN and a linear probe fitted on the *train*
-  embeddings.
+- `<split>/emb_knn_bal_acc` — balanced accuracy of a 5-NN classifier
+  fitted on the *train* embeddings.
 
 ## Tests
 

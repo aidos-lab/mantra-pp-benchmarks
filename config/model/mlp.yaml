@@ -6,6 +6,4 @@ out_channels: 1 # Get from task
 dropout: 0.2
 batch_norm: True
 residuals: True
-# Readout shared by all models: pool the node/simplex features over the
-# complex (sum, mean or max), then one linear head.
 pool_method: sum
