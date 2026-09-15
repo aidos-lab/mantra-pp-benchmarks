@@ -15,6 +15,7 @@ class TrainerMeta:
     pin_memory: bool = True
     sampler: str = "random"
     eval_embeddings: bool = True
+    materialize: bool = False
 
 @dataclass
 class MetricMeta:

@@ -23,6 +23,7 @@ from src.schema import RootConfig
 from src.transforms import RemapLabels
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
+from src.utils.materialize import MaterializedDataset
 from src.utils.sampling import WalkBatchSampler
 from src.utils.train_utils import train, validate, test, init_metrics
 from src.utils.gpu_utils import is_blackwell_gpu, set_gpu_configs
@@ -175,6 +176,23 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
     persistent_workers = trainer_cfg.num_workers > 0
 
     is_graph_representation = "x_0" not in train_dataset[0]
+
+    if trainer_cfg.materialize:
+        # Run the (deterministic) transforms once, not once per epoch
+        # and worker. Not for transforms meant to be resampled per
+        # epoch, e.g. random node features.
+        ood_datasets = {
+            name: MaterializedDataset(dataset, desc=f"Materializing {name}")
+            for name, dataset in (ood_datasets or {}).items()
+        }
+        train_dataset, val_dataset, test_dataset = (
+            MaterializedDataset(dataset, desc=f"Materializing {name}")
+            for name, dataset in (
+                ("train", train_dataset),
+                ("val", val_dataset),
+                ("test", test_dataset),
+            )
+        )
 
     loader_cls = PyGDataLoader if is_graph_representation else DataLoader
     loader_kwargs = {

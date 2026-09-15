@@ -16,6 +16,7 @@ def test_create_loaders_disables_persistence_without_workers():
             num_workers=0,
             pin_memory=False,
             sampler="random",
+            materialize=False,
         ),
         dataset=SimpleNamespace(
             transform=SimpleNamespace(
@@ -126,3 +127,48 @@ def test_training_loop_saves_typed_label_mapping(tmp_path):
     with open(tmp_path / "test-run" / "label_to_index.json") as file:
         records = json.load(file)
     assert records == [{"label": 4, "index": 0}, {"label": 12, "index": 1}]
+
+
+def test_materialize_applies_transforms_once():
+    from src.utils.materialize import MaterializedDataset
+
+    calls = []
+
+    class Counting:
+        def __len__(self):
+            return 3
+
+        def __getitem__(self, index):
+            calls.append(index)
+            return Data(x=torch.full((1, 1), float(index)), y=torch.tensor(index))
+
+    materialized = MaterializedDataset(Counting())
+    for _ in range(3):
+        for i in range(3):
+            assert materialized[i].y.item() == i
+
+    assert len(materialized) == 3
+    assert calls == [0, 1, 2]
+
+
+def test_create_loaders_materializes_every_split():
+    cfg = SimpleNamespace(
+        trainer=SimpleNamespace(
+            batch_size=2,
+            num_workers=0,
+            pin_memory=False,
+            sampler="random",
+            materialize=True,
+        ),
+        dataset=SimpleNamespace(transform=SimpleNamespace()),
+    )
+    dataset = [Data(x=torch.ones(1, 1), y=torch.tensor(i)) for i in range(4)]
+
+    train_loader, _, _, ood_loaders = create_loaders(
+        cfg, dataset, dataset, dataset, {"ood_x": dataset}
+    )
+
+    assert len(train_loader.dataset) == 4
+    assert type(train_loader.dataset).__name__ == "MaterializedDataset"
+    assert type(ood_loaders["ood_x"].dataset).__name__ == "MaterializedDataset"
+    assert sum(len(b.y) for b in train_loader) == 4

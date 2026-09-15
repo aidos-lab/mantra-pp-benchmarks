@@ -10,3 +10,7 @@ pin_memory: True
 # consistency objective sees same-walk pairs (needs dataset.walk_length > 0).
 sampler: random
 eval_embeddings: True
+# Apply the dataset transforms once at start-up instead of on every
+# access (they are deterministic and dominate the epoch time). Leave off
+# for transforms that should be resampled each epoch (random features).
+materialize: False
