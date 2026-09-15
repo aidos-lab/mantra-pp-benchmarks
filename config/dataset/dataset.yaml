@@ -29,6 +29,9 @@ division_type: "none"
 walk_length: 0
 moves_per_step: 1
 walk_seed: null
+# Relative weights of the (flip, subdivide, coarsen) moves along a walk;
+# null = equal. [1, 1, 0] gives refining walks that never lose vertices.
+move_weights: null
 # Keyword arguments of the OOD subdivision, e.g. {graded_vertex_number: 16},
 # {fraction: 0.75} or {round: 1}.
 subdivision: {}

@@ -298,7 +298,10 @@ apart:
 ```
 
 `dataset.walk_length=0` (the default) reproduces the plain dataset
-exactly, including its cache files. Walk snapshots carry `walk_base`
+exactly, including its cache files. `dataset.move_weights=[1,1,0]`
+weights the (flip, subdivide, coarsen) moves — this choice never
+coarsens, so every snapshot is a refinement of its base triangulation,
+the direction of the subdivision OOD splits. Walk snapshots carry `walk_base`
 (the entry they came from, counted within the split) and `walk_step`.
 
 Two snapshots `a` and `b` of one walk are

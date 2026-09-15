@@ -60,6 +60,7 @@ class DatasetMeta:
     walk_length: int = 0
     moves_per_step: int = 1
     walk_seed: int | None = None
+    move_weights: List[float] | None = None
 
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)

@@ -96,6 +96,7 @@ def create_dataset(cfg):
             "walk_length": dataset_cfg.walk_length,
             "moves_per_step": dataset_cfg.moves_per_step,
             "walk_seed": dataset_cfg.walk_seed,
+            "move_weights": dataset_cfg.move_weights,
             "transform": transforms,
             # MantraDataset names its processed files after the
             # subdivision, so the in-distribution splits take it too.
