@@ -151,11 +151,24 @@ def test_materialize_applies_transforms_once():
     assert calls == [0, 1, 2]
 
 
+def test_materialize_drops_the_raw_payload():
+    from src.utils.materialize import MaterializedDataset
+
+    dataset = [
+        Data(x=torch.ones(1, 1), y=torch.tensor(0), triangulation=[[1, 2, 3]], n_vertices=3)
+    ]
+
+    entry = MaterializedDataset(dataset)[0]
+
+    assert "triangulation" not in entry
+    assert int(entry.n_vertices) == 3
+
+
 def test_create_loaders_materializes_every_split():
     cfg = SimpleNamespace(
         trainer=SimpleNamespace(
             batch_size=2,
-            num_workers=0,
+            num_workers=4,
             pin_memory=False,
             sampler="random",
             materialize=True,
@@ -168,6 +181,8 @@ def test_create_loaders_materializes_every_split():
         cfg, dataset, dataset, dataset, {"ood_x": dataset}
     )
 
+    # Materializing forces in-process loading.
+    assert train_loader.num_workers == 0
     assert len(train_loader.dataset) == 4
     assert type(train_loader.dataset).__name__ == "MaterializedDataset"
     assert type(ood_loaders["ood_x"].dataset).__name__ == "MaterializedDataset"

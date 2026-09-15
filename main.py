@@ -173,14 +173,16 @@ def ood_evaluations(cfg):
 
 def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=None):
     trainer_cfg = cfg.trainer
-    persistent_workers = trainer_cfg.num_workers > 0
+    num_workers = trainer_cfg.num_workers
 
     is_graph_representation = "x_0" not in train_dataset[0]
 
     if trainer_cfg.materialize:
         # Run the (deterministic) transforms once, not once per epoch
         # and worker. Not for transforms meant to be resampled per
-        # epoch, e.g. random node features.
+        # epoch, e.g. random node features. Loader workers would each
+        # hold a copy of the materialized list, so collate in-process.
+        num_workers = 0
         ood_datasets = {
             name: MaterializedDataset(dataset, desc=f"Materializing {name}")
             for name, dataset in (ood_datasets or {}).items()
@@ -196,9 +198,9 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
 
     loader_cls = PyGDataLoader if is_graph_representation else DataLoader
     loader_kwargs = {
-        "num_workers": trainer_cfg.num_workers,
+        "num_workers": num_workers,
         "pin_memory": trainer_cfg.pin_memory,
-        "persistent_workers": persistent_workers,
+        "persistent_workers": num_workers > 0,
     }
     if not is_graph_representation:
         loader_kwargs["collate_fn"] = collate_simplicial

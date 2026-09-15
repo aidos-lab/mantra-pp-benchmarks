@@ -11,8 +11,9 @@ pin_memory: True
 sampler: random
 eval_embeddings: True
 # Apply the dataset transforms once at start-up instead of on every
-# access (they are deterministic and dominate the epoch time). Leave off
-# for transforms that should be resampled each epoch (random features).
+# access (they are deterministic). Implies num_workers=0: forked workers
+# would each copy the materialized entries. Leave off for transforms
+# that should be resampled each epoch (random features).
 materialize: False
 # Randomise the positional node IDs (moment-curve features) per training
 # batch: permute them among the nodes/vertices of each complex and
