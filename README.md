@@ -28,7 +28,7 @@ package from a sibling checkout expected at `../mantra` (see
 ├── evaluate_barycentric.py      # Load a checkpoint, evaluate on a subdivided cache
 ├── config/                      # Hydra config groups (model, dataset, transform, task, …)
 ├── src/
-│   ├── models/                  # GCN, MLP, ResidualGatedGCN, Graphormer, SAN, SAN-TMX, CWN, SCCNN
+│   ├── models/                  # GCN, MLP, ResidualGatedGCN, Graphormer, GIN, DeepSets, PointNet++, SAN, SAN-TMX, CWN, SCCNN
 │   ├── utils/                   # data loading, train loop, metrics, barycentric helpers
 │   ├── metrics/                 # loss + task metrics
 │   └── schema.py                # OmegaConf dataclasses for Hydra structured configs
@@ -175,7 +175,7 @@ Key Hydra groups:
 
 | Group                                         | Options                                                                                             |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `san`, `san_tmx`, `cwn`, `sccnn`                  |
+| `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `gin`, `deepsets`, `pointnetpp`, `san`, `san_tmx`, `cwn`, `sccnn` |
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
 | `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge_reg`, `hodge_class`, `chern_node`     |
@@ -259,6 +259,42 @@ python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hod
 The tests in `tests/test_cy_dataset.py` skip unless the installed
 mantra ships `CalabiYauDataset`.
 
+### Point-set models
+
+`deepsets` and `pointnetpp` read only `batch.x` and
+`batch.batch`, never the connectivity. With the one-skeleton as the
+representation (its nodes are the vertices, in order) and the lattice
+coordinates selected as the features, `x` is the raw `(n_points, 4)`
+coordinate matrix with the origin in row 0, so these models see the
+polytope and nothing of the triangulation:
+
+```bash
+python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_reg \
+    model=deepsets \
+    representation@dataset.transform.representation=one_skeleton \
+    dataset.transform.select_features.src=coords
+```
+
+`deepsets` is a DeepSets network (shared point-wise MLP, sum pooling,
+MLP head); with `model.pool_method=max` it is vanilla PointNet without
+the transform nets. `pointnetpp` is PointNet++ in the form of PyTorch
+Geometric's `pointnet2` examples (farthest point sampling starting at
+the origin,
+radius grouping with `sa_radii` sized for integer coordinates, and
+feature-propagation levels at node level). It needs `torch-cluster`,
+which `uv sync` installs. The random-walk embedding is still computed
+and then replaced by `select_features`; dropping it also needs
+`'~dataset.transform.embedding'` with
+`'dataset.transform_order=[representation,select_features]'`.
+
+Read the Hodge results with the counting shortcut in mind: for a
+favorable polytope `h11_cy` (the `h12` column in the Kreuzer-Skarke
+convention) equals `n_points - 5`, so a sum-pooled point model, like
+any graph model, can count its way to it. The second Chern class and
+the intersection numbers depend on the triangulation, which is where
+the gap between the point-set models and the models on the simplicial
+structure is the quantity of interest.
+
 ### Node-level tasks
 
 `task.task_level=node` predicts one value per triangulation vertex:
@@ -270,9 +306,11 @@ over all rows. Two things must line up with that:
 - the graph nodes have to be the vertices, so pick the one-skeleton
   (or a simplicial representation) instead of the default dual graph;
 - the model needs a node-level head: `create_model` sets
-  `model.task_level` from the task; `gcn`, `mlp`,
+  `model.task_level` from the task; `gcn`, `mlp`, `gin`,
   `residual_gated_gcn`, `graphormer` then skip the pooling (one output
-  per node) and `cwn`, `sccnn` read out per 0-cell.
+  per node), `cwn`, `sccnn` read out per 0-cell, `deepsets` predicts
+  each point from its embedding concatenated with the pooled set
+  feature and `pointnetpp` through its feature-propagation levels.
 
 ```bash
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet \
@@ -389,7 +427,8 @@ Per-checkpoint results are written to
 
 The suite under [`tests/`](./tests) covers the math utilities,
 imbalance handling, the barycentric / stellar subdivision routines, and
-the model layers (Graphormer SPD, SAN-TMX, GCN/MLP, residual gated GCN).
+the model layers (Graphormer SPD, SAN-TMX, GCN/MLP, residual gated GCN,
+GIN, DeepSets, PointNet++).
 
 
 ## Citation
