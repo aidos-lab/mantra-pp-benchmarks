@@ -60,7 +60,7 @@ def convert_connectivity(A, key, data):
             idx = torch.stack([row, col], dim=0)
         elif A.is_sparse:
             if not A.is_coalesced():
-                A.coalesce()
+                A = A.coalesce()
             idx = A.indices()
             val = A.values()
     else:

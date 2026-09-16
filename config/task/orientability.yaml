@@ -1,5 +1,13 @@
 defaults:
   - base_task
 name: Orientability
-target: orientability
-imbalanced: True
+target: orientable
+loss: 
+  _target_: torch.nn.CrossEntropyLoss
+
+metrics:
+  accuracy:
+    _target_: torchmetrics.Accuracy
+  balanced_accuracy:
+    _target_: torchmetrics.Accuracy
+    average: macro

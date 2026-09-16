@@ -1,0 +1,19 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.CrossEntropyLoss
+
+name: HodgeClass
+task_type: classification
+
+# Classify the attribute value; the train-split values become the
+# classes (see create_dataset).
+target: h11
+
+metrics:
+  accuracy:
+    _target_: torchmetrics.Accuracy
+  balanced_accuracy:
+    _target_: torchmetrics.Accuracy
+    average: macro

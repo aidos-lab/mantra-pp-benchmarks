@@ -1,8 +1,9 @@
 from torch import nn 
 from torch_geometric.utils import scatter
 
-def mean_pool(x, batch):
-    return scatter(x, batch, dim=-2, reduce='mean')
+def pool(x, batch, reduce="mean"):
+    assert reduce in ['mean', 'sum'], "Unknown pooling method"
+    return scatter(x, batch, dim=-2, reduce=reduce)
 
 class SumReadout(nn.Module):
     def __init__(self, in_features, out_features):

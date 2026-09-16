@@ -11,6 +11,8 @@ class TrainerMeta:
     early_stopping: int
     batch_size: int
     device: str
+    num_workers: int = 0
+    pin_memory: bool = True
 
 @dataclass
 class MetricMeta:
@@ -26,7 +28,8 @@ class TaskMeta:
     loss: LossMeta
     target: str
     task_type: str
-    imbalanced: bool = False
+    # 'graph': one target per sample; 'node': one target per vertex.
+    task_level: str = "graph"
     metrics: Dict[str, MetricMeta] = field(default_factory=dict)
 
 @dataclass
@@ -36,6 +39,11 @@ class TransformMeta:
 @dataclass
 class DatasetMeta:
     root: str
+    # 'mantra' (JSON manifold triangulations) or 'cy' (parquet
+    # Calabi-Yau star triangulations; requires the mantra cy branch).
+    type: str = "mantra"
+    # Only process the first `limit` samples (cy only).
+    limit: int | None = None
     version: str = "latest"
     dimension: int = 2
     local_path: str | None = None
@@ -44,11 +52,11 @@ class DatasetMeta:
     reload: bool = False
     balanced: bool = False
     use_stratified: bool = True
+    # Attribute whose values stratify / filter the splits (cy only).
+    label_source: str | None = None
 
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
-
-    num_features: int | str = 'auto'
 
 @dataclass
 class ModelMeta:
@@ -60,6 +68,12 @@ class ModelMeta:
     residuals: bool = True
     batch_norm: bool = True
     dropout: float = 0.2
+    # Graph readout: 'mean', or 'sum' to keep it extensive (targets
+    # that scale with the size of the complex).
+    pool_method: str = "mean"
+    # Set from task.task_level by create_model; 'node' skips the graph
+    # readout and emits one output per vertex.
+    task_level: str = "graph"
 
 @dataclass
 class LoggerMeta:

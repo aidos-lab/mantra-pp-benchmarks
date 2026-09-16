@@ -1,0 +1,26 @@
+defaults:
+  - dataset
+
+# Calabi-Yau star triangulations from a parquet file. Requires the
+# mantra `cy` branch: `CalabiYau` is not part of mantra main.
+type: cy
+root: "./data/cy"
+local_path: null
+
+# Only process the first `limit` samples; limited variants get their
+# own processed directory, so they are cheap for smoke tests.
+limit: null
+
+# Splits stratify on / filter by the values of `label_source`.
+# Stratifying needs every kept value in each split, so switch it on
+# together with a `min_sample_per_class` that drops the rare values.
+use_stratified: False
+label_source: h11
+min_sample_per_class: null
+
+# 20% test split as in arXiv:2112.09117.
+train_parameters:
+  split:
+    train: 0.7
+    val: 0.1
+    test: 0.2

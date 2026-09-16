@@ -155,9 +155,11 @@ class SAN(nn.Module):
 
     @author: Lorenzo Giusti
     """
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, alpha_leaky_relu=0.01, kappa=2, dropout=0.0, epsilon=0.1, k_proj=10, attention=False):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, alpha_leaky_relu=0.01, kappa=2, dropout=0.0, epsilon=0.1, k_proj=10, attention=False, task_level: str = "graph"):
         super().__init__()
 
+        if task_level != "graph":
+            raise ValueError("SAN has only a graph-level head (edge readout)")
         assert n_layers > 2, "Needs at least 3 layers in `n_layers`"
         self.n_layers = n_layers
         self.input_channels = in_channels

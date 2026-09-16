@@ -3,7 +3,8 @@ Multi-Layer Perceptron implementation.
 """
 
 import torch.nn as nn
-from torch_geometric.utils import scatter
+
+from src.models.utils import pool
 
 
 class MLPLayer(nn.Module):
@@ -38,8 +39,10 @@ class MLPLayer(nn.Module):
         return h
 
 class MLP(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals, pool_method="mean", task_level="graph"):
         super().__init__()
+        self.pool_method = pool_method
+        self.task_level = task_level
 
         self.hidden_layers = nn.ModuleList()
 
@@ -51,7 +54,7 @@ class MLP(nn.Module):
         self.hidden_layers.insert(0, MLPLayer(in_channels, hidden_channels, batch_norm=batch_norm, residuals=False, dropout=dropout))
 
         # Readout layer
-        self.readout = MLPLayer(hidden_channels, out_channels, batch_norm=False, residuals=False, dropout=None)
+        self.readout = nn.Linear(hidden_channels, out_channels)
 
 
 
@@ -59,6 +62,8 @@ class MLP(nn.Module):
         x = batch.x
         for layer in self.hidden_layers:
             x = layer(x)
+        # Node-level tasks keep one embedding per node
+        if self.task_level == "graph":
+            x = pool(x, batch.batch, self.pool_method)
         x = self.readout(x)
-        x = scatter(x, batch.batch, reduce='mean')
         return x
