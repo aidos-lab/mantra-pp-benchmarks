@@ -9,3 +9,4 @@ epsilon: 0.1
 k_proj: 10
 dropout: 0.0
 attention: True
+task_level: graph # Get from task; SAN has no node-level head

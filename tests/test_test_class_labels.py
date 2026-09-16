@@ -40,7 +40,7 @@ def test_regression_test_loop_does_not_build_confusion_matrix():
     run = FakeRun()
     cfg = SimpleNamespace(
         trainer=SimpleNamespace(device="cpu"),
-        task=SimpleNamespace(task_type="regression"),
+        task=SimpleNamespace(task_type="regression", task_level="graph"),
     )
     batch = Data(x=torch.tensor([[1.5]]), y=torch.tensor([[1.0]]))
 
@@ -63,7 +63,7 @@ def test_missing_test_class_uses_original_numeric_label(monkeypatch):
     run = FakeRun()
     cfg = SimpleNamespace(
         trainer=SimpleNamespace(device="cpu"),
-        task=SimpleNamespace(task_type="classification"),
+        task=SimpleNamespace(task_type="classification", task_level="graph"),
     )
     batch = Data(
         x=torch.tensor([[2.0, 0.0]]),

@@ -157,8 +157,11 @@ class SANTMX(nn.Module):
         alpha_leaky_relu=0.01,
         dropout=0.0,
         attention=True,
+        task_level: str = "graph",
     ):
         super().__init__()
+        if task_level != "graph":
+            raise ValueError("SAN has only a graph-level head (edge readout)")
         assert n_layers > 2, "Needs at least 3 layers in `n_layers`"
 
         self.epsilon = epsilon

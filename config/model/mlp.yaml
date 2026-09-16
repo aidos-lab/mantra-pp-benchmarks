@@ -6,3 +6,4 @@ out_channels: 1 # Get from task
 dropout: 0.2
 batch_norm: True
 residuals: True
+task_level: graph # Get from task

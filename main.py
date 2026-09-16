@@ -14,11 +14,13 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.transforms import Compose
 
 
-from mantra.datasets import MantraDataset
+from mantra.datasets import MantraDataset, CalabiYauDataset
 from mantra.representations.internal import SimplexTrie
 from mantra.representations.internal.simplex_trie import SimplexNode
 from mantra.transforms.task_transforms import (
     AttributeToClassTransform,
+    AttributeToNodeClassTransform,
+    AttributeToNodeRegressionTransform,
     AttributeToRegressionTransform,
     BettiToClassTransform,
     NameToClass2MTransform,
@@ -45,15 +47,16 @@ cs.store(name="main_conf", node=RootConfig)
 
 torch._dynamo.config.capture_scalar_outputs = True
 
-def task_to_transform(cfg, mapping=None):
+def task_to_transform(cfg):
     """Label transform of the task, i.e. the transform writing `data.y`.
 
     The MANTRA tasks are keyed by name. Every other task reads the raw
-    attribute `task.target` verbatim (the Calabi-Yau tasks hodge, chern
-    and hodge_class): regression targets are used as they are, while
-    classification needs `mapping` ({attribute value: class index}),
-    built over the full dataset (see `_cy_class_mapping`).
+    attribute `task.target`; classification stores the raw value, which
+    `create_dataset` remaps over the train split. `task.task_level=node`
+    selects the per-vertex variants.
     """
+    task_level = cfg.task.task_level
+
     if cfg.task.name == "BettiNumbers":
         return BettiToClassTransform()
     elif cfg.task.name == "Orientability":
@@ -66,41 +69,24 @@ def task_to_transform(cfg, mapping=None):
         else:
             raise ValueError("Invalid dimension")
     elif cfg.task.task_type == "regression":
+        if task_level == "node":
+            return AttributeToNodeRegressionTransform(cfg.task.target)
         return AttributeToRegressionTransform(cfg.task.target)
     elif cfg.task.task_type == "classification":
+        if task_level == "node":
+            return AttributeToNodeClassTransform(cfg.task.target, None)
         return AttributeToClassTransform(cfg.task.target, None)
     else:
         raise ValueError("Invalid task")
 
-        
-def _cy_class_mapping(cfg):
-    """Class mapping {attribute value: output neuron} for CY classification.
 
-    Built from the raw label attribute over the *full* dataset (sorted
-    values), so the neuron assignment is independent of the split and
-    the seed, and values that only occur in val or test still get an
-    output neuron.
-    """
-    from mantra.datasets import CalabiYau
-
-    dataset_cfg = cfg.dataset
-    source = cfg.task.target
-    dataset = CalabiYau(
-        root=dataset_cfg.root,
-        version=dataset_cfg.version,
-        local_path=dataset_cfg.local_path,
-        limit=dataset_cfg.limit,
-        force_reload=dataset_cfg.reload,
-    )
-
-    values = set()
-    for data in dataset:
-        value = data[source]
-        if isinstance(value, torch.Tensor):
-            value = value.item()
-        values.add(int(value))
-
-    return {value: index for index, value in enumerate(sorted(values))}
+def _target_values(dataset):
+    """Set of the raw class labels in `dataset`, scalar or per vertex."""
+    return {
+        int(value)
+        for data in dataset
+        for value in data.y.reshape(-1).tolist()
+    }
 
 
 def create_dataset(cfg):
@@ -119,18 +105,13 @@ def create_dataset(cfg):
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
-    task_transform = task_to_transform(cfg)
-    transforms.insert(0, task_transform)
+    transforms.insert(0, task_to_transform(cfg))
 
     transforms = Compose(transforms)
 
     split = dataset_cfg.train_parameters.split
 
     if is_cy:
-        # The CY classes only exist on the mantra `cy` branch; import
-        # lazily so the MANTRA tasks keep working against mantra main.
-        from mantra.datasets import CalabiYauDataset
-
         dataset_parameters = {
             "root": dataset_cfg.root,
             "version": dataset_cfg.version,
@@ -147,10 +128,6 @@ def create_dataset(cfg):
         train_dataset = CalabiYauDataset(split_type="train", **dataset_parameters)
         val_dataset = CalabiYauDataset(split_type="val", **dataset_parameters)
         test_dataset = CalabiYauDataset(split_type="test", **dataset_parameters)
-
-        # The class mapping already spans the full dataset, so `y` is
-        # contiguous by construction; the train-split remapping below
-        # is only needed for the MANTRA datasets.
     else:
 
         dataset_parameters = {
@@ -189,11 +166,18 @@ def create_dataset(cfg):
 
     label_to_index = {}
 
-    # If we are doing classification perform a relabaling that
-    # enumerates correctly
     if cfg.task.task_type == "classification":
-        labels = sorted({int(data.y.item()) for data in train_dataset})
+        labels = sorted(_target_values(train_dataset))
         label_to_index = {label: index for index, label in enumerate(labels)}
+        unseen = (
+            _target_values(val_dataset) | _target_values(test_dataset)
+        ) - set(labels)
+        if unseen:
+            raise ValueError(
+                f"Classes {sorted(unseen)} occur in val/test but not in "
+                "train; change dataset.seed or raise "
+                "dataset.min_sample_per_class"
+            )
         remap_labels = RemapLabels(label_to_index)
 
         for dataset in (train_dataset, val_dataset, test_dataset):
@@ -221,6 +205,14 @@ def create_model(cfg, num_features, label_to_index):
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
 
+    # Models branch on the string, so a typo must not pick a head silently.
+    task_level = cfg.task.task_level
+    if task_level not in ("graph", "node"):
+        raise ValueError(
+            f"task.task_level must be 'graph' or 'node', got {task_level!r}"
+        )
+    cfg.model.task_level = task_level
+
     in_channels = num_features
 
     #NOTE: Model initialization
@@ -245,9 +237,9 @@ def main(cfg: RootConfig):
 
     train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
     sample = train_ds[0]
-    is_graph_representation = bool("x_0" in sample.__dict__)
-    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds, is_graph_representation)
+    is_graph_representation = "x_0" not in sample
 
+    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds, is_graph_representation)
 
     if is_graph_representation:
         num_features = sample.x.shape[1]

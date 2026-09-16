@@ -8,7 +8,6 @@ from src.utils.logging import log_metrics
 from src.schema import RootConfig
 
 
-
 def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
     """ Run the training 
 
