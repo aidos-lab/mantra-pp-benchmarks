@@ -1,4 +1,4 @@
-_target_: src.models.MLP.MLP
+_target_: src.models.set.mlp.MLP
 
 n_layers: 3
 hidden_channels: 64

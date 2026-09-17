@@ -1,4 +1,4 @@
-_target_: src.models.GIN.GIN
+_target_: src.models.graph.gin.GIN
 
 n_layers: 3
 hidden_channels: 64

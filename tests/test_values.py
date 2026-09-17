@@ -12,10 +12,10 @@ import torch.nn as nn
 from types import SimpleNamespace
 from torch_geometric.data import Batch, Data
 
-from src.models.GCN import GCN, GCNLayer
-from src.models.MLP import MLP, MLPLayer
-from src.models.ResidualGatedGCN import ResidualGatedGCN, ResidualGatedGCNLayer
-from src.models.Graphormer import Graphormer, GraphormerLayer
+from src.models.graph.gcn import GCN, GCNLayer
+from src.models.set.mlp import MLP, MLPLayer
+from src.models.graph.res_gcn import ResidualGatedGCN, ResidualGatedGCNLayer
+from src.models.graph.graphormer import Graphormer, GraphormerLayer
 from src.models.utils import pool, SumReadout
 from src.utils.graphormer_spd import GraphormerSPDPreTransform
 from src.utils.train_utils import train, validate, init_metrics
@@ -452,7 +452,7 @@ class TestCWNValues:
 
     def test_cwn_output_shape_is_per_graph(self):
         """CWN should output (batch_size, out_channels), not per-cell."""
-        from src.models.cwn import CWN
+        from src.models.cells.cwn import CWN
 
         model = CWN(
             in_channels=[3, 3, 3],
@@ -470,7 +470,7 @@ class TestCWNValues:
 
     def test_cwn_different_inputs_different_outputs(self):
         """Different input features should produce different outputs."""
-        from src.models.cwn import CWN
+        from src.models.cells.cwn import CWN
 
         torch.manual_seed(42)
         model = CWN(
@@ -488,7 +488,7 @@ class TestCWNValues:
 
     def test_cwn_gradient_flow(self):
         """CWN Conv should support full gradient flow through all cell types."""
-        from src.models.cwn import CWN
+        from src.models.cells.cwn import CWN
 
         torch.manual_seed(42)
         model = CWN(
@@ -570,7 +570,7 @@ class TestSCCNNValues:
 
     def test_sccnn_output_shape(self):
         """SCCNN should output (batch_size, out_channels)."""
-        from src.models.sccnn import SCCNN
+        from src.models.simplicial.sccnn import SCCNN
 
         torch.manual_seed(42)
         model = SCCNN(
@@ -590,7 +590,7 @@ class TestSCCNNValues:
 
     def test_sccnn_different_inputs_different_outputs(self):
         """Different input features should produce different outputs."""
-        from src.models.sccnn import SCCNN
+        from src.models.simplicial.sccnn import SCCNN
 
         torch.manual_seed(42)
         model = SCCNN(
@@ -609,7 +609,7 @@ class TestSCCNNValues:
 
     def test_sccnn_gradient_flow(self):
         """All SCCNN parameters should receive gradients."""
-        from src.models.sccnn import SCCNN
+        from src.models.simplicial.sccnn import SCCNN
 
         torch.manual_seed(42)
         model = SCCNN(
@@ -675,7 +675,7 @@ class TestSANValues:
 
     def test_san_forward_shape(self):
         """SAN should output (batch_size, out_channels)."""
-        from src.models.san import SAN
+        from src.models.simplicial.san import SAN
 
         torch.manual_seed(42)
         model = SAN(
@@ -691,7 +691,7 @@ class TestSANValues:
 
     def test_san_no_attention_forward(self):
         """SAN without attention (SCLayer) should also produce correct output."""
-        from src.models.san import SAN
+        from src.models.simplicial.san import SAN
 
         torch.manual_seed(42)
         model = SAN(
@@ -707,7 +707,7 @@ class TestSANValues:
 
     def test_san_gradient_flow(self):
         """All SAN parameters should receive gradients."""
-        from src.models.san import SAN
+        from src.models.simplicial.san import SAN
 
         torch.manual_seed(42)
         model = SAN(
@@ -729,7 +729,7 @@ class TestSANValues:
 
     def test_san_sclayer_gradient_flow(self):
         """SCLayer (no attention) should also have full gradient flow."""
-        from src.models.san import SAN
+        from src.models.simplicial.san import SAN
 
         torch.manual_seed(42)
         model = SAN(
@@ -751,7 +751,7 @@ class TestSANValues:
 
     def test_harmonic_projector_is_idempotent(self):
         """Per-graph P_har should satisfy P^2 ≈ P (idempotent) since it's a projector."""
-        from src.models.san import SAN
+        from src.models.simplicial.san import SAN
 
         torch.manual_seed(42)
         model = SAN(

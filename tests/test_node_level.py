@@ -13,12 +13,12 @@ from torch_geometric.utils import scatter
 
 import main
 from src.metrics.regression import RoundedAccuracy
-from src.models.GCN import GCN
-from src.models.Graphormer import Graphormer
-from src.models.MLP import MLP
-from src.models.ResidualGatedGCN import ResidualGatedGCN
-from src.models.cwn import CWN
-from src.models.sccnn import SCCNN
+from src.models.graph.gcn import GCN
+from src.models.graph.graphormer import Graphormer
+from src.models.set.mlp import MLP
+from src.models.graph.res_gcn import ResidualGatedGCN
+from src.models.cells.cwn import CWN
+from src.models.simplicial.sccnn import SCCNN
 from src.utils.graphormer_spd import GraphormerSPDPreTransform
 from mantra.transforms import (
     AttributeToNodeClassTransform,

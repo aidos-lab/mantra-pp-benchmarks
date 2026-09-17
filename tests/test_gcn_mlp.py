@@ -4,8 +4,8 @@ import pytest
 import torch
 from torch_geometric.data import Batch, Data
 
-from src.models.GCN import GCN, GCNLayer
-from src.models.MLP import MLP, MLPLayer
+from src.models.graph.gcn import GCN, GCNLayer
+from src.models.set.mlp import MLP, MLPLayer
 
 
 def _make_batch():

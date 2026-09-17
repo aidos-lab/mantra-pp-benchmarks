@@ -5,7 +5,7 @@ import torch
 from torch_sparse import SparseTensor
 from torch_geometric.data import Data
 
-from src.models.san_tmx import SANConv, SANTMXLayer, SANTMX
+from src.models.simplicial.san_tmx import SANConv, SANTMXLayer, SANTMX
 from src.utils.data_loading import collate_simplicial
 
 

@@ -4,8 +4,8 @@ import torch
 from torch_geometric.data import Batch, Data
 
 from src.utils.graphormer_spd import GraphormerSPDPreTransform
-from src.models.Graphormer import Graphormer
-from src.models.ResidualGatedGCN import ResidualGatedGCN
+from src.models.graph.graphormer import Graphormer
+from src.models.graph.res_gcn import ResidualGatedGCN
 
 
 def make_graph_batch() -> Batch:
