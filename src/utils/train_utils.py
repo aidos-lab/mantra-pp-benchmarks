@@ -89,8 +89,9 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
+def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, split="test"):
     """ Run the test evaluation
+
     """
 
     is_classification = cfg.task.task_type == 'classification'
@@ -120,7 +121,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
                 acc(predictions.detach(), y)
 
         for name, acc in accuracies:
-            metrics[f"test/{name}"] = acc.compute().item()
+            metrics[f"{split}/{name}"] = acc.compute().item()
             acc.reset()
 
     log_metrics(metrics, epoch=epoch, step=None, run=run, cfg=cfg)
@@ -140,7 +141,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
 
     run.log(
         {
-            "conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total.cpu().tolist(), preds=y_hat_total.cpu().tolist(), class_names=class_names)
+            f"{split}_conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total.cpu().tolist(), preds=y_hat_total.cpu().tolist(), class_names=class_names)
         }
     )
 

@@ -9,9 +9,9 @@ defaults:
   - transform@dataset.transform.select_features: select_features
   - task: name
   - trainer: default
-  - loss: cross_entropy
 
 train: True
+ood: False
 torch_seed: 42
 compile: True
 checkpoint_path: checkpoints

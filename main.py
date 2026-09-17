@@ -108,6 +108,13 @@ def create_dataset(cfg):
             **dataset_parameters
     )
 
+    ood_dataset = None
+    if cfg.ood:
+        ood_dataset = MantraDataset(
+            split_type="ood",
+            **dataset_parameters
+        )
+
     label_to_index = {}
 
     # If we are doing classification perform a relabaling that
@@ -117,12 +124,16 @@ def create_dataset(cfg):
         label_to_index = {label: index for index, label in enumerate(labels)}
         remap_labels = RemapLabels(label_to_index)
 
-        for dataset in (train_dataset, val_dataset, test_dataset):
+        datasets = (train_dataset, val_dataset, test_dataset)
+        if ood_dataset is not None:
+            datasets += (ood_dataset,)
+
+        for dataset in datasets:
             dataset.transform = Compose([dataset.transform, remap_labels])
 
-    return train_dataset, val_dataset, test_dataset, label_to_index
+    return train_dataset, val_dataset, test_dataset, ood_dataset, label_to_index
 
-def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
+def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_dataset=None):
     trainer_cfg = cfg.trainer
     persistent_workers = trainer_cfg.num_workers > 0
 
@@ -133,12 +144,18 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
         train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
         val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
         test_loader = DataLoader(test_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        ood_loader = None
+        if ood_dataset is not None:
+            ood_loader = DataLoader(ood_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
     else: # Graph
         train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
         val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
         test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+        ood_loader = None
+        if ood_dataset is not None:
+            ood_loader = PyGDataLoader(ood_dataset, batch_size=cfg.trainer.batch_size, shuffle=False, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
 
-    return train_loader, val_loader, test_loader
+    return train_loader, val_loader, test_loader, ood_loader
 
 def create_model(cfg, num_features, label_to_index):
     cfg.model.out_channels = (
@@ -167,8 +184,8 @@ def main(cfg: RootConfig):
 
     # ---- Dataset -----
 
-    train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
-    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
+    train_ds, val_ds, test_ds, ood_ds, label_to_index = create_dataset(cfg)
+    train_dl, val_dl, test_dl, ood_dl = create_loaders(cfg, train_ds, val_ds, test_ds, ood_ds)
 
     sample = train_ds[0]
     if "x_0" in sample:
@@ -198,6 +215,9 @@ def main(cfg: RootConfig):
             model, last_epoch = training_loop(train_dl, val_dl, model, accuracies, run, cfg, label_to_index)
 
         test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch)
+
+        if cfg.ood:
+            test(model, ood_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch, split="ood")
 
 
 def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):
