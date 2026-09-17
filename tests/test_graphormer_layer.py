@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from src.models.Graphormer import GraphormerLayer, Graphormer
+from src.models.graph.graphormer import GraphormerLayer, Graphormer
 
 
 class TestGraphormerLayer:
