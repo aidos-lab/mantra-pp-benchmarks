@@ -1,4 +1,4 @@
-_target_: src.models.sccnn.SCCNN
+_target_: src.models.simplicial.sccnn.SCCNN
 
 hidden_channels: [64,64,64]
 n_layers: 3

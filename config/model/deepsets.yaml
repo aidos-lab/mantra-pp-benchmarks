@@ -1,4 +1,4 @@
-_target_: src.models.DeepSets.DeepSets
+_target_: src.models.set.deep_sets.DeepSets
 
 n_layers: 3
 hidden_channels: 64

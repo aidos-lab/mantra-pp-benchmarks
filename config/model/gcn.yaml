@@ -1,4 +1,4 @@
-_target_: src.models.GCN.GCN
+_target_: src.models.graph.gcn.GCN
 
 hidden_channels: 64
 n_layers: 3
