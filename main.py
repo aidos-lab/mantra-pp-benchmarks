@@ -92,8 +92,15 @@ def create_dataset(cfg):
             "use_surgery": dataset_cfg.use_surgery,
             "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
             "transform": transforms,
-
         }
+
+    # Extre subdivision parameters
+    if dataset_cfg.division_type == "graded":
+        dataset_parameters["graded_vertex_number"] = dataset_cfg.graded_vertex_number
+    elif dataset_cfg.division_type == "barycentric" and dataset_cfg.round is not None:
+        dataset_parameters["round"] = dataset_cfg.round
+    elif dataset_cfg.division_type == "stellar" and dataset_cfg.fraction is not None:
+        dataset_parameters["fraction"] = dataset_cfg.fraction
 
     train_dataset = MantraDataset(
         split_type="train",

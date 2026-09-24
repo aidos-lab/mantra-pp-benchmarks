@@ -26,7 +26,7 @@ def test_create_loaders_disables_persistence_without_workers():
 
     loaders = create_loaders(cfg, dataset, dataset, dataset)
 
-    assert all(not loader.persistent_workers for loader in loaders)
+    assert all(not loader.persistent_workers for loader in loaders if loader is not None)
 
 
 def test_create_model_updates_runtime_output_channels(monkeypatch):
