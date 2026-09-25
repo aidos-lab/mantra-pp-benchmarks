@@ -1,0 +1,66 @@
+# @package dataset.ood_evaluations
+# Size shift vs pattern shift. Every cell is built from the same 861
+# test sources (seed 40). Three generators at matched vertex counts:
+#
+#   S        the paper's subdivisions (graded, stellar, barycentric)
+#   P-refine random Pachner walk of flips and 1-3 moves, stopped at the
+#            vertex count S gives the same source; no coarsening, so the
+#            walk is a refinement like S but without S's local pattern
+#   P-mixed  P-refine followed by 5 flips per vertex: close to a random
+#            triangulation of that size (the "np = const" analogue)
+#   P-flip   flips only, vertex count unchanged: pattern shift at the
+#            training size, no size shift
+#
+# The subdivision splits are the paper_table ones plus graded20 (the
+# largest graded size) so the size axis has five points.
+graded16:
+  division_type: graded
+  subdivision: {graded_vertex_number: 16}
+graded20:
+  division_type: graded
+  subdivision: {graded_vertex_number: 20}
+stellar075:
+  division_type: stellar
+  subdivision: {fraction: 0.75}
+stellar1:
+  division_type: stellar
+  subdivision: {fraction: 1.0}
+bary1:
+  division_type: barycentric
+  subdivision: {round: 1}
+
+prefine_graded16:
+  division_type: pachner
+  subdivision: {match: {division_type: graded, graded_vertex_number: 16}}
+prefine_graded20:
+  division_type: pachner
+  subdivision: {match: {division_type: graded, graded_vertex_number: 20}}
+prefine_stellar075:
+  division_type: pachner
+  subdivision: {match: {division_type: stellar, fraction: 0.75}}
+prefine_stellar1:
+  division_type: pachner
+  subdivision: {match: {division_type: stellar, fraction: 1.0}}
+prefine_bary1:
+  division_type: pachner
+  subdivision: {match: {division_type: barycentric, round: 1}}
+
+pmixed_graded16:
+  division_type: pachner
+  subdivision: {match: {division_type: graded, graded_vertex_number: 16}, mix: 5}
+pmixed_graded20:
+  division_type: pachner
+  subdivision: {match: {division_type: graded, graded_vertex_number: 20}, mix: 5}
+pmixed_stellar075:
+  division_type: pachner
+  subdivision: {match: {division_type: stellar, fraction: 0.75}, mix: 5}
+pmixed_stellar1:
+  division_type: pachner
+  subdivision: {match: {division_type: stellar, fraction: 1.0}, mix: 5}
+pmixed_bary1:
+  division_type: pachner
+  subdivision: {match: {division_type: barycentric, round: 1}, mix: 5}
+
+pflip:
+  division_type: pachner
+  subdivision: {move_weights: [1, 0, 0], mix: 5}
