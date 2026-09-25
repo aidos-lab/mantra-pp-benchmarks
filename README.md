@@ -197,8 +197,36 @@ Outputs:
 To turn off W&B sync, run with `WANDB_MODE=offline`. To override the
 project name use `logger.project=<name>` (and `logger.entity=<entity>`).
 
-## Reproducing the subdivision experiments
+## Evaluating subdivisions in the training run
 
+The `ood` config group lists subdivisions of the test split that are
+built next to the train/val/test splits and evaluated right after the
+test set, each under its own metric prefix (`ood_<name>/...`):
+
+```bash
+.venv/bin/python main.py ... ood=paper_unbalanced   # graded 16-20, 0.75- and 1-stellar, barycentric
+.venv/bin/python main.py ... ood=paper_balanced     # 0.75- and 1-stellar, barycentric
+```
+
+`ood=none` (the default) falls back to the single split described by
+`dataset.division_type` and `dataset.subdivision`, and to no OOD split
+at all for `division_type=none`. Graded splits need every training
+triangulation below the graded vertex number, so pass
+`dataset.max_vertices` (15 for the 2D release). Each subdivision has its
+own processed file, so a new entry re-runs the dataset processing once
+per cache root.
+
+The representation and encoding transforms are cached in the dataset
+root (`pre_transform`); use one `dataset.root` per transform stack. For
+the simplicial models, random features come from
+`transform@dataset.transform.embedding=simplex_random_features`
+(random vertex features in `random_features_0`, lifted to the higher
+simplices by `propagate_vertex_features`).
+
+## Reproducing the subdivision experiments with saved checkpoints
+
+This is the pipeline the paper's subdivision tables were produced with;
+the `ood` group above evaluates the same splits without a second stage.
 The barycentric / stellar / graded-subdivision experiments follow a
 three-step pipeline. Throughout, `${LEVEL}` denotes the subdivision level
 (1, 2, …; or a fraction in `(0, 1)` for partial-stellar).

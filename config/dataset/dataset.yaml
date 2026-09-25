@@ -25,3 +25,9 @@ target_count: 100
 use_surgery: True
 max_ood_size_per_class: 100
 division_type: "none"
+# Keyword arguments of the single OOD subdivision, e.g.
+# {graded_vertex_number: 16}, {fraction: 0.75} or {round: 1}.
+subdivision: {}
+# Several subdivisions evaluated in one run; set by the `ood` config
+# group. Overrides division_type/subdivision when non-empty.
+ood_evaluations: {}

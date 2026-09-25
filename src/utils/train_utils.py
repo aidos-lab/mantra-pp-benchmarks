@@ -89,8 +89,15 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
-    """ Run the test evaluation
+def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, prefix="test"):
+    """Evaluate one split and log its metrics under ``prefix``.
+
+    Parameters
+    ----------
+    prefix : str
+        Metric prefix; ``"test"`` for the held-out split and
+        ``"ood_<name>"`` for a subdivided split. Only the test split
+        logs a confusion matrix.
     """
 
     is_classification = cfg.task.task_type == 'classification'
@@ -120,12 +127,12 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch):
                 acc(predictions.detach(), y)
 
         for name, acc in accuracies:
-            metrics[f"test/{name}"] = acc.compute().item()
+            metrics[f"{prefix}/{name}"] = acc.compute().item()
             acc.reset()
 
     log_metrics(metrics, epoch=epoch, step=None, run=run, cfg=cfg)
 
-    if not is_classification:
+    if not is_classification or prefix != "test":
         return
 
     y_total = torch.cat(y_all)

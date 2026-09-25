@@ -1,0 +1,31 @@
+# @package dataset.ood_evaluations
+# The subdivision columns of the 2D-unbalanced generalization results
+# (Figure 5 and Table S.10): graded stellar subdivisions to 16-20
+# vertices, 0.75-top and full stellar subdivision, one barycentric
+# round. Graded splits need dataset.max_vertices below 16. Each key
+# names the metric prefix of that split; test/... stays the
+# in-distribution column.
+graded16:
+  division_type: graded
+  subdivision: {graded_vertex_number: 16}
+graded17:
+  division_type: graded
+  subdivision: {graded_vertex_number: 17}
+graded18:
+  division_type: graded
+  subdivision: {graded_vertex_number: 18}
+graded19:
+  division_type: graded
+  subdivision: {graded_vertex_number: 19}
+graded20:
+  division_type: graded
+  subdivision: {graded_vertex_number: 20}
+stellar075:
+  division_type: stellar
+  subdivision: {fraction: 0.75}
+stellar1:
+  division_type: stellar
+  subdivision: {fraction: 1.0}
+bary1:
+  division_type: barycentric
+  subdivision: {round: 1}

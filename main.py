@@ -69,8 +69,9 @@ def create_dataset(cfg):
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
-    transforms.insert(0, task_transform)
-
+    # Representation and encoding are cached in the dataset root
+    # (pre_transform), so a root belongs to one transform stack; only
+    # the cheap label transform runs on access.
     transforms = Compose(transforms)
 
     split = dataset_cfg.train_parameters.split
@@ -84,29 +85,40 @@ def create_dataset(cfg):
             "seed": dataset_cfg.seed,
             "split_proportions": [split.train, split.val, split.test],
             "min_sample_per_class": dataset_cfg.min_sample_per_class,
-            "division_type": dataset_cfg.division_type,
             "stratified": dataset_cfg.use_stratified,
             "max_vertices": dataset_cfg.max_vertices,
             "n_moves": dataset_cfg.n_moves,
             "target_count": dataset_cfg.target_count,
             "use_surgery": dataset_cfg.use_surgery,
             "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
-            "transform": transforms,
-
+            "pre_transform": transforms,
+            "transform": task_transform,
         }
 
+    _, id_kwargs = ood_kwargs(cfg)
     train_dataset = MantraDataset(
         split_type="train",
-        **dataset_parameters
+        **dataset_parameters,
+        **id_kwargs,
     )
     val_dataset = MantraDataset(
             split_type="val",
-            **dataset_parameters
+            **dataset_parameters,
+            **id_kwargs,
     )
     test_dataset = MantraDataset(
             split_type="test",
-            **dataset_parameters
+            **dataset_parameters,
+            **id_kwargs,
     )
+
+    # One OOD split per requested subdivision. Every variant re-runs
+    # process(), which rewrites the identical train/val/test files and
+    # adds its own ood file, so they coexist in one cache root.
+    ood_datasets = {
+        name: MantraDataset(split_type="ood", **dataset_parameters, **kwargs)
+        for name, kwargs in ood_evaluations(cfg)
+    }
 
     label_to_index = {}
 
@@ -117,28 +129,84 @@ def create_dataset(cfg):
         label_to_index = {label: index for index, label in enumerate(labels)}
         remap_labels = RemapLabels(label_to_index)
 
-        for dataset in (train_dataset, val_dataset, test_dataset):
+        for dataset in (train_dataset, val_dataset, test_dataset, *ood_datasets.values()):
             dataset.transform = Compose([dataset.transform, remap_labels])
 
-    return train_dataset, val_dataset, test_dataset, label_to_index
+    return train_dataset, val_dataset, test_dataset, ood_datasets, label_to_index
 
-def create_loaders(cfg, train_dataset, val_dataset, test_dataset):
+
+def ood_evaluations(cfg):
+    """Return the (name, dataset kwargs) pairs of the OOD splits.
+
+    `dataset.ood_evaluations` holds the subdivisions of the OOD table,
+    keyed by the name their metrics are logged under. When it is empty
+    the run falls back to the single split described by
+    `dataset.division_type` and `dataset.subdivision`, and to no OOD
+    split at all for `division_type=none`.
+
+    Returns
+    -------
+    list of (str, dict)
+        Metric prefix and the `division_type` plus subdivision keyword
+        arguments of each split.
+    """
+    table = OmegaConf.to_container(cfg.dataset.ood_evaluations, resolve=True)
+    if table:
+        return [
+            (
+                f"ood_{name}",
+                {
+                    "division_type": spec["division_type"],
+                    **(spec.get("subdivision") or {}),
+                },
+            )
+            for name, spec in table.items()
+        ]
+
+    name, kwargs = ood_kwargs(cfg)
+    return [] if kwargs["division_type"] == "none" else [(name, kwargs)]
+
+
+def ood_kwargs(cfg):
+    """The single-split OOD configuration, as (name, dataset kwargs).
+
+    The in-distribution splits take these too: `MantraDataset` needs a
+    `division_type` to name its processed files, and the train, val and
+    test entries do not depend on which one it is.
+    """
+    return "ood", {
+        "division_type": cfg.dataset.division_type,
+        **OmegaConf.to_container(cfg.dataset.subdivision, resolve=True),
+    }
+
+
+def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=None):
     trainer_cfg = cfg.trainer
     persistent_workers = trainer_cfg.num_workers > 0
 
     is_graph_representation = "x_0" not in train_dataset[0]
 
-    # TODO: Fix this assignment
-    if not is_graph_representation:
-        train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        test_loader = DataLoader(test_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-    else: # Graph
-        train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+    loader_kwargs = dict(
+        batch_size=trainer_cfg.batch_size,
+        num_workers=trainer_cfg.num_workers,
+        pin_memory=trainer_cfg.pin_memory,
+        persistent_workers=persistent_workers,
+    )
+    if is_graph_representation:
+        loader_cls = PyGDataLoader
+    else:
+        loader_cls = DataLoader
+        loader_kwargs["collate_fn"] = collate_simplicial
 
-    return train_loader, val_loader, test_loader
+    train_loader = loader_cls(train_dataset, shuffle=True, **loader_kwargs)
+    val_loader = loader_cls(val_dataset, shuffle=False, **loader_kwargs)
+    test_loader = loader_cls(test_dataset, shuffle=False, **loader_kwargs)
+    ood_loaders = {
+        name: loader_cls(dataset, shuffle=False, **loader_kwargs)
+        for name, dataset in (ood_datasets or {}).items()
+    }
+
+    return train_loader, val_loader, test_loader, ood_loaders
 
 def create_model(cfg, num_features, label_to_index):
     cfg.model.out_channels = (
@@ -167,8 +235,8 @@ def main(cfg: RootConfig):
 
     # ---- Dataset -----
 
-    train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
-    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds)
+    train_ds, val_ds, test_ds, ood_ds, label_to_index = create_dataset(cfg)
+    train_dl, val_dl, test_dl, ood_dls = create_loaders(cfg, train_ds, val_ds, test_ds, ood_ds)
 
     sample = train_ds[0]
     if "x_0" in sample:
@@ -198,6 +266,9 @@ def main(cfg: RootConfig):
             model, last_epoch = training_loop(train_dl, val_dl, model, accuracies, run, cfg, label_to_index)
 
         test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch)
+
+        for name, loader in ood_dls.items():
+            test(model, loader, accuracies, label_to_index, run, cfg, epoch=last_epoch, prefix=name)
 
 
 def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):

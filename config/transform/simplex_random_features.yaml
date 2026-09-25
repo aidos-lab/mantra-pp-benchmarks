@@ -1,0 +1,7 @@
+_target_: mantra.transforms.SimplexRandomTransform
+
+# Random vertex features for the simplicial-complex route, written to
+# random_features_0; propagate_vertex_features lifts them to the
+# higher simplices.
+simplex_dim: 0
+feature_dim: 8

@@ -24,9 +24,10 @@ def test_create_loaders_disables_persistence_without_workers():
     )
     dataset = [Data(x=torch.ones(1, 1), y=torch.tensor(0))]
 
-    loaders = create_loaders(cfg, dataset, dataset, dataset)
+    *loaders, ood_loaders = create_loaders(cfg, dataset, dataset, dataset)
 
     assert all(not loader.persistent_workers for loader in loaders)
+    assert ood_loaders == {}
 
 
 def test_create_model_updates_runtime_output_channels(monkeypatch):
