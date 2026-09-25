@@ -19,4 +19,7 @@ seed: 42
 torch_seed: ${seed}
 compile: True
 checkpoint_path: checkpoints
+# Evaluate the best-validation weights of an earlier run instead of
+# training (needs train=False): the run's directory under checkpoint_path.
+checkpoint: null
 save_checkpoints: False

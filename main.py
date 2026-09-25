@@ -247,6 +247,39 @@ def create_model(cfg, num_features, label_to_index):
     return model
 
 
+def load_checkpoint(model, cfg, label_to_index):
+    """Load the best-validation weights of an earlier run into ``model``.
+
+    ``cfg.checkpoint`` is the run's checkpoint directory (``best_val.pt``,
+    ``config.yaml`` and ``label_to_index.json`` as ``training_loop``
+    writes them). The run must be evaluation-only (``train=False``): the
+    point is to score a trained model on splits it was not scored on,
+    and the dataset, model and readout overrides of the evaluation must
+    match the training run. The label mapping is checked against the
+    checkpoint's, so a different split or class filter fails here
+    rather than as silently permuted classes.
+    """
+    if cfg.train:
+        raise ValueError(
+            "checkpoint= loads trained weights and needs train=False"
+        )
+    ckpt_dir = cfg.checkpoint
+    with open(os.path.join(ckpt_dir, "label_to_index.json")) as f:
+        saved = {int(e["label"]): int(e["index"]) for e in json.load(f)}
+    if saved != {int(k): int(v) for k, v in label_to_index.items()}:
+        raise ValueError(
+            f"label_to_index of {ckpt_dir} ({saved}) differs from the one "
+            f"of this run ({label_to_index}); the splits do not match"
+        )
+    state_dict = torch.load(
+        os.path.join(ckpt_dir, "best_val.pt"),
+        map_location=cfg.trainer.device,
+        weights_only=True,
+    )
+    model.load_state_dict(state_dict)
+    print(f"Loaded {ckpt_dir}/best_val.pt")
+
+
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg: RootConfig):
 
@@ -270,6 +303,9 @@ def main(cfg: RootConfig):
 
     # ----- Model ----
     model = create_model(cfg, num_features, label_to_index)
+
+    if cfg.checkpoint:
+        load_checkpoint(model, cfg, label_to_index)
 
     print(f"Model parameters: {count_parameters(model)}")
 

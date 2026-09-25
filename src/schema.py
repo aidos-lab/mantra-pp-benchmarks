@@ -129,6 +129,9 @@ class RootConfig:
     loss: Any
 
     checkpoint_path: str
+    # Checkpoint directory of an earlier run to evaluate (train=False):
+    # see main.load_checkpoint.
+    checkpoint: str | None = None
 
     train: bool = True
     seed: int = 42
