@@ -1,0 +1,8 @@
+# The one-hot Levi-graph node type as the whole feature tensor: a
+# label-free encoding with which a sum readout gives (f_0, f_2) and
+# hence chi = f_0 - f_2 / 2 on a closed surface. Follow with
+# select_features.src=node_type.
+_target_: src.transforms.AppendOneHot
+src: null
+attr: node_type
+num_classes: 2

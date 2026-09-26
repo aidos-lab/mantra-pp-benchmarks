@@ -1,0 +1,5 @@
+# Vertex degree from the triangulation, independent of the
+# representation; for the simplicial pipeline, where transform/degree
+# has no edge_index to count. Follow with propagate_vertex_features
+# (source=degree) or select_features.src=degree.
+_target_: src.transforms.VertexDegree
