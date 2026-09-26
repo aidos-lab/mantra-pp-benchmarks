@@ -20,6 +20,7 @@ torch_seed: ${seed}
 compile: True
 checkpoint_path: checkpoints
 # Evaluate the best-validation weights of an earlier run instead of
-# training (needs train=False): the run's directory under checkpoint_path.
+# training (with train=False): the directory training_loop wrote for
+# that run, e.g. checkpoints/<project>/<run name>. See main.load_checkpoint.
 checkpoint: null
 save_checkpoints: False

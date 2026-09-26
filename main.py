@@ -119,12 +119,21 @@ def create_dataset(cfg):
     # One OOD split per requested subdivision. Every variant re-runs
     # process(), which rewrites the identical train/val/test files and
     # adds its own ood file, so they coexist in one cache root.
-    ood_datasets = {
-        name: PachnerWalkDataset(
+    ood_datasets = {}
+    for name, kwargs in ood_evaluations(cfg):
+        # A subdivision argument that is also a dataset parameter (e.g.
+        # move_weights, which PachnerWalkDataset takes for the training
+        # walks) would silently replace that parameter instead of
+        # reaching the OOD split.
+        clash = set(kwargs) & set(dataset_parameters) - {"division_type"}
+        if clash:
+            raise ValueError(
+                f"OOD split {name}: {sorted(clash)} are dataset parameters, "
+                "not subdivision arguments"
+            )
+        ood_datasets[name] = PachnerWalkDataset(
             split_type="ood", **{**dataset_parameters, **kwargs}
         )
-        for name, kwargs in ood_evaluations(cfg)
-    }
 
     datasets = [train_dataset, val_dataset, test_dataset, *ood_datasets.values()]
 
@@ -247,36 +256,55 @@ def create_model(cfg, num_features, label_to_index):
     return model
 
 
+# Dataset keys that may differ between a training run and an evaluation
+# of its checkpoint: where the cache lives and which OOD splits are built.
+CHECKPOINT_FREE_KEYS = {"root", "reload", "ood_evaluations", "division_type", "subdivision"}
+
+
 def load_checkpoint(model, cfg, label_to_index):
     """Load the best-validation weights of an earlier run into ``model``.
 
     ``cfg.checkpoint`` is the run's checkpoint directory (``best_val.pt``,
     ``config.yaml`` and ``label_to_index.json`` as ``training_loop``
-    writes them). The run must be evaluation-only (``train=False``): the
-    point is to score a trained model on splits it was not scored on,
-    and the dataset, model and readout overrides of the evaluation must
-    match the training run. The label mapping is checked against the
-    checkpoint's, so a different split or class filter fails here
-    rather than as silently permuted classes.
+    writes them). The point is to score a trained model on splits it
+    was not scored on, so the run's dataset, model and task config must
+    be reproduced here: the saved config is compared with the current
+    one (dataset keys in CHECKPOINT_FREE_KEYS excepted), and so is the
+    label mapping.
     """
-    if cfg.train:
-        raise ValueError(
-            "checkpoint= loads trained weights and needs train=False"
-        )
     ckpt_dir = cfg.checkpoint
-    with open(os.path.join(ckpt_dir, "label_to_index.json")) as f:
-        saved = {int(e["label"]): int(e["index"]) for e in json.load(f)}
-    if saved != {int(k): int(v) for k, v in label_to_index.items()}:
+    saved_cfg = OmegaConf.load(os.path.join(ckpt_dir, "config.yaml"))
+    differences = []
+    for section in ("model", "task", "dataset"):
+        saved = OmegaConf.to_container(saved_cfg[section], resolve=True)
+        current = OmegaConf.to_container(cfg[section], resolve=True)
+        for key in sorted(set(saved) & set(current)):
+            if section == "dataset" and key in CHECKPOINT_FREE_KEYS:
+                continue
+            if saved[key] != current[key]:
+                differences.append(f"{section}.{key}: {saved[key]!r} != {current[key]!r}")
+    if differences:
         raise ValueError(
-            f"label_to_index of {ckpt_dir} ({saved}) differs from the one "
-            f"of this run ({label_to_index}); the splits do not match"
+            f"{ckpt_dir} was trained with a different configuration:\n  "
+            + "\n  ".join(differences)
         )
+
+    with open(os.path.join(ckpt_dir, "label_to_index.json")) as f:
+        saved_labels = {int(e["label"]): int(e["index"]) for e in json.load(f)}
+    if saved_labels != {int(k): int(v) for k, v in label_to_index.items()}:
+        raise ValueError(
+            f"label_to_index of {ckpt_dir} ({saved_labels}) differs from the "
+            f"one of this run ({label_to_index}); the splits do not match"
+        )
+
     state_dict = torch.load(
         os.path.join(ckpt_dir, "best_val.pt"),
         map_location=cfg.trainer.device,
         weights_only=True,
     )
-    model.load_state_dict(state_dict)
+    # A compiled model saves and expects "_orig_mod."-prefixed keys.
+    state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
+    getattr(model, "_orig_mod", model).load_state_dict(state_dict)
     print(f"Loaded {ckpt_dir}/best_val.pt")
 
 
@@ -284,6 +312,12 @@ def load_checkpoint(model, cfg, label_to_index):
 def main(cfg: RootConfig):
 
     OmegaConf.resolve(cfg)
+
+    # Either train, or evaluate a checkpoint; never score random weights.
+    if cfg.train == bool(cfg.checkpoint):
+        raise ValueError(
+            "Set exactly one of train=True and checkpoint=<run dir>"
+        )
 
     set_gpu_configs(cfg)
 
@@ -359,7 +393,12 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
     last_val_loss = None
     last_epoch = 0
 
-    checkpoint_dir = os.path.join(cfg.checkpoint_path, run.name or run.id)
+    # W&B run names are unique within a project only, so the project is
+    # part of the path (runs made before this lived directly under
+    # checkpoint_path).
+    checkpoint_dir = os.path.join(
+        cfg.checkpoint_path, cfg.logger.project, run.name or run.id
+    )
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     with open(os.path.join(checkpoint_dir, "label_to_index.json"), "w") as f:

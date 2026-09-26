@@ -8,8 +8,11 @@
 #            walk is a refinement like S but without S's local pattern
 #   P-mixed  P-refine followed by 5 flips per vertex: close to a random
 #            triangulation of that size (the "np = const" analogue)
-#   P-flip   flips only, vertex count unchanged: pattern shift at the
-#            training size, no size shift
+#   P-flip   flips only, vertex count unchanged: no size shift and (on
+#            10-vertex sources) no new local pattern, since the 2D
+#            release enumerates every triangulation with <= 10 vertices
+#   P-relabel no move, random vertex labels: an isomorphic copy of the
+#            source outside the release's canonical labelling
 #
 # The subdivision splits are the paper_table ones plus graded20 (the
 # largest graded size) so the size axis has five points.
@@ -63,4 +66,14 @@ pmixed_bary1:
 
 pflip:
   division_type: pachner
-  subdivision: {move_weights: [1, 0, 0], mix: 5}
+  subdivision: {mix: 5}
+
+# Labelling control: no move at all, only a random permutation of the
+# vertex labels, so the complex is isomorphic to its test source but
+# leaves the canonical (lexicographic) labelling of the release. The
+# positional moment-curve features follow the labels, so this cell
+# measures how much of the in-distribution accuracy rests on the
+# labelling convention rather than on the triangulation.
+prelabel:
+  division_type: pachner
+  subdivision: {relabel: true}
