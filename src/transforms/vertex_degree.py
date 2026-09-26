@@ -1,4 +1,4 @@
-from collections import defaultdict
+from itertools import combinations
 
 import torch
 from torch_geometric.transforms import BaseTransform
@@ -7,10 +7,10 @@ from torch_geometric.transforms import BaseTransform
 class VertexDegree(BaseTransform):
     """The degree of every vertex of the triangulation, as ``[n, 1]`` features.
 
-    Computed from the top simplices, so it does not need an
-    ``edge_index`` and serves the simplicial-complex pipeline (where
-    ``PropagateConvexComb`` then spreads it to the higher ranks) as a
-    label-free vertex feature. Rows follow the vertex labels ``1..n``.
+    Computed from the top simplices, so it needs no ``edge_index`` and
+    serves the simplicial-complex pipeline (where ``PropagateConvexComb``
+    spreads it to the higher ranks) as a label-free vertex feature.
+    Rows follow the vertex labels ``1..n``.
     """
 
     def __init__(self, dst: str = "degree"):
@@ -18,13 +18,7 @@ class VertexDegree(BaseTransform):
         self.dst = dst
 
     def forward(self, data):
-        neighbours = defaultdict(set)
-        for simplex in data.triangulation:
-            for v in simplex:
-                neighbours[v].update(simplex)
-        n = max(neighbours)
-        degree = torch.zeros(n, 1)
-        for v, adjacent in neighbours.items():
-            degree[v - 1, 0] = len(adjacent) - 1
-        data[self.dst] = degree
+        edges = {frozenset(e) for s in data.triangulation for e in combinations(s, 2)}
+        ends = torch.tensor([v for e in edges for v in e]) - 1
+        data[self.dst] = torch.bincount(ends).float().unsqueeze(1)
         return data

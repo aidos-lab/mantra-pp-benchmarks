@@ -15,35 +15,26 @@ class AppendOneHot(BaseTransform):
     Parameters
     ----------
     src : str or None
-        Name of the ``[N, F]`` feature tensor to extend; ``None`` starts
-        from no features.
+        Name of the ``[N, F]`` feature tensor to extend; it is replaced
+        by the ``[N, F + num_classes]`` result. ``None`` stores the
+        one-hot alone under ``<attr>_one_hot`` and leaves the integer
+        attribute in place.
     attr : str
         Name of the ``[N]`` integer attribute to encode.
     num_classes : int
         Number of one-hot columns.
-    dst : str or None
-        Name under which the ``[N, F + num_classes]`` result is stored;
-        defaults to ``src``, or to ``attr`` when there is no ``src``.
     """
 
-    def __init__(
-        self,
-        src: str | None,
-        attr: str = "node_type",
-        num_classes: int = 2,
-        dst: str | None = None,
-    ):
+    def __init__(self, src: str | None, attr: str = "node_type", num_classes: int = 2):
         super().__init__()
         self.src = src
         self.attr = attr
         self.num_classes = num_classes
-        self.dst = dst or src or attr
 
     def forward(self, data):
         one_hot = F.one_hot(data[self.attr].long(), self.num_classes).float()
         if self.src is None:
-            data[self.dst] = one_hot
+            data[f"{self.attr}_one_hot"] = one_hot
         else:
-            features = data[self.src]
-            data[self.dst] = torch.cat([features, one_hot.to(features.dtype)], dim=-1)
+            data[self.src] = torch.cat([data[self.src], one_hot.to(data[self.src].dtype)], dim=-1)
         return data

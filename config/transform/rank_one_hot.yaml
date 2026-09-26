@@ -1,7 +1,7 @@
 # The one-hot rank of every Hasse-diagram node as the whole feature
 # tensor: a label-free encoding with which a sum readout gives
-# (f_0, f_1, f_2) and hence chi. Follow with select_features.src=rank.
+# (f_0, f_1, f_2) and hence chi. Follow with select_features.src=rank_one_hot.
 _target_: src.transforms.AppendOneHot
 src: null
 attr: rank
-num_classes: 3
+num_classes: 3  # ranks 0..2: 2D only, F.one_hot fails loudly on a 3-simplex

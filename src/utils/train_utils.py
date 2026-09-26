@@ -4,6 +4,7 @@ import hydra
 
 from collections import defaultdict
 
+from src.metrics.euler import chi_balanced_accuracy, chi_of_classes
 from src.utils.augment import permute_ids
 from src.utils.logging import log_metrics
 from src.schema import RootConfig
@@ -153,6 +154,13 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, prefi
         for name, acc in accuracies:
             metrics[f"{prefix}/{name}"] = acc.compute().item()
             acc.reset()
+
+        # On the 2D name task, also the accuracy of the Euler
+        # characteristic alone (see src.metrics.euler).
+        if is_classification and cfg.task.name == "Name" and cfg.dataset.dimension == 2:
+            metrics[f"{prefix}/chi_balanced_accuracy"] = chi_balanced_accuracy(
+                torch.cat(y_all), torch.cat(y_hat_all), chi_of_classes(label_to_index)
+            )
 
     log_metrics(metrics, epoch=epoch, step=None, run=run, cfg=cfg)
 
