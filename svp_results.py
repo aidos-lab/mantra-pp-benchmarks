@@ -444,24 +444,27 @@ def grouped_bars(ax, by, arms, labels, colours, title):
 
 
 def fig_perm(table, path):
-    """Canonical vs per-batch permuted moment-curve labels."""
+    """Canonical vs per-batch permuted moment-curve labels, plain training."""
     by = table.set_index(["arm", "cell"])
     panels = [
-        ("CWN alt-sum, plain training", "baseline-cwn-2d-unb-altsum", "baseline-cwn-2d-unb-altsum-perm"),
-        ("RG-GCN Levi, plain training", "baseline-rggcn-levi-2d-unb-sum", "baseline-rggcn-levi-2d-unb-sum-perm"),
-        ("CWN alt-sum, consistency loss on walks", "consistency-cwn-2d-unb-altsum", "consistency-cwn-2d-unb-altsum-perm"),
-        ("RG-GCN Levi, consistency loss on walks", "consistency-rggcn-levi-2d-unb-sum", "consistency-rggcn-levi-2d-unb-sum-perm"),
+        ("CWN", "baseline-cwn-2d-unb-altsum", "baseline-cwn-2d-unb-altsum-perm"),
+        ("RG-GCN on the Levi graph", "baseline-rggcn-levi-2d-unb-sum", "baseline-rggcn-levi-2d-unb-sum-perm"),
     ]
-    fig, axes = plt.subplots(2, 2, figsize=(11, 6.5), sharey=True)
-    for ax, (title, plain, perm) in zip(axes.flat, panels):
-        grouped_bars(ax, by, [plain, perm], ["canonical labels", "labels permuted every batch (-perm)"], [SERIES[0], SERIES[1]], title)
-    for ax in axes[:, 0]:
-        ax.set_ylabel("balanced accuracy")
+    fig, axes = plt.subplots(1, 2, figsize=(11, 3.8), sharey=True)
+    for ax, (title, plain, perm) in zip(axes, panels):
+        grouped_bars(
+            ax, by, [plain, perm],
+            ["canonical labels", "labels permuted every training batch"],
+            [SERIES[0], SERIES[1]], title,
+        )
+    axes[0].set_ylabel("balanced accuracy")
+    axes[0].text(6.45, CHI_CEILING + 0.02, "$\\chi$ ceiling 7/9", fontsize=7.5, color=MUTED, ha="right")
     fig.suptitle(
-        "Moment-curve features with canonical vs per-batch permuted vertex labels (evaluation always canonical, except P-relabel)",
+        "Moment-curve features, plain training: canonical vertex labels vs a fresh random labelling per batch "
+        "(evaluated on canonical labels, except P-relabel)",
         fontsize=10, x=0.01, ha="left",
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     fig.savefig(path, dpi=160)
     plt.close(fig)
 
