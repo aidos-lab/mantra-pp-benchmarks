@@ -429,6 +429,7 @@ def grouped_bars(ax, by, arms, labels, colours, title):
     x = np.arange(len(BAR_CELLS))
     for k, (arm, label, colour) in enumerate(zip(arms, labels, colours)):
         if arm is None:
+            ax.bar([], [], color=colour, label=label + " (not run)")
             continue
         ys = [by.loc[(arm, c), "acc_mean"] for c in BAR_CELLS]
         es = [by.loc[(arm, c), "acc_std"] for c in BAR_CELLS]
@@ -447,16 +448,20 @@ def fig_perm(table, path):
     """Canonical vs per-batch permuted moment-curve labels, plain training."""
     by = table.set_index(["arm", "cell"])
     panels = [
-        ("CWN", "baseline-cwn-2d-unb-altsum", "baseline-cwn-2d-unb-altsum-perm"),
+        ("CWN (simplicial complex)", "baseline-cwn-2d-unb-altsum", "baseline-cwn-2d-unb-altsum-perm"),
+        ("RG-GCN on the dual graph", "baseline-rggcn-2d-unb-sum", None),
         ("RG-GCN on the Levi graph", "baseline-rggcn-levi-2d-unb-sum", "baseline-rggcn-levi-2d-unb-sum-perm"),
     ]
-    fig, axes = plt.subplots(1, 2, figsize=(11, 3.8), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(14, 3.8), sharey=True)
     for ax, (title, plain, perm) in zip(axes, panels):
         grouped_bars(
             ax, by, [plain, perm],
             ["canonical labels", "labels permuted every training batch"],
             [SERIES[0], SERIES[1]], title,
         )
+        if perm is None:
+            ax.text(3, 0.6, "permuted run not done\n(Hasse diagram: no moment-curve run at all)",
+                    fontsize=8, color=MUTED, ha="center")
     axes[0].set_ylabel("balanced accuracy")
     axes[0].text(6.45, CHI_CEILING + 0.02, "$\\chi$ ceiling 7/9", fontsize=7.5, color=MUTED, ha="right")
     fig.suptitle(
