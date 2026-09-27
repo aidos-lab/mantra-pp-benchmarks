@@ -24,6 +24,9 @@ Outputs, in --out:
                            arms, one column per generator
     fig_controls.png       the label-free control arms over size,
                            plain vs walk training, one row per generator
+    fig_perm.png           canonical vs per-batch permuted labels
+    fig_readout.png        concat vs alternating rank readout
+    fig_consistency.png    consistency loss vs plain loss on the same walks
 
     .venv/bin/python svp_results.py "Claude outputs/wandb_svp.csv" \\
         --out "Claude outputs/svp"
@@ -411,6 +414,126 @@ def fig_controls(table, path):
     plt.close(fig)
 
 
+# --------------------------------------------------------------------------
+# One figure per comparison
+# --------------------------------------------------------------------------
+
+BAR_CELLS = ["test", "P-relabel", "S@graded16", "P-refine@graded16", "P-mixed@graded16", "S@stellar1", "S@bary1"]
+BAR_LABELS = ["test\n$f_0$=10", "P-relabel\n$f_0$=10", "S\n16", "P-refine\n16", "P-mixed\n16", "S\n32", "S\n65"]
+
+
+def grouped_bars(ax, by, arms, labels, colours, title):
+    """Balanced accuracy of a few arms side by side on BAR_CELLS."""
+    n = len(arms)
+    width = 0.8 / n
+    x = np.arange(len(BAR_CELLS))
+    for k, (arm, label, colour) in enumerate(zip(arms, labels, colours)):
+        if arm is None:
+            continue
+        ys = [by.loc[(arm, c), "acc_mean"] for c in BAR_CELLS]
+        es = [by.loc[(arm, c), "acc_std"] for c in BAR_CELLS]
+        ax.bar(x + (k - (n - 1) / 2) * width, ys, width * 0.92, yerr=es, color=colour, label=label,
+               error_kw={"lw": 0.8, "capsize": 1.5, "ecolor": MUTED})
+    reference_lines(ax)
+    ax.set_xticks(x)
+    ax.set_xticklabels(BAR_LABELS, fontsize=7.5)
+    ax.set_ylim(0, 1.02)
+    ax.grid(axis="y", color=GRID, lw=0.6)
+    ax.set_title(title, fontsize=9.5, loc="left")
+    ax.legend(fontsize=7.5, loc="upper right")
+
+
+def fig_perm(table, path):
+    """Canonical vs per-batch permuted moment-curve labels."""
+    by = table.set_index(["arm", "cell"])
+    panels = [
+        ("CWN alt-sum, plain training", "baseline-cwn-2d-unb-altsum", "baseline-cwn-2d-unb-altsum-perm"),
+        ("RG-GCN Levi, plain training", "baseline-rggcn-levi-2d-unb-sum", "baseline-rggcn-levi-2d-unb-sum-perm"),
+        ("CWN alt-sum, consistency loss on walks", "consistency-cwn-2d-unb-altsum", "consistency-cwn-2d-unb-altsum-perm"),
+        ("RG-GCN Levi, consistency loss on walks", "consistency-rggcn-levi-2d-unb-sum", "consistency-rggcn-levi-2d-unb-sum-perm"),
+    ]
+    fig, axes = plt.subplots(2, 2, figsize=(11, 6.5), sharey=True)
+    for ax, (title, plain, perm) in zip(axes.flat, panels):
+        grouped_bars(ax, by, [plain, perm], ["canonical labels", "labels permuted every batch (-perm)"], [SERIES[0], SERIES[1]], title)
+    for ax in axes[:, 0]:
+        ax.set_ylabel("balanced accuracy")
+    fig.suptitle(
+        "Moment-curve features with canonical vs per-batch permuted vertex labels (evaluation always canonical, except P-relabel)",
+        fontsize=10, x=0.01, ha="left",
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+def fig_readout(table, path):
+    """concat-sum vs alternating-sum rank readout."""
+    by = table.set_index(["arm", "cell"])
+    panels = [
+        ("CWN, plain training", "baseline-cwn-2d-unb-sum", "baseline-cwn-2d-unb-altsum"),
+        ("SCCNN, plain training", "baseline-sccnn-2d-unb-sum", "baseline-sccnn-2d-unb-altsum"),
+        ("CWN, consistency loss (absolute, $\\lambda$=1) on walks", "consistency-cwn-2d-unb-sum", "consistency-cwn-2d-unb-altsum"),
+        ("CWN, consistency loss (relative) on walks", "consistency-cwn-2d-unb-sum-rel", "consistency-cwn-2d-unb-altsum-rel"),
+    ]
+    fig, axes = plt.subplots(2, 2, figsize=(11, 6.5), sharey=True)
+    for ax, (title, s, a) in zip(axes.flat, panels):
+        grouped_bars(ax, by, [s, a], ["sum per rank, concatenated", "alternating sum $\\sum_r (-1)^r$ pool$_r$"], [SERIES[3], SERIES[2]], title)
+    for ax in axes[:, 0]:
+        ax.set_ylabel("balanced accuracy")
+    fig.suptitle("Rank readout of the HOMP models: concatenated sums vs alternating sum (moment-curve features)", fontsize=10, x=0.01, ha="left")
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+
+
+RECIPES = [
+    # label, arm suffix, colour, linestyle
+    ("plain training (baseline)", "baseline-{m}", MUTED, "-"),
+    ("walks 2x3, cross-entropy (augment)", "augment-{m}", SERIES[0], "-"),
+    ("walks 2x3, + consistency", "consistency-{m}", SERIES[1], "-"),
+    ("walks 2x3, + relative consistency", "consistency-{m}-rel", SERIES[4], "-"),
+    ("refining walks 4x4, cross-entropy", "augment-{m}-refine", SERIES[0], "--"),
+    ("refining walks 4x4, + consistency", "consistency-{m}-refine", SERIES[1], "--"),
+    ("refining walks 4x4, + relative consistency", "consistency-{m}-refine-rel", SERIES[4], "--"),
+]
+
+
+def fig_consistency(table, path):
+    """Loss and walk type at fixed model: rows = generator, columns = model."""
+    by = table.set_index(["arm", "cell"])
+    models = [("cwn-2d-unb-altsum", "CWN alt-sum"), ("rggcn-levi-2d-unb-sum", "RG-GCN Levi")]
+    fig, axes = plt.subplots(3, 2, figsize=(10, 9), sharex=True, sharey=True)
+    for j, (m, mlabel) in enumerate(models):
+        for i, gen in enumerate(GENERATORS):
+            ax = axes[i, j]
+            for label, pattern, colour, ls in RECIPES:
+                arm = pattern.format(m=m)
+                if arm not in by.index.get_level_values(0):
+                    continue
+                xs, ys, es = size_curve(by, arm, gen)
+                ax.errorbar(xs, ys, yerr=es, color=colour, ls=ls, marker="o", ms=3.5, lw=1.6, capsize=1.5, label=label)
+            size_axis(ax)
+            ax.axvspan(8.5, 16, color="#f2f1ec", zorder=-2)
+            ax.axvspan(16, 26, color="#f2f1ec", alpha=0.5, zorder=-2)
+            if i == 0:
+                ax.set_title(mlabel, fontsize=10)
+            if j == 0:
+                ax.set_ylabel(f"{gen}\nbalanced accuracy")
+            if i == 2:
+                ax.set_xlabel("mean vertex count $f_0$")
+    axes[0, 0].text(9, 0.03, "walks 2x3\nreach 16", fontsize=7, color=MUTED)
+    axes[0, 0].text(17, 0.03, "refining 4x4\nreach 26", fontsize=7, color=MUTED)
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=3, fontsize=7.5, bbox_to_anchor=(0.5, -0.01))
+    fig.suptitle(
+        "Pachner-consistency loss vs the same walks with plain cross-entropy (rows = generator; shaded = training size support)",
+        fontsize=10, x=0.01, ha="left",
+    )
+    fig.tight_layout(rect=(0, 0.08, 1, 0.96))
+    fig.savefig(path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("dump")
@@ -434,6 +557,9 @@ def main():
     fig_heatmap(table, out / "fig_heatmap.png")
     fig_story(table, out / "fig_story.png")
     fig_controls(table, out / "fig_controls.png")
+    fig_perm(table, out / "fig_perm.png")
+    fig_readout(table, out / "fig_readout.png")
+    fig_consistency(table, out / "fig_consistency.png")
     print(markdown(table))
     print(f"wrote {out}/svp_table.{{csv,md}}, fig_labelling/heatmap/story/controls.png")
 
