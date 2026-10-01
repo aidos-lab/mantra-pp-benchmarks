@@ -12,7 +12,8 @@ from torch.utils.data import Sampler
 
 MISSING_WALKS_MESSAGE = (
     "trainer.sampler=walks needs a dataset with Pachner walks, but its "
-    "entries have no `walk_base`. Set dataset.walk_length > 0."
+    "entries have no `walk_base`. Set dataset.walk_length > 0 or "
+    "dataset.size_targets."
 )
 
 

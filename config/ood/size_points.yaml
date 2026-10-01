@@ -1,0 +1,48 @@
+# @package dataset.ood_evaluations
+# Size interpolation and extrapolation: the size_vs_pattern table (S /
+# P-refine / P-mixed at the subdivision sizes, pflip, prelabel) plus
+# point cells at fixed vertex counts, so that the sizes a run trained
+# on (dataset.size_targets), the sizes between them and the sizes
+# beyond them are each a cell of their own. Every cell is built from
+# the same 861 test sources (seed 40).
+#
+#   prefine_n  refining Pachner walk (flips and 1-3 moves, no
+#              coarsening) stopped at exactly n vertices: the generator
+#              of the training walks, so these cells are on-generator
+#   pmixed_n   the same walk followed by 5 flips per vertex: the
+#              parent-free cell at that size
+#
+# n = 13 ... 32 are the interior of the largest training set of the
+# size study ({<= 10, 32}; for {20, 32} the cells at 13 and 16 are the
+# downward extrapolation on the training generator), 40, 48, 65, 100
+# the extrapolation beyond it. Below 13 there are the plain test split
+# and pflip (P-mixed at the source size, i.e. 98 % at 10 vertices).
+# prefine_16/20 and pmixed_16/20 coincide entry by entry with
+# prefine_graded16/20 and pmixed_graded16/20 (graded gives exactly 16
+# and 20 vertices and the matched target draws nothing from the rng):
+# not replicates, but a free determinism check of the cache.
+defaults:
+  - size_vs_pattern
+  - _self_
+
+prefine_13: {division_type: pachner, subdivision: {target: 13}}
+prefine_16: {division_type: pachner, subdivision: {target: 16}}
+prefine_20: {division_type: pachner, subdivision: {target: 20}}
+prefine_24: {division_type: pachner, subdivision: {target: 24}}
+prefine_27: {division_type: pachner, subdivision: {target: 27}}
+prefine_32: {division_type: pachner, subdivision: {target: 32}}
+prefine_40: {division_type: pachner, subdivision: {target: 40}}
+prefine_48: {division_type: pachner, subdivision: {target: 48}}
+prefine_65: {division_type: pachner, subdivision: {target: 65}}
+prefine_100: {division_type: pachner, subdivision: {target: 100}}
+
+pmixed_13: {division_type: pachner, subdivision: {target: 13, mix: 5}}
+pmixed_16: {division_type: pachner, subdivision: {target: 16, mix: 5}}
+pmixed_20: {division_type: pachner, subdivision: {target: 20, mix: 5}}
+pmixed_24: {division_type: pachner, subdivision: {target: 24, mix: 5}}
+pmixed_27: {division_type: pachner, subdivision: {target: 27, mix: 5}}
+pmixed_32: {division_type: pachner, subdivision: {target: 32, mix: 5}}
+pmixed_40: {division_type: pachner, subdivision: {target: 40, mix: 5}}
+pmixed_48: {division_type: pachner, subdivision: {target: 48, mix: 5}}
+pmixed_65: {division_type: pachner, subdivision: {target: 65, mix: 5}}
+pmixed_100: {division_type: pachner, subdivision: {target: 100, mix: 5}}

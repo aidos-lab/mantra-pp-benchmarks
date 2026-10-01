@@ -11,9 +11,9 @@ WALK_ATTRIBUTES = ("walk_base", "walk_step")
 
 NO_WALK_MESSAGE = (
     "{name} needs same-walk pairs, but the batch has no "
-    "`walk_base`/`walk_step` attributes. Set dataset.walk_length > 0 "
-    "(and trainer.sampler=walks to keep the snapshots of a walk in one "
-    "batch)."
+    "`walk_base`/`walk_step` attributes. Set dataset.walk_length > 0 or "
+    "dataset.size_targets (and trainer.sampler=walks to keep the "
+    "snapshots of a walk in one batch)."
 )
 
 

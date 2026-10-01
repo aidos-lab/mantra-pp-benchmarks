@@ -1,6 +1,7 @@
 # Task loss plus a penalty on the distance between two snapshots of the
-# same Pachner walk. Needs dataset.walk_length > 0 and
-# trainer.sampler=walks.
+# same Pachner walk (step walks, dataset.walk_length > 0, or size walks,
+# dataset.size_targets, where the pairs are a source and its larger
+# copies). Needs trainer.sampler=walks.
 _target_: src.metrics.loss.PachnerConsistency
 
 weight: 1.0

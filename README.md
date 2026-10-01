@@ -402,6 +402,80 @@ and `checkpoint=<run dir>` (below); `dpattern_tv.py` and `main.py` read
 the same OOD config, so the accuracy table and the pattern table share
 their cells.
 
+### Size interpolation and extrapolation: `dataset.size_targets`, `ood=size_points`
+
+On a closed surface `3 f2 = 2 f1` and `chi = f0 - f1 + f2`, so
+`sum_v deg(v) = 2 f1 = 6 (f0 - chi)` and
+
+    chi = sum_v (1 - deg(v) / 6).
+
+A sum readout over a per-vertex function `g(d) = a + b d` therefore
+gives `h(K) = (a + 6b) f0 - 6b chi + c`. On a single training size
+`f0 = n0` the first term is a constant absorbed into the bias: `a` is
+never identified, and off-size the logit carries an error
+`(a + 6b)(f0 - n0)` that grows linearly with the size gap. Two training
+sizes pin `a = -6b`; for a non-linear `g` the same holds on the vertex
+degrees that occur at the training sizes and says nothing beyond them.
+The size study trains on controlled sets of sizes and reads the
+accuracy between them (interpolation) and beyond them in both
+directions (extrapolation).
+
+`dataset.size_targets=[n, ...]` is the second expansion of
+`PachnerWalkDataset` (mutually exclusive with `walk_length > 0`): every
+entry of the splits in `dataset.size_splits` (default `[train, val]`;
+the test split stays the plain release split so `test/*` remains
+comparable across runs) is followed by one refining Pachner walk per
+target, stopped at exactly `n` vertices as a `pachner` OOD cell with
+`target` is. Every class appears at every target size with the same
+multiplicity, so the target sizes carry no label information (the
+source sizes do: the smallest release triangulations belong to few
+classes). `dataset.keep_base=False` drops the sources (a training set
+of `{20, 32}` without the `<= 10` release complexes, and the only
+fully size-balanced one),
+`dataset.size_mix` adds 2-2 flips per vertex after the target is
+reached. The entries carry `walk_base`/`walk_step` like step walks, so
+`trainer.sampler=walks` and `loss=pachner_consistency` pair a source
+with its larger copies. Because the validation split is expanded the
+same way, `val/loss` — the model-selection criterion — is the mean over
+the training sizes.
+
+`ood=size_points` is the `size_vs_pattern` table plus point cells
+`prefine_n` (refining walk to exactly `n` vertices, the generator of the
+training walks) and `pmixed_n` (the same followed by 5 flips per
+vertex) for `n = 13, 16, 20, 24, 27, 32, 40, 48, 65, 100`. Every run
+also logs, once, the size and degree support of each split relative to
+training (`src/metrics/degree_support.py`): `<split>/unseen_degree_frac`
+is the fraction of a cell's vertices whose degree never occurs in the
+training split, `<split>/rare_degree_frac` the fraction whose degree
+has a share below 10⁻³ of the training vertices (the support a model
+can have learned; the raw support is wide because the census vertices
+keep gaining degree along a walk), `<split>/degree_tv` the total
+variation between the cell's and the training degree distribution,
+`<split>/unseen_size_frac` the fraction of its entries whose vertex
+count never occurs in training, next to `train/degree_max`,
+`train/degree_max_frequent` and `train/n_vertices_max`. A cell's
+accuracy is read against these: a failure that tracks
+`rare_degree_frac` or `degree_tv` is a failure of the per-vertex
+function outside its support, one that appears inside the training
+degree support at an unseen size is a failure of scale. The degree is
+a 1-hop summary; `dpattern_tv.py` against the expanded training split
+is the deeper check.
+
+```bash
+.venv/bin/python main.py \
+    ... \
+    dataset.max_vertices=10 \
+    'dataset.size_targets=[20,32]' dataset.keep_base=False \
+    'dataset.move_weights=[1,1,0]' \
+    ood=size_points
+```
+
+`cluster/make_size_manifests.py` writes the manifests of the study
+(W&B project `mantra-pachner-2d-size`): training sets `{<=10}`
+(reference), `{<=10, 32}`, `{20, 32}`, `{<=10, 16, 20, 27, 32}` (and
+optionally `{<=10, 65}`), label-free CWN alt-sum, RG-GCN Levi and
+MLP-on-counts, cross-entropy and consistency.
+
 ### Evaluating a saved checkpoint
 
 Every training run writes `checkpoints/<run name>/` with `best_val.pt`,

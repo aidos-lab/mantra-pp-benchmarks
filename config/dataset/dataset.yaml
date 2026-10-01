@@ -31,6 +31,18 @@ moves_per_step: 1
 # Relative weights of the (flip, subdivide, coarsen) moves along a walk;
 # null = equal. [1, 1, 0] gives refining walks that never lose vertices.
 move_weights: null
+# Size-targeted walks, the other expansion (mutually exclusive with
+# walk_length > 0): every entry of the splits in size_splits is followed
+# by one refining walk per target vertex count, stopped exactly there
+# (as a `pachner` OOD cell with `target` is), so every class appears at
+# every size with the same multiplicity. keep_base=False drops the
+# sources, size_mix adds 2-2 flips per vertex after the target is
+# reached. Entries carry walk_base/walk_step, so trainer.sampler=walks
+# and loss=pachner_consistency pair a source with its larger copies.
+size_targets: null
+size_splits: [train, val]
+keep_base: True
+size_mix: 0.0
 # Keyword arguments of the OOD subdivision, e.g. {graded_vertex_number: 16},
 # {fraction: 0.75} or {round: 1}.
 subdivision: {}

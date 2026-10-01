@@ -18,6 +18,7 @@ from mantra.representations.internal import SimplexTrie
 from mantra.representations.internal.simplex_trie import SimplexNode
 from mantra.transforms.task_transforms import BettiToClassTransform, OrientableToClassTransform, NameToClass2MTransform, NameToClass3MTransform
 
+from src.metrics.degree_support import degree_support_metrics
 from src.metrics.embedding import evaluate_embeddings
 from src.schema import RootConfig
 from src.transforms import RemapLabels
@@ -55,6 +56,10 @@ def task_to_transform(cfg):
         raise ValueError("Invalid task")
 
         
+
+# Walk parameters an OOD instance is built without (see create_dataset).
+NO_EXPANSION = {"walk_length": 0, "size_targets": None}
+
 
 def create_dataset(cfg):
     torch.manual_seed(cfg.torch_seed)
@@ -96,6 +101,14 @@ def create_dataset(cfg):
             "walk_length": dataset_cfg.walk_length,
             "moves_per_step": dataset_cfg.moves_per_step,
             "move_weights": dataset_cfg.move_weights,
+            "size_targets": (
+                None
+                if dataset_cfg.size_targets is None
+                else [int(n) for n in dataset_cfg.size_targets]
+            ),
+            "size_splits": tuple(dataset_cfg.size_splits),
+            "keep_base": dataset_cfg.keep_base,
+            "size_mix": dataset_cfg.size_mix,
             "transform": transforms,
             # MantraDataset names its processed files after the
             # subdivision, so the in-distribution splits take it too.
@@ -131,8 +144,13 @@ def create_dataset(cfg):
                 f"OOD split {name}: {sorted(clash)} are dataset parameters, "
                 "not subdivision arguments"
             )
+        # The OOD split derives from the unexpanded test entries, so an
+        # OOD instance needs no walk parameters; with them it would
+        # rebuild (and re-save) the expanded train/val splits for every
+        # cell of the table.
         ood_datasets[name] = PachnerWalkDataset(
-            split_type="ood", **{**dataset_parameters, **kwargs}
+            split_type="ood",
+            **{**dataset_parameters, **NO_EXPANSION, **kwargs},
         )
 
     datasets = [train_dataset, val_dataset, test_dataset, *ood_datasets.values()]
@@ -351,6 +369,11 @@ def main(cfg: RootConfig):
 
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})
+        # Size and degree support of every split relative to the training
+        # split (sizes seen, degrees seen), logged once: the OOD cells'
+        # `unseen_degree_frac` is the quantity the size-extrapolation
+        # hypotheses are read against.
+        run.log(degree_support_metrics(train_ds, {"val": val_ds, "test": test_ds, **ood_ds}))
         accuracies = init_metrics(cfg)
         last_epoch = 0
         if cfg.train:

@@ -63,6 +63,13 @@ class DatasetMeta:
     walk_length: int = 0
     moves_per_step: int = 1
     move_weights: List[float] | None = None
+    # Size-targeted walks (PachnerWalkDataset.size_targets): one
+    # refining walk per entry and target vertex count, in the splits of
+    # size_splits; keep_base keeps the source next to its copies.
+    size_targets: List[int] | None = None
+    size_splits: List[str] = field(default_factory=lambda: ["train", "val"])
+    keep_base: bool = True
+    size_mix: float = 0.0
 
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
