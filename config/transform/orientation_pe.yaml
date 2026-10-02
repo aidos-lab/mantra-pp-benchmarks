@@ -1,0 +1,6 @@
+_target_: src.transforms.OrientationPE
+
+num_scales: 16
+attr_name: orientation_pe
+level: vertex
+append_to: null

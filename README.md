@@ -181,7 +181,7 @@ Key Hydra groups:
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `san`, `san_tmx`, `cwn`, `sccnn`                  |
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
-| `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
+| `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats`, `orientation_pe` |
 | `task`                                        | `name`, `orientability`, `betti_numbers`                                                            |
 | `loss`                                        | `cross_entropy`, `contrastive`                                                                      |
 | `trainer`                                     | `default`                                                                                           |
@@ -196,6 +196,38 @@ Outputs:
 
 To turn off W&B sync, run with `WANDB_MODE=offline`. To override the
 project name use `logger.project=<name>` (and `logger.entity=<entity>`).
+
+### Orientation-sensitive random-walk encoding
+
+`orientation_pe` ([`src/transforms/orientation_pe.py`](./src/transforms/orientation_pe.py)) is a
+signed analogue of RWPE. A lazy walk on the top simplices flips a sign whenever it crosses into
+a simplex with incompatible orientation; for each simplex it records
+(signed / unsigned) return mass after 1, 2, 4, ..., 2^(num_scales-1) steps. This is exactly 1
+on orientable closed manifolds and tends to 0 on non-orientable ones, independently of the
+orientation chosen for each simplex, of the labels and of the size. It works in any dimension.
+`num_scales` is the number of dyadic walk lengths (the encoding dimension), not the number of steps.
+
+```bash
+# On its own (vertex level), e.g. on the 1-skeleton
+.venv/bin/python main.py ... \
+    transform@dataset.transform.embedding=orientation_pe \
+    dataset.transform.select_features.src=orientation_pe
+
+# One value per top simplex, in the node order of the dual graph
+    ... dataset.transform.embedding.level=top
+
+# Appended to an existing encoding, e.g. the moment curve
+.venv/bin/python main.py ... \
+    transform@dataset.transform.embedding=moment_curve_embedding \
+    +transform@dataset.transform.orient=orientation_pe \
+    dataset.transform.orient.append_to=moment_curve_embedding \
+    dataset.transform.select_features.src=moment_curve_embedding \
+    'dataset.transform_order=[representation,embedding,orient,select_features,create_labels]'
+```
+
+For simplicial representations, propagate the vertex encoding to all simplices with
+`propagate_vertex_features` (`source: orientation_pe`), as for the moment curve. Refined
+complexes mix more slowly, so increase `num_scales` (e.g. 20) for large subdivisions.
 
 ## Reproducing the subdivision experiments
 
