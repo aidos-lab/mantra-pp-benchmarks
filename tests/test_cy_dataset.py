@@ -156,6 +156,21 @@ class TestCYSplitOptions:
             assert set(counts) == {0, 1, 2}
             assert max(counts.values()) - min(counts.values()) <= 1
 
+    def test_min_sample_per_class_drops_rare_values(self, tmp_path):
+        rows = _rows()
+        rows[0]["h12"] = 7
+        cfg = _cfg(
+            tmp_path,
+            "task=hodge_reg",
+            "dataset.use_stratified=True",
+            "dataset.label_source=h12",
+            "dataset.min_sample_per_class=1",
+            rows=rows,
+        )
+        splits = main.create_dataset(cfg)[:3]
+        assert sum(len(ds) for ds in splits) == N_ROWS - 1
+        assert all(int(data.h12) != 7 for ds in splits for data in ds)
+
 
 ONE_SKELETON = "representation@dataset.transform.representation=one_skeleton"
 
