@@ -122,6 +122,7 @@ def create_dataset(cfg):
             "split_proportions": [split.train, split.val, split.test],
             "stratified": dataset_cfg.use_stratified,
             "label_source": dataset_cfg.label_source,
+            "min_sample_per_class": dataset_cfg.min_sample_per_class,
             "transform": transforms,
         }
 

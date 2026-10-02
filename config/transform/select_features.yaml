@@ -2,4 +2,3 @@ _target_: mantra.transforms.SelectFeatures
 src: random_walk_pe
 dst: null
 representation: graph
-arg: ""
