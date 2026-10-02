@@ -259,6 +259,17 @@ python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hod
 The tests in `tests/test_cy_dataset.py` skip unless the installed
 mantra ships `CalabiYauDataset`.
 
+The representation and embedding transforms of the `cy` dataset are
+cached: `create_dataset` passes them as `pre_transform`, drops the
+attributes nothing reads afterwards (the simplex trie, the raw
+triangulation, the intersection numbers, connectivity of rank 3 and
+above, the copied embedding) and runs only the label transform on
+access. The processed directory carries a hash of the transform config,
+so variants with different transforms coexist under one `dataset.root`
+and a changed chain never reads a stale cache; the splits are still
+built per root, so one root per transform stack keeps precompute jobs
+from racing.
+
 ### Point-set models
 
 `deepsets` and `pointnetpp` read only `batch.x` and

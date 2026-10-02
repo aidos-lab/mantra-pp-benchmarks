@@ -1,3 +1,4 @@
+import hashlib
 import json
 import time
 
@@ -29,7 +30,7 @@ from mantra.transforms.task_transforms import (
 )
 
 from src.schema import RootConfig
-from src.transforms import RemapLabels
+from src.transforms import DropCacheAttributes, RemapLabels
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
@@ -80,6 +81,19 @@ def task_to_transform(cfg):
         raise ValueError("Invalid task")
 
 
+def cache_name(dataset_cfg):
+    """Name of the cached CY variant: a hash of its transform config.
+
+    `mantra.datasets.CalabiYau` keys its processed directory on this
+    name, so a root can hold several transform stacks side by side and a
+    changed stack never reads a stale cache.
+    """
+    chain = OmegaConf.to_container(dataset_cfg.transform, resolve=True)
+    order = list(dataset_cfg.transform_order)
+    digest = hashlib.sha1(repr((chain, order)).encode()).hexdigest()
+    return f"t{digest[:10]}"
+
+
 def _target_values(dataset):
     """Set of the raw class labels in `dataset`, scalar or per vertex."""
     return {
@@ -105,15 +119,21 @@ def create_dataset(cfg):
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
-    transforms.insert(0, task_to_transform(cfg))
-
-    transforms = Compose(transforms)
+    task_transform = task_to_transform(cfg)
 
     split = dataset_cfg.train_parameters.split
 
     if is_cy:
+        # The representation chain is cached in the dataset root as
+        # pre_transform; only the cheap label transform runs on access.
+        # The cache name hashes the transform config, so differently
+        # transformed variants never read each other's files.
+        select = transform_cfg.get("select_features")
+        drop = DropCacheAttributes([select.src] if select is not None else [])
+        pre_transform = Compose([*transforms, drop])
         dataset_parameters = {
             "root": dataset_cfg.root,
+            "name": cache_name(dataset_cfg),
             "version": dataset_cfg.version,
             "local_path": dataset_cfg.local_path,
             "limit": dataset_cfg.limit,
@@ -123,13 +143,15 @@ def create_dataset(cfg):
             "stratified": dataset_cfg.use_stratified,
             "label_source": dataset_cfg.label_source,
             "min_sample_per_class": dataset_cfg.min_sample_per_class,
-            "transform": transforms,
+            "pre_transform": pre_transform,
+            "transform": task_transform,
         }
 
         train_dataset = CalabiYauDataset(split_type="train", **dataset_parameters)
         val_dataset = CalabiYauDataset(split_type="val", **dataset_parameters)
         test_dataset = CalabiYauDataset(split_type="test", **dataset_parameters)
     else:
+        transforms = Compose([task_transform, *transforms])
 
         dataset_parameters = {
                 "root": dataset_cfg.root,
