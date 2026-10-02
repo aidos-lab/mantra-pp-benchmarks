@@ -205,7 +205,8 @@ test set, each under its own metric prefix (`ood_<name>/...`):
 
 ```bash
 .venv/bin/python main.py ... ood=paper_unbalanced   # graded 16-20, 0.75- and 1-stellar, barycentric
-.venv/bin/python main.py ... ood=paper_balanced     # 0.75- and 1-stellar, barycentric
+.venv/bin/python main.py ... ood=paper_balanced_2d  # graded 21-24, 0.75- and 1-stellar, barycentric (dataset.max_vertices=20)
+.venv/bin/python main.py ... ood=paper_balanced_3d  # graded 31-34, 0.75- and 1-stellar, barycentric (dataset.max_vertices=30)
 ```
 
 `ood=none` (the default) falls back to the single split described by
