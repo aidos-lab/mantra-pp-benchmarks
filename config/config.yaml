@@ -11,6 +11,7 @@ defaults:
   - trainer: default
 
 train: True
+ood: False
 torch_seed: 42
 compile: True
 checkpoint_path: checkpoints

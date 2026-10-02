@@ -115,6 +115,7 @@ class RootConfig:
     checkpoint_path: str
 
     train: bool = True
+    ood: bool = False
     seed: int = 42
     compile: bool = False
 

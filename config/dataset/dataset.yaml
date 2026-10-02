@@ -27,3 +27,6 @@ target_count: 100
 use_surgery: True
 max_ood_size_per_class: 100
 division_type: "none"
+graded_vertex_number: null
+round: null
+fraction: null
