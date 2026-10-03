@@ -268,7 +268,7 @@ def main(cfg: RootConfig):
         test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch)
 
         for name, loader in ood_dls.items():
-            test(model, loader, accuracies, label_to_index, run, cfg, epoch=last_epoch, prefix=name)
+            test(model, loader, accuracies, label_to_index, run, cfg, epoch=last_epoch, split=name)
 
 
 def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):

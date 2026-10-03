@@ -89,12 +89,12 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, prefix="test"):
-    """Evaluate one split and log its metrics under ``prefix``.
+def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, split="test"):
+    """Evaluate one split and log its metrics under ``split``.
 
     Parameters
     ----------
-    prefix : str
+    split : str
         Metric prefix; ``"test"`` for the held-out split and
         ``"ood_<name>"`` for a subdivided split. Only the test split
         logs a confusion matrix.
@@ -127,12 +127,12 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, prefi
                 acc(predictions.detach(), y)
 
         for name, acc in accuracies:
-            metrics[f"{prefix}/{name}"] = acc.compute().item()
+            metrics[f"{split}/{name}"] = acc.compute().item()
             acc.reset()
 
     log_metrics(metrics, epoch=epoch, step=None, run=run, cfg=cfg)
 
-    if not is_classification or prefix != "test":
+    if not is_classification or split != "test":
         return
 
     y_total = torch.cat(y_all)
