@@ -9,7 +9,6 @@ defaults:
   - transform@dataset.transform.select_features: select_features
   - task: name
   - trainer: default
-  - loss: cross_entropy
   - ood: none
 
 train: True
