@@ -1,26 +1,8 @@
 # @package dataset.ood_evaluations
-# The subdivision columns of the 3D balanced generalization table
-# (Table S.12) plus graded stellar subdivisions above the vertex cap.
-# Balanced 3D data is capped at dataset.max_vertices=30, so every
-# graded split is strictly larger than any training triangulation.
-graded31:
-  division_type: graded
-  subdivision: {graded_vertex_number: 31}
-graded32:
-  division_type: graded
-  subdivision: {graded_vertex_number: 32}
-graded33:
-  division_type: graded
-  subdivision: {graded_vertex_number: 33}
-graded34:
-  division_type: graded
-  subdivision: {graded_vertex_number: 34}
-stellar075:
-  division_type: stellar
-  subdivision: {fraction: 0.75}
-stellar1:
-  division_type: stellar
-  subdivision: {fraction: 1.0}
-bary1:
-  division_type: barycentric
-  subdivision: {round: 1}
+graded31: {division_type: graded, graded_vertex_number: 31}
+graded32: {division_type: graded, graded_vertex_number: 32}
+graded33: {division_type: graded, graded_vertex_number: 33}
+graded34: {division_type: graded, graded_vertex_number: 34}
+stellar075: {division_type: stellar, fraction: 0.75}
+stellar1: {division_type: stellar, fraction: 1.0}
+bary1: {division_type: barycentric, round: 1}

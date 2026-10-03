@@ -1,26 +1,8 @@
 # @package dataset.ood_evaluations
-# The subdivision columns of the 2D balanced generalization table
-# (Table S.11) plus graded stellar subdivisions above the vertex cap.
-# Balanced 2D data is capped at dataset.max_vertices=20, so every
-# graded split is strictly larger than any training triangulation.
-graded21:
-  division_type: graded
-  subdivision: {graded_vertex_number: 21}
-graded22:
-  division_type: graded
-  subdivision: {graded_vertex_number: 22}
-graded23:
-  division_type: graded
-  subdivision: {graded_vertex_number: 23}
-graded24:
-  division_type: graded
-  subdivision: {graded_vertex_number: 24}
-stellar075:
-  division_type: stellar
-  subdivision: {fraction: 0.75}
-stellar1:
-  division_type: stellar
-  subdivision: {fraction: 1.0}
-bary1:
-  division_type: barycentric
-  subdivision: {round: 1}
+graded21: {division_type: graded, graded_vertex_number: 21}
+graded22: {division_type: graded, graded_vertex_number: 22}
+graded23: {division_type: graded, graded_vertex_number: 23}
+graded24: {division_type: graded, graded_vertex_number: 24}
+stellar075: {division_type: stellar, fraction: 0.75}
+stellar1: {division_type: stellar, fraction: 1.0}
+bary1: {division_type: barycentric, round: 1}

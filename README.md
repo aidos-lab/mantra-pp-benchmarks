@@ -201,23 +201,35 @@ project name use `logger.project=<name>` (and `logger.entity=<entity>`).
 
 The `ood` config group lists subdivisions of the test split that are
 built next to the train/val/test splits and evaluated right after the
-test set, each under its own metric prefix (`ood_<name>/...`):
+test set. Each entry is the `MantraDataset` subdivision arguments, and
+its key names the metric prefix (`ood_<key>/...`); `test/...` stays the
+in-distribution column. `ood=none`, the default, evaluates no OOD split.
 
-```bash
-.venv/bin/python main.py ... ood=paper_unbalanced   # graded 16-20, 0.75- and 1-stellar, barycentric (dataset.max_vertices=15)
-.venv/bin/python main.py ... ood=paper_balanced_2d  # graded 21-24, 0.75- and 1-stellar, barycentric (dataset.max_vertices=20)
-.venv/bin/python main.py ... ood=paper_balanced_3d  # graded 31-34, 0.75- and 1-stellar, barycentric (dataset.max_vertices=30)
-```
+| `ood=`              | Paper                        | Splits                                         | Needs                    |
+| ------------------- | ---------------------------- | ---------------------------------------------- | ------------------------ |
+| `paper_unbalanced`  | Figure 5, Table S.10         | graded 16-20, 0.75- and 1-stellar, barycentric | `dataset.max_vertices=15` |
+| `paper_balanced_2d` | Table S.11                   | graded 21-24, 0.75- and 1-stellar, barycentric | `dataset.max_vertices=20` |
+| `paper_balanced_3d` | Table S.12                   | graded 31-34, 0.75- and 1-stellar, barycentric | `dataset.max_vertices=30` |
 
-With `ood=none` (the default) a single split follows `dataset.division_type`
-and `dataset.subdivision` (e.g. `dataset.division_type=stellar
-+dataset.subdivision.fraction=0.75`); `division_type=none` builds no OOD
-split. Graded splits need `dataset.max_vertices` below the graded vertex
-number. The representation and encoding transforms are cached in the
-dataset root as `pre_transform`, so use one `dataset.root` per transform
-stack; only the label transform runs on access. Simplicial models get
-random features from
-`transform@dataset.transform.embedding=simplex_random_features`.
+The vertex cap keeps every graded split strictly larger than any
+training triangulation. For a one-off split, override the table
+directly, e.g. `'+dataset.ood_evaluations={stellar05: {division_type:
+stellar, fraction: 0.5}}'`.
+
+Every OOD variant re-runs `MantraDataset.process()`, which rewrites the
+identical train/val/test files and adds its own `ood_*` file, so all
+variants share one cache root. The representation and encoding
+transforms are cached there too, as `pre_transform`, in a processed
+directory named after a hash of `dataset.transform` and
+`dataset.transform_order`, so several featurizations coexist under one
+`dataset.root` and share its raw data. Only the label transform runs on
+access. Random encodings are therefore drawn once, when the cache is
+built, and reused by every run on that cache, whatever its seed.
+
+Simplicial models get random vertex features from
+`transform@dataset.transform.embedding=simplex_random_features`; they
+are written to `random_features_0`, and `propagate_vertex_features`
+lifts them to the higher simplices.
 
 ## Reproducing the subdivision experiments with saved checkpoints
 

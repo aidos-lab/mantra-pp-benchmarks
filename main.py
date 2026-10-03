@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import wandb
@@ -54,6 +55,19 @@ def task_to_transform(cfg):
 
         
 
+def cache_name(dataset_cfg):
+    """Name of the cached variant: a hash of its transform config.
+
+    `MantraDataset` keys its processed directory on this name, so a root
+    can hold several transform stacks side by side and a changed stack
+    never reads a stale cache.
+    """
+    chain = OmegaConf.to_container(dataset_cfg.transform, resolve=True)
+    order = list(dataset_cfg.transform_order)
+    digest = hashlib.sha1(repr((chain, order)).encode()).hexdigest()
+    return f"t{digest[:10]}"
+
+
 def create_dataset(cfg):
     torch.manual_seed(cfg.torch_seed)
 
@@ -69,14 +83,12 @@ def create_dataset(cfg):
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
-    # Representation and encoding are cached in the dataset root
-    # (pre_transform), so a root belongs to one transform stack; only
-    # the cheap label transform runs on access.
     transforms = Compose(transforms)
 
     split = dataset_cfg.train_parameters.split
     dataset_parameters = {
             "root": dataset_cfg.root,
+            "name": cache_name(dataset_cfg),
             "dimension": dataset_cfg.dimension,
             "version": dataset_cfg.version,
             "balanced": dataset_cfg.balanced,
@@ -95,29 +107,14 @@ def create_dataset(cfg):
             "transform": task_transform,
         }
 
-    _, id_kwargs = ood_kwargs(cfg)
-    train_dataset = MantraDataset(
-        split_type="train",
-        **dataset_parameters,
-        **id_kwargs,
-    )
-    val_dataset = MantraDataset(
-            split_type="val",
-            **dataset_parameters,
-            **id_kwargs,
-    )
-    test_dataset = MantraDataset(
-            split_type="test",
-            **dataset_parameters,
-            **id_kwargs,
-    )
+    train_dataset = MantraDataset(split_type="train", **dataset_parameters)
+    val_dataset = MantraDataset(split_type="val", **dataset_parameters)
+    test_dataset = MantraDataset(split_type="test", **dataset_parameters)
 
-    # One OOD split per requested subdivision. Every variant re-runs
-    # process(), which rewrites the identical train/val/test files and
-    # adds its own ood file, so they coexist in one cache root.
+    ood_evaluations = OmegaConf.to_container(dataset_cfg.ood_evaluations, resolve=True)
     ood_datasets = {
-        name: MantraDataset(split_type="ood", **dataset_parameters, **kwargs)
-        for name, kwargs in ood_evaluations(cfg)
+        f"ood_{name}": MantraDataset(split_type="ood", **dataset_parameters, **kwargs)
+        for name, kwargs in ood_evaluations.items()
     }
 
     label_to_index = {}
@@ -133,51 +130,6 @@ def create_dataset(cfg):
             dataset.transform = Compose([dataset.transform, remap_labels])
 
     return train_dataset, val_dataset, test_dataset, ood_datasets, label_to_index
-
-
-def ood_evaluations(cfg):
-    """Return the (name, dataset kwargs) pairs of the OOD splits.
-
-    `dataset.ood_evaluations` holds the subdivisions of the OOD table,
-    keyed by the name their metrics are logged under. When it is empty
-    the run falls back to the single split described by
-    `dataset.division_type` and `dataset.subdivision`, and to no OOD
-    split at all for `division_type=none`.
-
-    Returns
-    -------
-    list of (str, dict)
-        Metric prefix and the `division_type` plus subdivision keyword
-        arguments of each split.
-    """
-    table = OmegaConf.to_container(cfg.dataset.ood_evaluations, resolve=True)
-    if table:
-        return [
-            (
-                f"ood_{name}",
-                {
-                    "division_type": spec["division_type"],
-                    **(spec.get("subdivision") or {}),
-                },
-            )
-            for name, spec in table.items()
-        ]
-
-    name, kwargs = ood_kwargs(cfg)
-    return [] if kwargs["division_type"] == "none" else [(name, kwargs)]
-
-
-def ood_kwargs(cfg):
-    """The single-split OOD configuration, as (name, dataset kwargs).
-
-    The in-distribution splits take these too: `MantraDataset` needs a
-    `division_type` to name its processed files, and the train, val and
-    test entries do not depend on which one it is.
-    """
-    return "ood", {
-        "division_type": cfg.dataset.division_type,
-        **OmegaConf.to_container(cfg.dataset.subdivision, resolve=True),
-    }
 
 
 def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=None):
