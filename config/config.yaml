@@ -12,8 +12,7 @@ defaults:
   - ood: none
 
 train: True
-# Run seed: model initialisation and feature sampling. The
-# train/val/test split has its own seed (dataset.seed).
+# Run seed: model initialisation and feature sampling separate dataset.seed for split
 seed: 42
 torch_seed: ${seed}
 compile: True
