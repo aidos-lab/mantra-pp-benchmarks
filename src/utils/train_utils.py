@@ -96,8 +96,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, split
     ----------
     split : str
         Metric prefix; ``"test"`` for the held-out split and
-        ``"ood_<name>"`` for a subdivided split. Only the test split
-        logs a confusion matrix.
+        ``"ood_<name>"`` for a subdivided split.
     """
 
     is_classification = cfg.task.task_type == 'classification'
@@ -132,7 +131,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, split
 
     log_metrics(metrics, epoch=epoch, step=None, run=run, cfg=cfg)
 
-    if not is_classification or split != "test":
+    if not is_classification:
         return
 
     y_total = torch.cat(y_all)
@@ -147,7 +146,7 @@ def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, split
 
     run.log(
         {
-            "conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total.cpu().tolist(), preds=y_hat_total.cpu().tolist(), class_names=class_names)
+            f"{split}_conf_mat": wandb.plot.confusion_matrix(probs=None, y_true=y_total.cpu().tolist(), preds=y_hat_total.cpu().tolist(), class_names=class_names)
         }
     )
 
