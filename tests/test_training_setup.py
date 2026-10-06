@@ -87,6 +87,7 @@ class BatchLinear(torch.nn.Module):
 class FakeRun:
     name = "test-run"
     id = "test-run"
+    summary = {}
 
     def log(self, values):
         pass

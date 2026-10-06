@@ -297,6 +297,7 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
 
             # Save weights and config of the best model
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, "best_val.pt"))
+            best_val_metrics = val_metrics
         else:
             early_stopping_cnt -= 1
 
@@ -304,6 +305,7 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
     state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
 
     model.load_state_dict(state_dict)
+    run.summary.update(best_val_metrics)
     return model, last_epoch
 
 if __name__ == "__main__":
