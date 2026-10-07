@@ -217,19 +217,28 @@ directly, e.g. `'+dataset.ood_evaluations={stellar05: {division_type:
 stellar, fraction: 0.5}}'`.
 
 Every OOD variant re-runs `MantraDataset.process()`, which rewrites the
-identical train/val/test files and adds its own `ood_*` file, so all
-variants share one cache root. The representation and encoding
-transforms are cached there too, as `pre_transform`, in a processed
-directory named after a hash of `dataset.transform` and
-`dataset.transform_order`, so several featurizations coexist under one
-`dataset.root` and share its raw data. Only the label transform runs on
-access. Random encodings are therefore drawn once, when the cache is
-built, and reused by every run on that cache, whatever its seed.
+train/val/test files (identical up to freshly drawn random features and
+vertex labellings) and adds its own `ood_*` file, so all variants share
+one cache root. The representation and encoding transforms are cached
+there too, as `pre_transform`, in a processed directory named after a
+hash of `dataset.transform` and `dataset.transform_order`, so several
+featurizations coexist under one `dataset.root` and share its raw data.
+Only the label transform runs on access. Random encodings are therefore
+drawn once, when the cache is built, and reused by every run on that
+cache, whatever its seed.
 
 Simplicial models get random vertex features from
 `transform@dataset.transform.embedding=simplex_random_features`; they
 are written to `random_features_0`, and `propagate_vertex_features`
 lifts them to the higher simplices.
+
+`+transform@dataset.transform.permute=permute_vertices` relabels every
+triangulation by a random vertex permutation (seeded with
+`dataset.seed`), so label-dependent encodings such as the moment curve
+and the orientations of signed incidence matrices do not inherit the
+stored vertex order. It must come first in `dataset.transform_order`,
+before any representation; the camera-ready manifests use it on every
+arm.
 
 ## Reproducing the subdivision experiments with saved checkpoints
 
