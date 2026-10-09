@@ -30,6 +30,30 @@ def test_create_loaders_disables_persistence_without_workers():
     assert ood_loaders == {}
 
 
+def test_create_loaders_keeps_workers_resident_only_for_train_and_val():
+    cfg = SimpleNamespace(
+        trainer=SimpleNamespace(
+            batch_size=1,
+            num_workers=1,
+            pin_memory=False,
+        ),
+        dataset=SimpleNamespace(
+            transform=SimpleNamespace(
+                select_features=SimpleNamespace(representation="graph")
+            )
+        ),
+    )
+    dataset = [Data(x=torch.ones(1, 1), y=torch.tensor(0))]
+
+    train, val, test, ood_loaders = create_loaders(
+        cfg, dataset, dataset, dataset, {"ood_bary1": dataset}
+    )
+
+    assert train.persistent_workers and val.persistent_workers
+    assert not test.persistent_workers
+    assert not any(loader.persistent_workers for loader in ood_loaders.values())
+
+
 def test_create_model_updates_runtime_output_channels(monkeypatch):
     captured = {}
 

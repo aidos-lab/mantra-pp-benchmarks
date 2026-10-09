@@ -142,7 +142,6 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
         batch_size=trainer_cfg.batch_size,
         num_workers=trainer_cfg.num_workers,
         pin_memory=trainer_cfg.pin_memory,
-        persistent_workers=persistent_workers,
     )
     if is_graph_representation:
         loader_cls = PyGDataLoader
@@ -150,8 +149,14 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
         loader_cls = DataLoader
         loader_kwargs["collate_fn"] = collate_simplicial
 
-    train_loader = loader_cls(train_dataset, shuffle=True, **loader_kwargs)
-    val_loader = loader_cls(val_dataset, shuffle=False, **loader_kwargs)
+    # Test and OOD loaders run once after training; keeping their workers
+    # resident forked 9 x num_workers copies of the main process and OOM-killed the packed SC jobs.
+    train_loader = loader_cls(
+        train_dataset, shuffle=True, persistent_workers=persistent_workers, **loader_kwargs
+    )
+    val_loader = loader_cls(
+        val_dataset, shuffle=False, persistent_workers=persistent_workers, **loader_kwargs
+    )
     test_loader = loader_cls(test_dataset, shuffle=False, **loader_kwargs)
     ood_loaders = {
         name: loader_cls(dataset, shuffle=False, **loader_kwargs)
