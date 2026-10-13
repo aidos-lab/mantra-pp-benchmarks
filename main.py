@@ -91,7 +91,7 @@ def create_dataset(cfg):
             "target_count": dataset_cfg.target_count,
             "use_surgery": dataset_cfg.use_surgery,
             "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
-            "transform": transforms,
+            "pre_transform": transforms,
         }
 
     # Extre subdivision parameters
@@ -136,7 +136,11 @@ def create_dataset(cfg):
             datasets += (ood_dataset,)
 
         for dataset in datasets:
-            dataset.transform = Compose([dataset.transform, remap_labels])
+            dataset.transform = (
+                remap_labels
+                if dataset.transform is None
+                else Compose([dataset.transform, remap_labels])
+            )
 
     return train_dataset, val_dataset, test_dataset, ood_dataset, label_to_index
 
