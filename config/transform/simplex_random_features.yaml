@@ -1,0 +1,4 @@
+_target_: mantra.transforms.SimplexRandomTransform
+
+simplex_dim: ???
+feature_dim: 8
