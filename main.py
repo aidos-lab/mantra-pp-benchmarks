@@ -69,6 +69,23 @@ def cache_name(dataset_cfg):
 
 
 def create_dataset(cfg):
+    """Build the train/val/test datasets and one OOD dataset per table entry.
+
+    The representation and encoding transforms run once as the
+    `pre_transform` of the cache named by `cache_name`; only the task
+    transform (and the label remap for classification) runs on access.
+    `dataset.ood_evaluations` maps a name to the subdivision arguments of
+    `MantraDataset` (`division_type` plus `graded_vertex_number`,
+    `fraction` or `round`); each entry becomes an `ood` split built from
+    the same cached test entries and logged under `ood_<name>/`. The
+    `ood` config group fills the table, and it is empty by default.
+
+    Returns
+    -------
+    tuple
+        Train, val and test datasets, the dict of OOD datasets keyed
+        `ood_<name>`, and the label-to-index map (empty for regression).
+    """
     torch.manual_seed(cfg.torch_seed)
 
     dataset_cfg = cfg.dataset

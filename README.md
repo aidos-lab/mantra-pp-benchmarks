@@ -203,7 +203,8 @@ The `ood` config group lists subdivisions of the test split that are
 built next to the train/val/test splits and evaluated right after the
 test set. Each entry is the `MantraDataset` subdivision arguments, and
 its key names the metric prefix (`ood_<key>/...`); `test/...` stays the
-in-distribution column. `ood=none`, the default, evaluates no OOD split.
+in-distribution column. No `ood` option is selected by default, so
+`dataset.ood_evaluations` stays empty and no OOD split is evaluated.
 
 | `ood=`              | Paper                        | Splits                                         | Needs                    |
 | ------------------- | ---------------------------- | ---------------------------------------------- | ------------------------ |

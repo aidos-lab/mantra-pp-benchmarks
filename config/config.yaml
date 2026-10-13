@@ -9,7 +9,7 @@ defaults:
   - transform@dataset.transform.select_features: select_features
   - task: name
   - trainer: default
-  - ood: none
+  - ood: null
 
 train: True
 # Run seed: model initialisation and feature sampling separate dataset.seed for split
