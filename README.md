@@ -137,7 +137,8 @@ example above):
 The first run copies the JSON into
 `${dataset.root}/mantra/${dim}D/raw/${dim}_manifolds_balanced.json` and
 materializes the processed cache. Subsequent runs reuse the cache; pass
-`dataset.reload=True` to force re-processing.
+`dataset.reload=True` to rebuild the splits and every OOD split of the
+run. OOD splits that are not part of the run are deleted, not rebuilt.
 
 #### How `dataset.local_path` and `dataset.balanced` interact
 

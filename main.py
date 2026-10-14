@@ -79,6 +79,8 @@ def create_dataset(cfg):
     `fraction` or `round`); each entry becomes an `ood` split built from
     the same cached test entries and logged under `ood_<name>/`. The
     `ood` config group fills the table, and it is empty by default.
+    `dataset.reload` rebuilds the splits once and every OOD split of the
+    run.
 
     Returns
     -------
@@ -110,7 +112,6 @@ def create_dataset(cfg):
             "version": dataset_cfg.version,
             "balanced": dataset_cfg.balanced,
             "local_path": dataset_cfg.local_path,
-            "force_reload": dataset_cfg.reload,
             "seed": dataset_cfg.seed,
             "split_proportions": [split.train, split.val, split.test],
             "min_sample_per_class": dataset_cfg.min_sample_per_class,
@@ -124,7 +125,10 @@ def create_dataset(cfg):
             "transform": task_transform,
         }
 
-    train_dataset = MantraDataset(split_type="train", **dataset_parameters)
+    #force_reload removes all cached files, hence the other splits do not specify it
+    train_dataset = MantraDataset(
+        split_type="train", force_reload=dataset_cfg.reload, **dataset_parameters
+    )
     val_dataset = MantraDataset(split_type="val", **dataset_parameters)
     test_dataset = MantraDataset(split_type="test", **dataset_parameters)
 
