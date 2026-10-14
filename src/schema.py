@@ -88,8 +88,7 @@ class EvalBarycentricConfig:
     bary_dataset_root: str
     bary_local_path: str
     bary_level: float = 1.0
-    # Must match the `dataset.balanced` that precompute_barycentric.py was
-    # invoked with when the cache was built.
+    # Must match the `dataset.balanced` from when the cache was built.
     bary_balanced: bool = False
     device: str = "cpu"
     output: str | None = None
