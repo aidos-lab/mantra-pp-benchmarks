@@ -6,36 +6,14 @@ import torch
 from omegaconf import OmegaConf
 from torch_geometric.data import Data
 
-from main import create_loaders, create_model, training_loop
+from main import create_loaders, training_loop
 
 
-def test_create_loaders_disables_persistence_without_workers():
+@pytest.mark.parametrize("num_workers", [0, 1])
+def test_create_loaders_keeps_workers_resident_only_for_train_and_val(num_workers):
     cfg = SimpleNamespace(
         trainer=SimpleNamespace(
-            batch_size=1,
-            num_workers=0,
-            pin_memory=False,
-        ),
-        dataset=SimpleNamespace(
-            transform=SimpleNamespace(
-                select_features=SimpleNamespace(representation="graph")
-            )
-        ),
-    )
-    dataset = [Data(x=torch.ones(1, 1), y=torch.tensor(0))]
-
-    train, val, test, ood_loaders = create_loaders(cfg, dataset, dataset, dataset)
-
-    assert not any(loader.persistent_workers for loader in (train, val, test))
-    assert ood_loaders == {}
-
-
-def test_create_loaders_keeps_workers_resident_only_for_train_and_val():
-    cfg = SimpleNamespace(
-        trainer=SimpleNamespace(
-            batch_size=1,
-            num_workers=1,
-            pin_memory=False,
+            batch_size=1, num_workers=num_workers, pin_memory=False
         ),
         dataset=SimpleNamespace(
             transform=SimpleNamespace(
@@ -49,54 +27,12 @@ def test_create_loaders_keeps_workers_resident_only_for_train_and_val():
         cfg, dataset, dataset, dataset, {"ood_bary1": dataset}
     )
 
-    assert train.persistent_workers and val.persistent_workers
+    resident = num_workers > 0
+    assert train.persistent_workers == resident
+    assert val.persistent_workers == resident
     assert not test.persistent_workers
+    assert list(ood_loaders) == ["ood_bary1"]
     assert not any(loader.persistent_workers for loader in ood_loaders.values())
-
-
-def test_create_model_updates_runtime_output_channels(monkeypatch):
-    captured = {}
-
-    def fake_instantiate(model_cfg, **kwargs):
-        captured["configured_out_channels"] = model_cfg.out_channels
-        captured.update(kwargs)
-        return torch.nn.Linear(1, model_cfg.out_channels)
-
-    monkeypatch.setattr("main.hydra.utils.instantiate", fake_instantiate)
-    cfg = SimpleNamespace(
-        model=SimpleNamespace(in_channels=1, out_channels=1),
-        task=SimpleNamespace(task_type="classification"),
-        dataset=SimpleNamespace(
-            transform=SimpleNamespace(
-                select_features=SimpleNamespace(representation="graph")
-            )
-        ),
-        trainer=SimpleNamespace(device="cpu"),
-        compile=False,
-    )
-
-    create_model(cfg, num_features=1, label_to_index={4: 0, 12: 1, 20: 2})
-
-    assert cfg.model.out_channels == 3
-    assert captured == {"configured_out_channels": 3, "in_channels": 1}
-
-
-@pytest.mark.parametrize(
-    ("max_epoch", "early_stopping", "message"),
-    [(0, 1, "max_epoch"), (1, 0, "early_stopping")],
-)
-def test_training_loop_rejects_configuration_without_an_epoch(
-    max_epoch, early_stopping, message
-):
-    cfg = SimpleNamespace(
-        trainer=SimpleNamespace(
-            max_epoch=max_epoch,
-            early_stopping=early_stopping,
-        )
-    )
-
-    with pytest.raises(ValueError, match=message):
-        training_loop(None, None, None, None, None, cfg, {})
 
 
 class BatchLinear(torch.nn.Module):

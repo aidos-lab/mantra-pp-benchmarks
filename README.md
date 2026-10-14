@@ -25,7 +25,6 @@ package from a sibling checkout expected at `../mantra` (see
 ```
 .
 ├── main.py                      # Hydra entry point: train + test a model
-├── evaluate_barycentric.py      # Load a checkpoint, evaluate on a subdivided cache
 ├── config/                      # Hydra config groups (model, dataset, transform, task, …)
 ├── src/
 │   ├── models/                  # GCN, MLP, ResidualGatedGCN, Graphormer, SAN, SAN-TMX, CWN, SCCNN
@@ -86,9 +85,9 @@ upstream MANTRA release:
    (`MantraDataset(balanced=True)`; see
    [Generating the balanced dataset](#generating-the-balanced-dataset)).
 3. **Subdivided MANTRA.** Full-barycentric / stellar / graded
-   subdivisions of the unbalanced or balanced JSONs, produced by
-   `generate_barycentric_data.py` (see
-   [Reproducing the subdivision experiments](#reproducing-the-subdivision-experiments)).
+   subdivisions of the test split, built by `MantraDataset` inside the
+   training run (see
+   [Evaluating subdivisions in the training run](#evaluating-subdivisions-in-the-training-run)).
 
 
 ### Generating the balanced dataset
@@ -241,99 +240,6 @@ and the orientations of signed incidence matrices do not inherit the
 stored vertex order. It must come first in `dataset.transform_order`,
 before any representation; the camera-ready manifests use it on every
 arm.
-
-## Reproducing the subdivision experiments with saved checkpoints
-
-This is the pipeline the paper's subdivision tables were produced with;
-the `ood` group above evaluates the same splits without a second stage.
-The barycentric / stellar / graded-subdivision experiments follow a
-three-step pipeline. Throughout, `${LEVEL}` denotes the subdivision level
-(1, 2, …; or a fraction in `(0, 1)` for partial-stellar).
-
-### 1. Generate the subdivided JSONs
-
-The unbalanced source JSON is whatever `ManifoldTriangulations` cached
-locally — e.g. `data/mantra/2D/raw/2_manifolds.json` after one
-`balanced=False` run:
-
-```bash
-.venv/bin/python generate_barycentric_data.py \
-    input=data/mantra/2D/raw/2_manifolds.json \
-    output_dir=/tmp/mantra_bary_demo \
-    prefix=2_manifolds \
-    n_levels=1 \
-    min_vertices=16 \
-    mode=stellar
-```
-
-Writes `${output_dir}/${prefix}_bary_<level>.json` for every level
-`1..n_levels`. Entries with fewer than `min_vertices` after subdivision
-are dropped from the output. See
-[`config/generate_barycentric_data.yaml`](./config/generate_barycentric_data.yaml)
-for all options (notably `n_smallest`, `min_class_count`, and the
-`mode` validity rules; valid `mode` values are `stellar`,
-`full_barycentric`, `graded`).
-
-### 2. Build the pre_transform cache for that level
-
-Using the demo stellar level-1 JSON produced in step 1:
-
-```bash
-.venv/bin/python precompute_barycentric.py \
-    +bary_level=1 \
-    dataset.root=data/bary1_2d_unbalanced_random_features_dual_graph \
-    dataset.local_path=/tmp/mantra_bary_demo/2_manifolds_bary_1.json \
-    dataset.dimension=2 \
-    dataset.balanced=False \
-    representation@dataset.transform.representation=dual_graph \
-    transform@dataset.transform.embedding=random_features \
-    dataset.transform.select_features.src=random_features \
-    dataset.transform_order=[representation,embedding,select_features,create_labels] \
-    task=name model=gcn trainer.device=cpu \
-    +task/metrics@task.metrics.bal_acc=accuracy
-```
-
-`precompute_barycentric.py` deliberately drops the
-`local_path XOR balanced` assertion that `main.py` enforces, so it
-can take an unbalanced subdivided JSON via `dataset.local_path`.
-
-The aggregated launchers used in the paper are
-`scripts/precompute_{gnn,cwn,san,sccnn}_barycentric_all*.sh` and
-`run_precompute_array.sh` (SLURM job array form).
-
-### 3. Evaluate a trained checkpoint on the subdivided cache
-
-```bash
-.venv/bin/python evaluate_barycentric.py \
-    checkpoint_dir=checkpoints/<run_name> \
-    bary_level=1 \
-    bary_dataset_root=data/bary1_2d_unbalanced_random_features_dual_graph \
-    bary_local_path=/tmp/mantra_bary_demo/2_manifolds_bary_1.json \
-    bary_balanced=False \
-    device=cpu
-```
-
-`evaluate_barycentric.py` loads the *training* config from
-`<checkpoint_dir>/config.yaml`, replays the same model-shape mutations
-that `main.py` applies (in particular `model.out_channels` from
-`label_to_index`), strips the `_orig_mod.` prefix introduced by
-`torch.compile`, and runs the test loop on the subdivided dataset.
-
-The `bary_balanced` flag **must** match the `dataset.balanced` value used
-when the cache was built; the script aborts with a clear error otherwise.
-
-To sweep over levels and / or checkpoints, use Hydra multirun:
-
-```bash
-.venv/bin/python evaluate_barycentric.py --multirun \
-    checkpoint_dir=checkpoints/run_a,checkpoints/run_b \
-    bary_level=1 \
-    bary_dataset_root='data/bary${bary_level}_2d_unbalanced_random_features_dual_graph' \
-    bary_local_path='/tmp/mantra_bary_demo/2_manifolds_bary_${bary_level}.json'
-```
-
-Per-checkpoint results are written to
-`<checkpoint_dir>/barycentric_results_level_<L>.json`.
 
 ## Tests
 

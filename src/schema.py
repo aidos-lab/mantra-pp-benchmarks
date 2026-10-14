@@ -69,32 +69,6 @@ class LoggerMeta:
     entity: str
 
 @dataclass
-class GenerateBarycentricConfig:
-    input: str
-    output_dir: str
-    prefix: str
-    n_levels: float = 1.0
-    min_vertices: int = 16
-    label_source: str = "name"
-    min_class_count: int = 100
-    n_smallest: int = 100
-    mode: str = "stellar"
-    seed: int = 42
-
-
-@dataclass
-class EvalBarycentricConfig:
-    checkpoint_dir: str
-    bary_dataset_root: str
-    bary_local_path: str
-    bary_level: float = 1.0
-    # Must match the `dataset.balanced` from when the cache was built.
-    bary_balanced: bool = False
-    device: str = "cpu"
-    output: str | None = None
-    seed: int = 42
-
-@dataclass
 class RootConfig:
     logger: LoggerMeta
     model: ModelMeta

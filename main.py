@@ -132,6 +132,7 @@ def create_dataset(cfg):
     val_dataset = MantraDataset(split_type="val", **dataset_parameters)
     test_dataset = MantraDataset(split_type="test", **dataset_parameters)
 
+    # Plain dict: a config node references all of cfg and MantraDataset keeps it.
     ood_evaluations = OmegaConf.to_container(dataset_cfg.ood_evaluations, resolve=True)
     ood_datasets = {
         f"ood_{name}": MantraDataset(split_type="ood", **dataset_parameters, **kwargs)
