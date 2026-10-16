@@ -12,9 +12,7 @@ defaults:
   - ood: null
 
 train: True
-# Run seed: model initialisation and feature sampling separate dataset.seed for split
-seed: 42
-torch_seed: ${seed}
+torch_seed: 42
 compile: True
 checkpoint_path: checkpoints
 save_checkpoints: False

@@ -1,8 +1,8 @@
 # @package dataset.ood_evaluations
-graded21: {division_type: graded, graded_vertex_number: 21}
-graded22: {division_type: graded, graded_vertex_number: 22}
-graded23: {division_type: graded, graded_vertex_number: 23}
-graded24: {division_type: graded, graded_vertex_number: 24}
+#graded21: {division_type: graded, graded_vertex_number: 21}
+#graded22: {division_type: graded, graded_vertex_number: 22}
+#graded23: {division_type: graded, graded_vertex_number: 23}
+#graded24: {division_type: graded, graded_vertex_number: 24}
 stellar075: {division_type: stellar, fraction: 0.75}
 stellar1: {division_type: stellar, fraction: 1.0}
 bary1: {division_type: barycentric, round: 1}

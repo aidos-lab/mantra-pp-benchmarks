@@ -46,6 +46,7 @@ class DatasetMeta:
     balanced: bool = False
     use_stratified: bool = True
 
+    seed: int = 42
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
     transform_order: List[str] = field(default_factory=list)
     # Subdivisions of the test split, see the `ood` config group.
@@ -79,7 +80,8 @@ class RootConfig:
     checkpoint_path: str
 
     train: bool = True
-    seed: int = 42
+    ood: bool = False
+    torch_seed: int = 42
     compile: bool = False
 
 

@@ -102,6 +102,7 @@ def create_dataset(cfg):
         assert name in transform_order, f"Transform {name} not in transforms"
         transforms[transform_order.index(name)] = trans
 
+    transforms.insert(0, task_transform)
     transforms = Compose(transforms)
 
     split = dataset_cfg.train_parameters.split
@@ -122,7 +123,6 @@ def create_dataset(cfg):
             "use_surgery": dataset_cfg.use_surgery,
             "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
             "pre_transform": transforms,
-            "transform": task_transform,
         }
 
     #force_reload removes all cached files, hence the other splits do not specify it
@@ -132,8 +132,11 @@ def create_dataset(cfg):
     val_dataset = MantraDataset(split_type="val", **dataset_parameters)
     test_dataset = MantraDataset(split_type="test", **dataset_parameters)
 
-    # Plain dict: a config node references all of cfg and MantraDataset keeps it.
+    # Converts the OmegaConf object to a dictionary
     ood_evaluations = OmegaConf.to_container(dataset_cfg.ood_evaluations, resolve=True)
+    
+    # This creates a dataset of each ood_evaluation configuration, allowing for multiple configuration to be evaluated 
+    # in the same run
     ood_datasets = {
         f"ood_{name}": MantraDataset(split_type="ood", **dataset_parameters, **kwargs)
         for name, kwargs in ood_evaluations.items()
@@ -171,8 +174,6 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
         loader_cls = DataLoader
         loader_kwargs["collate_fn"] = collate_simplicial
 
-    # Test and OOD loaders run once after training; keeping their workers
-    # resident forked 9 x num_workers copies of the main process and OOM-killed the packed SC jobs.
     train_loader = loader_cls(
         train_dataset, shuffle=True, persistent_workers=persistent_workers, **loader_kwargs
     )
