@@ -9,4 +9,5 @@ residuals: True
 
 # Sum is the injective multiset readout of the GIN expressiveness argument
 pool_method: sum
+readout_norm: False
 task_level: graph # Get from task

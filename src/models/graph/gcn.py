@@ -5,7 +5,7 @@ Implementation for Graph Convolutional Neural Network.
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import GCNConv
-from src.models.utils import pool
+from src.models.utils import GraphReadout
 
 
 
@@ -45,10 +45,11 @@ class GCNLayer(nn.Module):
 
 
 class GCN(nn.Module):
-    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,  n_layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5, pool_method: str = "mean", task_level: str = "graph"):
+    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,  n_layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5, pool_method: str = "mean", task_level: str = "graph", readout_norm: bool = False):
         super().__init__()
         self.pool_method = pool_method
         self.task_level = task_level
+        self.readout = GraphReadout(hidden_channels, pool_method, readout_norm)
 
         self.hidden_layers = nn.ModuleList(
             [
@@ -71,7 +72,7 @@ class GCN(nn.Module):
 
         # 2. Readout layer; node-level tasks keep one embedding per node
         if self.task_level == "graph":
-            x = pool(x, batch, self.pool_method)  # [batch_size, hidden_channels]
+            x = self.readout(x, batch)  # [batch_size, hidden_channels]
         # 3. Apply a final classifier
         x = self.final_linear(x)
         return x

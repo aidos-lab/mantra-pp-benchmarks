@@ -31,6 +31,7 @@ from mantra.transforms.task_transforms import (
 
 from src.schema import RootConfig
 from src.transforms import DropCacheAttributes, RemapLabels
+from src.utils.baselines import regression_target_stats, trivial_baselines
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
@@ -152,7 +153,10 @@ def create_dataset(cfg):
         # The cache name hashes the transform config, so differently
         # transformed variants never read each other's files.
         select = transform_cfg.get("select_features")
-        drop = DropCacheAttributes([select.src] if select is not None else [])
+        drop = DropCacheAttributes(
+            [select.src] if select is not None else [],
+            graph="representation" in transform_cfg,
+        )
         pre_transform = Compose([*transforms, drop])
         dataset_parameters = {
             "root": dataset_cfg.root,
@@ -261,7 +265,27 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
 
     return train_loader, val_loader, test_loader, ood_loaders
 
-def create_model(cfg, num_features, label_to_index):
+class TargetAffine(torch.nn.Module):
+    """Predict in standardised units and map back: `mean + std * f(x)`.
+
+    Loss, metrics and checkpoints stay in the target's original scale,
+    while the wrapped model's output starts at unit scale instead of
+    having to learn an offset of tens or hundreds.
+    """
+
+    def __init__(self, model, mean, std):
+        super().__init__()
+        self.model = model
+        self.register_buffer("mean", torch.tensor(float(mean)))
+        self.register_buffer("std", torch.tensor(float(std)))
+
+    def forward(self, batch):
+        return self.mean + self.std * self.model(batch)
+
+
+def create_model(cfg, num_features, label_to_index, target_stats=None):
+    """Instantiate the configured model; regression heads get `TargetAffine`
+    with the train-split `target_stats` (mean, std) when given."""
     cfg.model.out_channels = (
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
@@ -278,6 +302,8 @@ def create_model(cfg, num_features, label_to_index):
 
     #NOTE: Model initialization
     model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
+    if target_stats is not None and cfg.task.task_type == "regression":
+        model = TargetAffine(model, *target_stats)
     model = model.to(cfg.trainer.device)
 
     # Only compile on GPU
@@ -297,6 +323,9 @@ def main(cfg: RootConfig):
     # ---- Dataset -----
 
     train_ds, val_ds, test_ds, ood_ds, label_to_index = create_dataset(cfg)
+    #draws from the global RNG; reseed so model init and
+    # shuffling do not depend on whether the cache already existed.
+    torch.manual_seed(cfg.torch_seed)
     train_dl, val_dl, test_dl, ood_dls = create_loaders(cfg, train_ds, val_ds, test_ds, ood_ds)
 
     sample = train_ds[0]
@@ -311,7 +340,12 @@ def main(cfg: RootConfig):
         ]
 
     # ----- Model ----
-    model = create_model(cfg, num_features, label_to_index)
+    target_stats = (
+        regression_target_stats(cfg, train_ds)
+        if cfg.task.task_type == "regression"
+        else None
+    )
+    model = create_model(cfg, num_features, label_to_index, target_stats)
 
     print(f"Model parameters: {count_parameters(model)}")
 
@@ -323,6 +357,7 @@ def main(cfg: RootConfig):
 
     with wandb.init(entity=cfg.logger.entity, project=cfg.logger.project, config=conf_dict) as run:
         run.log({"model_parameters": count_parameters(model)})
+        run.summary.update(trivial_baselines(cfg, train_ds, test_ds))
         accuracies = init_metrics(cfg)
         last_epoch = 0
         if cfg.train:
@@ -352,7 +387,9 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
         )
 
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, patience=cfg.trainer.scheduler_patience
+    )
     loss_fn = hydra.utils.instantiate(cfg.task.loss)
 
     early_stopping_cnt = cfg.trainer.early_stopping

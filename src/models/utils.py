@@ -23,6 +23,23 @@ def pool(x, batch, reduce="mean"):
     return scatter(x, batch, dim=-2, reduce=reduce)
 
 
+class GraphReadout(nn.Module):
+    """Pool the node rows into one row per graph, optionally normalised.
+
+    `norm=True` applies a LayerNorm to the pooled vector: a sum readout
+    scales with the node count, and per-sample normalisation keeps the
+    final layer's input at unit scale without running statistics.
+    """
+
+    def __init__(self, hidden_channels, pool_method="mean", norm=False):
+        super().__init__()
+        self.pool_method = pool_method
+        self.norm = nn.LayerNorm(hidden_channels) if norm else nn.Identity()
+
+    def forward(self, x, batch):
+        return self.norm(pool(x, batch, self.pool_method))
+
+
 class SumReadout(nn.Module):
     def __init__(self, in_features, out_features):
         super(SumReadout, self).__init__()

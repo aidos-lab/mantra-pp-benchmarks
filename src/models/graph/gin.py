@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import MLP, GINConv
 
-from src.models.utils import pool
+from src.models.utils import GraphReadout
 
 
 class GINLayer(nn.Module):
@@ -78,6 +78,9 @@ class GIN(nn.Module):
         Graph readout: `'mean'`, `'sum'` or `'max'`.
     task_level : str
         `'graph'` pools before the readout, `'node'` emits one row per node.
+    readout_norm : bool
+        LayerNorm on the pooled graph vector, so a sum readout over large
+        graphs does not scale the output with the node count.
     """
 
     def __init__(
@@ -91,12 +94,14 @@ class GIN(nn.Module):
         dropout: float = 0.5,
         pool_method: str = "sum",
         task_level: str = "graph",
+        readout_norm: bool = False,
     ):
         super().__init__()
         self.pool_method = pool_method
         self.task_level = task_level
 
         h = hidden_channels
+        self.readout = GraphReadout(h, pool_method, readout_norm)
         self.hidden_layers = nn.ModuleList(
             [GINLayer(in_channels, h, batch_norm, False, dropout)]
             + [
@@ -114,5 +119,5 @@ class GIN(nn.Module):
 
         # Node-level tasks keep one embedding per node
         if self.task_level == "graph":
-            x = pool(x, batch_idx, self.pool_method)
+            x = self.readout(x, batch_idx)
         return self.final_linear(x)

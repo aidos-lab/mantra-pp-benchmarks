@@ -112,6 +112,7 @@ def test_training_loop_saves_typed_label_mapping(tmp_path):
                 "max_epoch": 1,
                 "early_stopping": 1,
                 "device": "cpu",
+                "scheduler_patience": 10,
                 "learning_rate": 0.01,
                 "weight_decay": 0.0,
             },
