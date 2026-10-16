@@ -7,7 +7,7 @@ import torch
 from torch_sparse import SparseTensor
 
 from torch_geometric.utils import coalesce, scatter, to_dense_adj
-from src.models.utils import SumReadout
+from src.models.utils import GraphReadout
 
 
 class SCCNNLayer(nn.Module):
@@ -507,9 +507,14 @@ class SCCNN(nn.Module):
          Whether to normalize the aggregation (default: False).
      n_layers : int, optional
          Number of layers (default: 2).
+     pool_method : str
+         Readout of each rank's cells into one row per complex.
+     readout_norm : bool
+         LayerNorm on each pooled rank vector, so a sum readout over
+         thousands of cells does not scale the output with the complex size.
     """
 
-    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2, task_level: str = 'graph'):
+    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2, task_level: str = 'graph', pool_method: str = 'sum', readout_norm: bool = False):
         super().__init__()
         self.sc_order = sc_order
         self.task_level = task_level
@@ -527,15 +532,10 @@ class SCCNN(nn.Module):
             # Per-vertex head on the rank-0 states
             self.node_readout = nn.Linear(hidden_channels[0], out_channels)
         else:
-            self.readout_0 = SumReadout(
-                hidden_channels[0], out_channels
+            self.readouts = nn.ModuleList(
+                GraphReadout(h, pool_method, readout_norm) for h in hidden_channels[:3]
             )
-            self.readout_1 = SumReadout(
-                hidden_channels[1], out_channels
-            )
-            self.readout_2 = SumReadout(
-                hidden_channels[2], out_channels
-            )
+            self.heads = nn.ModuleList(nn.Linear(h, out_channels) for h in hidden_channels[:3])
 
     def _reconstruct(self, batch, name):
         idx = batch[f"{name}_idx"]
@@ -605,10 +605,9 @@ class SCCNN(nn.Module):
         if self.task_level == 'node':
             return self.node_readout(x_0)
 
-        #TODO: Figure out what to do about this readout
-        out_0 = self.readout_0(x_0, x_bel_0)
-        out_1 = self.readout_1(x_1, x_bel_1)
-        out_2 = self.readout_2(x_2, x_bel_2)
-
-
-        return out_0 + out_1 + out_2
+        return sum(
+            head(readout(x, belongs))
+            for head, readout, x, belongs in zip(
+                self.heads, self.readouts, (x_0, x_1, x_2), (x_bel_0, x_bel_1, x_bel_2)
+            )
+        )

@@ -259,11 +259,11 @@ class TestSCCNNNodeHead:
         assert isinstance(model.node_readout, nn.Linear)
         assert model.node_readout.in_features == 4
         assert model.node_readout.out_features == 3
-        assert not hasattr(model, "readout_0")
+        assert not hasattr(model, "readouts")
 
         graph_model = _sccnn("graph", out_channels=3)
         assert not hasattr(graph_model, "node_readout")
-        assert hasattr(graph_model, "readout_0")
+        assert hasattr(graph_model, "readouts")
 
     def test_node_head_gradient_flow(self):
         model = _sccnn("node")

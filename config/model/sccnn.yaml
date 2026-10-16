@@ -6,4 +6,6 @@ out_channels: 1 # Get from task
 conv_order: 1
 sc_order: 2
 aggr_norm: False
+pool_method: sum
+readout_norm: False
 task_level: graph # Get from task
