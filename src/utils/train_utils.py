@@ -90,8 +90,13 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
     return metrics
 
 def test(model, test_dataset, accuracies, label_to_index, run, cfg, epoch, split="test"):
-    """ Run the test evaluation
+    """Evaluate one split and log its metrics under ``split``.
 
+    Parameters
+    ----------
+    split : str
+        Metric prefix; ``"test"`` for the held-out split and
+        ``"ood_<name>"`` for a subdivided split.
     """
 
     is_classification = cfg.task.task_type == 'classification'
