@@ -59,7 +59,7 @@ def task_to_transform(cfg):
     task_level = cfg.task.task_level
 
     if cfg.task.name == "BettiNumbers":
-        return BettiToClassTransform()
+        return BettiToClassTransform(cfg.dataset.dimension)
     elif cfg.task.name == "Orientability":
         return OrientableToClassTransform()
     elif cfg.task.name == "Name":
@@ -82,9 +82,9 @@ def task_to_transform(cfg):
 
 
 def cache_name(dataset_cfg):
-    """Name of the cached CY variant: a hash of its transform config.
+    """Name of the cached variant: a hash of its transform config.
 
-    `mantra.datasets.CalabiYau` keys its processed directory on this
+    `MantraDataset` and `CalabiYau` key their processed directory on this
     name, so a root can hold several transform stacks side by side and a
     changed stack never reads a stale cache.
     """
@@ -104,6 +104,27 @@ def _target_values(dataset):
 
 
 def create_dataset(cfg):
+    """Build the train/val/test datasets and one OOD dataset per table entry.
+
+    The representation and encoding transforms run once as the
+    `pre_transform` of the cache named by `cache_name`; only the task
+    transform (and the label remap for classification) runs on access.
+    `dataset.ood_evaluations` maps a name to the subdivision arguments of
+    `MantraDataset` (`division_type` plus `graded_vertex_number`,
+    `fraction` or `round`); each entry becomes an `ood` split built from
+    the same cached test entries and logged under `ood_<name>/`. The
+    `ood` config group fills the table, and it is empty by default.
+    `dataset.reload` rebuilds the splits once and every OOD split of the
+    run.
+    The `cy` dataset uses the same cache layout through `CalabiYauDataset`
+    and has no OOD splits.
+
+    Returns
+    -------
+    tuple
+        Train, val and test datasets, the dict of OOD datasets keyed
+        `ood_<name>`, and the label-to-index map (empty for regression).
+    """
     torch.manual_seed(cfg.torch_seed)
 
     dataset_cfg = cfg.dataset
@@ -112,12 +133,14 @@ def create_dataset(cfg):
     is_cy = dataset_cfg.type == "cy"
 
 
-    transforms = [None for _ in range(len(list(transform_cfg.items())))]
-
-    for name, transform in transform_cfg.items():
-        trans = hydra.utils.instantiate(transform)
-        assert name in transform_order, f"Transform {name} not in transforms"
-        transforms[transform_order.index(name)] = trans
+    missing = [name for name in transform_cfg if name not in transform_order]
+    if missing:
+        raise ValueError(f"Transforms {missing} are not in dataset.transform_order")
+    transforms = [
+        hydra.utils.instantiate(transform_cfg[name])
+        for name in transform_order
+        if name in transform_cfg
+    ]
 
     task_transform = task_to_transform(cfg)
 
@@ -150,42 +173,40 @@ def create_dataset(cfg):
         train_dataset = CalabiYauDataset(split_type="train", **dataset_parameters)
         val_dataset = CalabiYauDataset(split_type="val", **dataset_parameters)
         test_dataset = CalabiYauDataset(split_type="test", **dataset_parameters)
+        ood_datasets = {}
     else:
-        transforms = Compose([task_transform, *transforms])
-
         dataset_parameters = {
-                "root": dataset_cfg.root,
-                "dimension": dataset_cfg.dimension,
-                "version": dataset_cfg.version,
-                "balanced": dataset_cfg.balanced,
-                "local_path": dataset_cfg.local_path,
-                "force_reload": dataset_cfg.reload,
-                "seed": dataset_cfg.seed,
-                "split_proportions": [split.train, split.val, split.test],
-                "min_sample_per_class": dataset_cfg.min_sample_per_class,
-                "division_type": dataset_cfg.division_type,
-                "stratified": dataset_cfg.use_stratified,
-                "max_vertices": dataset_cfg.max_vertices,
-                "n_moves": dataset_cfg.n_moves,
-                "target_count": dataset_cfg.target_count,
-                "use_surgery": dataset_cfg.use_surgery,
-                "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
-                "transform": transforms,
+            "root": dataset_cfg.root,
+            "name": cache_name(dataset_cfg),
+            "dimension": dataset_cfg.dimension,
+            "version": dataset_cfg.version,
+            "balanced": dataset_cfg.balanced,
+            "local_path": dataset_cfg.local_path,
+            "seed": dataset_cfg.seed,
+            "split_proportions": [split.train, split.val, split.test],
+            "min_sample_per_class": dataset_cfg.min_sample_per_class,
+            "stratified": dataset_cfg.use_stratified,
+            "max_vertices": dataset_cfg.max_vertices,
+            "n_moves": dataset_cfg.n_moves,
+            "target_count": dataset_cfg.target_count,
+            "use_surgery": dataset_cfg.use_surgery,
+            "max_ood_size_per_class": dataset_cfg.max_ood_size_per_class,
+            "pre_transform": Compose(transforms),
+            "transform": task_transform,
+        }
 
-            }
-
+        # force_reload removes every cached file, so only the train split sets it.
         train_dataset = MantraDataset(
-            split_type="train",
-            **dataset_parameters
+            split_type="train", force_reload=dataset_cfg.reload, **dataset_parameters
         )
-        val_dataset = MantraDataset(
-                split_type="val",
-                **dataset_parameters
-        )
-        test_dataset = MantraDataset(
-                split_type="test",
-                **dataset_parameters
-        )
+        val_dataset = MantraDataset(split_type="val", **dataset_parameters)
+        test_dataset = MantraDataset(split_type="test", **dataset_parameters)
+
+        ood_evaluations = OmegaConf.to_container(dataset_cfg.ood_evaluations, resolve=True)
+        ood_datasets = {
+            f"ood_{name}": MantraDataset(split_type="ood", **dataset_parameters, **kwargs)
+            for name, kwargs in ood_evaluations.items()
+        }
 
     label_to_index = {}
 
@@ -203,25 +224,42 @@ def create_dataset(cfg):
             )
         remap_labels = RemapLabels(label_to_index)
 
-        for dataset in (train_dataset, val_dataset, test_dataset):
+        for dataset in (train_dataset, val_dataset, test_dataset, *ood_datasets.values()):
             dataset.transform = Compose([dataset.transform, remap_labels])
 
-    return train_dataset, val_dataset, test_dataset, label_to_index
+    return train_dataset, val_dataset, test_dataset, ood_datasets, label_to_index
 
-def create_loaders(cfg, train_dataset, val_dataset, test_dataset, is_graph_representation):
+
+def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=None):
     trainer_cfg = cfg.trainer
     persistent_workers = trainer_cfg.num_workers > 0
 
-    if not is_graph_representation:
-        train_loader = DataLoader(train_dataset, batch_size=trainer_cfg.batch_size, shuffle=True, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        val_loader = DataLoader(val_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        test_loader = DataLoader(test_dataset, batch_size=trainer_cfg.batch_size, shuffle=False, collate_fn=collate_simplicial, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-    else: # Graph
-        train_loader = PyGDataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True, num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        val_loader = PyGDataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
-        test_loader = PyGDataLoader(test_dataset, batch_size=cfg.trainer.batch_size, shuffle=False,  num_workers=trainer_cfg.num_workers, pin_memory=trainer_cfg.pin_memory, persistent_workers=persistent_workers)
+    is_graph_representation = "x_0" not in train_dataset[0]
 
-    return train_loader, val_loader, test_loader
+    loader_kwargs = dict(
+        batch_size=trainer_cfg.batch_size,
+        num_workers=trainer_cfg.num_workers,
+        pin_memory=trainer_cfg.pin_memory,
+    )
+    if is_graph_representation:
+        loader_cls = PyGDataLoader
+    else:
+        loader_cls = DataLoader
+        loader_kwargs["collate_fn"] = collate_simplicial
+
+    train_loader = loader_cls(
+        train_dataset, shuffle=True, persistent_workers=persistent_workers, **loader_kwargs
+    )
+    val_loader = loader_cls(
+        val_dataset, shuffle=False, persistent_workers=persistent_workers, **loader_kwargs
+    )
+    test_loader = loader_cls(test_dataset, shuffle=False, **loader_kwargs)
+    ood_loaders = {
+        name: loader_cls(dataset, shuffle=False, **loader_kwargs)
+        for name, dataset in (ood_datasets or {}).items()
+    }
+
+    return train_loader, val_loader, test_loader, ood_loaders
 
 def create_model(cfg, num_features, label_to_index):
     cfg.model.out_channels = (
@@ -258,11 +296,11 @@ def main(cfg: RootConfig):
 
     # ---- Dataset -----
 
-    train_ds, val_ds, test_ds, label_to_index = create_dataset(cfg)
+    train_ds, val_ds, test_ds, ood_ds, label_to_index = create_dataset(cfg)
+    train_dl, val_dl, test_dl, ood_dls = create_loaders(cfg, train_ds, val_ds, test_ds, ood_ds)
+
     sample = train_ds[0]
     is_graph_representation = "x_0" not in sample
-
-    train_dl, val_dl, test_dl = create_loaders(cfg, train_ds, val_ds, test_ds, is_graph_representation)
 
     if is_graph_representation:
         num_features = sample.x.shape[1]
@@ -291,6 +329,9 @@ def main(cfg: RootConfig):
             model, last_epoch = training_loop(train_dl, val_dl, model, accuracies, run, cfg, label_to_index)
 
         test(model, test_dl, accuracies, label_to_index, run, cfg, epoch=last_epoch)
+
+        for name, loader in ood_dls.items():
+            test(model, loader, accuracies, label_to_index, run, cfg, epoch=last_epoch, split=name)
 
 
 def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg, label_to_index):
@@ -369,6 +410,7 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
 
             # Save weights and config of the best model
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, "best_val.pt"))
+            best_val_metrics = val_metrics
         else:
             early_stopping_cnt -= 1
 
@@ -376,6 +418,7 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
     state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
 
     model.load_state_dict(state_dict)
+    run.summary.update(best_val_metrics)
     return model, last_epoch
 
 if __name__ == "__main__":

@@ -83,7 +83,7 @@ def _cfg(tmp_path, *overrides, rows=None):
 class TestCYRegression:
     def test_split_sizes_and_targets(self, tmp_path):
         cfg = _cfg(tmp_path, "task=hodge_reg")
-        train, val, test, label_to_index = main.create_dataset(cfg)
+        train, val, test, _, label_to_index = main.create_dataset(cfg)
 
         # 0.7 / 0.1 / 0.2 of 30 samples; sklearn ceils the fractional
         # val cut (24 * (0.1 / 0.8) is just above 3 in floats).
@@ -98,7 +98,7 @@ class TestCYRegression:
 
     def test_splits_partition_the_dataset(self, tmp_path):
         cfg = _cfg(tmp_path, "task=hodge_reg")
-        train, val, test, _ = main.create_dataset(cfg)
+        train, val, test, _, _ = main.create_dataset(cfg)
         seen = sorted(
             int(data.h11) for ds in (train, val, test) for data in ds
         )
@@ -108,7 +108,7 @@ class TestCYRegression:
         """The default chain (dual graph, random-walk PE, feature
         selection) must leave a ready-to-batch graph sample."""
         cfg = _cfg(tmp_path, "task=hodge_reg")
-        train, _, _, _ = main.create_dataset(cfg)
+        train, _, _, _, _ = main.create_dataset(cfg)
         sample = train[0]
         assert sample.edge_index is not None
         assert sample.x is not None
@@ -116,7 +116,7 @@ class TestCYRegression:
 
     def test_alternate_target_via_override(self, tmp_path):
         cfg = _cfg(tmp_path, "task=hodge_reg", "task.target=h12")
-        train, _, _, _ = main.create_dataset(cfg)
+        train, _, _, _, _ = main.create_dataset(cfg)
         for data in train:
             assert data.y.item() == float(data.h12)
 
@@ -124,7 +124,7 @@ class TestCYRegression:
 class TestCYClassification:
     def test_mapping_spans_the_full_dataset(self, tmp_path):
         cfg = _cfg(tmp_path, "task=hodge_class", "task.target=h12")
-        train, val, test, label_to_index = main.create_dataset(cfg)
+        train, val, test, _, label_to_index = main.create_dataset(cfg)
 
         # h12 only attains 0, 1, 2; the mapping is sorted and
         # contiguous and every split respects it.
@@ -137,8 +137,8 @@ class TestCYClassification:
 
     def test_mapping_is_deterministic(self, tmp_path):
         cfg = _cfg(tmp_path, "task=hodge_class", "task.target=h12")
-        _, _, _, first = main.create_dataset(cfg)
-        _, _, _, again = main.create_dataset(cfg)
+        _, _, _, _, first = main.create_dataset(cfg)
+        _, _, _, _, again = main.create_dataset(cfg)
         assert first == again
 
 
@@ -179,7 +179,7 @@ ONE_SKELETON = "representation@dataset.transform.representation=one_skeleton"
 class TestCYNodeLevel:
     def test_regression_targets_per_vertex(self, tmp_path):
         cfg = _cfg(tmp_path, "task=chern_node", ONE_SKELETON)
-        train, val, test, label_to_index = main.create_dataset(cfg)
+        train, val, test, _, label_to_index = main.create_dataset(cfg)
 
         assert label_to_index == {}
         for dataset in (train, val, test):
@@ -193,10 +193,8 @@ class TestCYNodeLevel:
     def test_loaders_batch_per_vertex(self, tmp_path):
         cfg = _cfg(tmp_path, "task=chern_node", ONE_SKELETON,
                    "trainer.batch_size=3")
-        train, val, test, _ = main.create_dataset(cfg)
-        _, val_loader, _ = main.create_loaders(
-            cfg, train, val, test, is_graph_representation=True
-        )
+        train, val, test, _, _ = main.create_dataset(cfg)
+        _, val_loader, _, _ = main.create_loaders(cfg, train, val, test)
 
         batch = next(iter(val_loader))
         n_graphs = batch.num_graphs
@@ -211,10 +209,8 @@ class TestCYNodeLevel:
     def test_shuffled_loader_keeps_targets_with_their_graph(self, tmp_path):
         cfg = _cfg(tmp_path, "task=chern_node", ONE_SKELETON,
                    "trainer.batch_size=4")
-        train, val, test, _ = main.create_dataset(cfg)
-        train_loader, _, _ = main.create_loaders(
-            cfg, train, val, test, is_graph_representation=True
-        )
+        train, val, test, _, _ = main.create_dataset(cfg)
+        train_loader, _, _, _ = main.create_loaders(cfg, train, val, test)
 
         seen = []
         for batch in train_loader:
@@ -233,7 +229,7 @@ class TestCYNodeLevel:
             tmp_path, "task=hodge_class", "task.target=c2",
             "task.task_level=node", ONE_SKELETON,
         )
-        train, val, test, label_to_index = main.create_dataset(cfg)
+        train, val, test, _, label_to_index = main.create_dataset(cfg)
 
         values = sorted({v for data in train for v in _c2(int(data.h11))})
         assert label_to_index == {v: k for k, v in enumerate(values)}
@@ -260,7 +256,7 @@ class TestCYNodeLevel:
 
     def test_graph_classification_keeps_the_train_split_remap(self, tmp_path):
         cfg = _cfg(tmp_path, "task=hodge_class", "task.target=h12")
-        train, _, _, label_to_index = main.create_dataset(cfg)
+        train, _, _, _, label_to_index = main.create_dataset(cfg)
 
         assert label_to_index == {0: 0, 1: 1, 2: 2}
         assert {int(data.y) for data in train} == {0, 1, 2}
@@ -273,10 +269,8 @@ class TestCYNodeLevel:
 
         cfg = _cfg(tmp_path, "task=chern_node", ONE_SKELETON, "model=gcn",
                    "trainer.batch_size=8")
-        train, val, test, label_to_index = main.create_dataset(cfg)
-        train_loader, val_loader, _ = main.create_loaders(
-            cfg, train, val, test, is_graph_representation=True
-        )
+        train, val, test, _, label_to_index = main.create_dataset(cfg)
+        train_loader, val_loader, _, _ = main.create_loaders(cfg, train, val, test)
 
         model = main.create_model(cfg, train[0].x.shape[1], label_to_index)
         assert cfg.model.task_level == "node"
@@ -300,7 +294,7 @@ class TestCYTransformCache:
         """The representation chain runs once at process time; the cached
         samples carry neither the Python objects nor the raw labels."""
         cfg = _cfg(tmp_path, "task=hodge_reg", ONE_SKELETON)
-        train, _, _, _ = main.create_dataset(cfg)
+        train, _, _, _, _ = main.create_dataset(cfg)
 
         assert isinstance(train.pre_transform, Compose)
         assert not isinstance(train.transform, Compose)
@@ -319,7 +313,7 @@ class TestCYTransformCache:
             _cfg(tmp_path, "task=hodge_class", ONE_SKELETON).dataset
         )
 
-        train_a, _, _, _ = main.create_dataset(skeleton)
-        train_b, _, _, _ = main.create_dataset(dual)
+        train_a, _, _, _, _ = main.create_dataset(skeleton)
+        train_b, _, _, _, _ = main.create_dataset(dual)
         assert train_a.processed_dir != train_b.processed_dir
         assert train_a.get(0).num_nodes != train_b.get(0).num_nodes

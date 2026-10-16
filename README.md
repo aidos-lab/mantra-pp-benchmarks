@@ -25,7 +25,6 @@ package from a sibling checkout expected at `../mantra` (see
 ```
 .
 ├── main.py                      # Hydra entry point: train + test a model
-├── evaluate_barycentric.py      # Load a checkpoint, evaluate on a subdivided cache
 ├── config/                      # Hydra config groups (model, dataset, transform, task, …)
 ├── src/
 │   ├── models/                  # GCN, MLP, ResidualGatedGCN, Graphormer, GIN, DeepSets, PointNet++, SAN, SAN-TMX, CWN, SCCNN
@@ -86,9 +85,9 @@ upstream MANTRA release:
    (`MantraDataset(balanced=True)`; see
    [Generating the balanced dataset](#generating-the-balanced-dataset)).
 3. **Subdivided MANTRA.** Full-barycentric / stellar / graded
-   subdivisions of the unbalanced or balanced JSONs, produced by
-   `generate_barycentric_data.py` (see
-   [Reproducing the subdivision experiments](#reproducing-the-subdivision-experiments)).
+   subdivisions of the test split, built by `MantraDataset` inside the
+   training run (see
+   [Evaluating subdivisions in the training run](#evaluating-subdivisions-in-the-training-run)).
 
 
 ### Generating the balanced dataset
@@ -135,17 +134,15 @@ example above):
 The first run copies the JSON into
 `${dataset.root}/mantra/${dim}D/raw/${dim}_manifolds_balanced.json` and
 materializes the processed cache. Subsequent runs reuse the cache; pass
-`dataset.reload=True` to force re-processing.
+`dataset.reload=True` to rebuild the splits and every OOD split of the
+run. OOD splits that are not part of the run are deleted, not rebuilt.
 
 #### How `dataset.local_path` and `dataset.balanced` interact
 
-`main.py` enforces the invariant
-
-```python
-assert not ((dataset.local_path is not None) ^ dataset.balanced)
-```
-
-i.e. they must both be set or both be unset.
+`dataset.local_path` replaces the download with a local JSON and
+`dataset.balanced` selects the balanced variant of the cache; `main.py`
+does not check that they agree, so pass both when training on a
+generated balanced JSON.
 
 ## Running a single training run
 
@@ -341,94 +338,49 @@ task.task_level=node`. As at graph level, the classes are the values
 seen in the train split; a vertex value that occurs only in val or
 test is an error at start-up, since no model could predict it.
 
-## Reproducing the subdivision experiments
+## Evaluating subdivisions in the training run
 
-The barycentric / stellar / graded-subdivision experiments follow a
-three-step pipeline. Throughout, `${LEVEL}` denotes the subdivision level
-(1, 2, …; or a fraction in `(0, 1)` for partial-stellar).
+The `ood` config group lists subdivisions of the test split that are
+built next to the train/val/test splits and evaluated right after the
+test set. Each entry is the `MantraDataset` subdivision arguments, and
+its key names the metric prefix (`ood_<key>/...`); `test/...` stays the
+in-distribution column. No `ood` option is selected by default, so
+`dataset.ood_evaluations` stays empty and no OOD split is evaluated.
 
-### 1. Generate the subdivided JSONs
+| `ood=`              | Paper                        | Splits                                         | Needs                    |
+| ------------------- | ---------------------------- | ---------------------------------------------- | ------------------------ |
+| `paper_unbalanced`  | Figure 5, Table S.10         | graded 16-20, 0.75- and 1-stellar, barycentric | `dataset.max_vertices=15` |
+| `paper_balanced_2d` | Table S.11                   | graded 21-24, 0.75- and 1-stellar, barycentric | `dataset.max_vertices=20` |
+| `paper_balanced_3d` | Table S.12                   | graded 31-34, 0.75- and 1-stellar, barycentric | `dataset.max_vertices=30` |
 
-The unbalanced source JSON is whatever `ManifoldTriangulations` cached
-locally — e.g. `data/mantra/2D/raw/2_manifolds.json` after one
-`balanced=False` run:
+The vertex cap keeps every graded split strictly larger than any
+training triangulation. For a one-off split, override the table
+directly, e.g. `'+dataset.ood_evaluations={stellar05: {division_type:
+stellar, fraction: 0.5}}'`.
 
-```bash
-.venv/bin/python generate_barycentric_data.py \
-    input=data/mantra/2D/raw/2_manifolds.json \
-    output_dir=/tmp/mantra_bary_demo \
-    prefix=2_manifolds \
-    n_levels=1 \
-    min_vertices=16 \
-    mode=stellar
-```
+`MantraDataset` builds the train/val/test files once per processed
+directory; every OOD variant only subdivides the cached test entries and
+adds its own `ood_*` file, so all variants share one cache root. The
+representation and encoding transforms are cached
+there too, as `pre_transform`, in a processed directory named after a
+hash of `dataset.transform` and `dataset.transform_order`, so several
+featurizations coexist under one `dataset.root` and share its raw data.
+Only the label transform runs on access. Random encodings are therefore
+drawn once, when the cache is built, and reused by every run on that
+cache, whatever its seed.
 
-Writes `${output_dir}/${prefix}_bary_<level>.json` for every level
-`1..n_levels`. Entries with fewer than `min_vertices` after subdivision
-are dropped from the output. See
-[`config/generate_barycentric_data.yaml`](./config/generate_barycentric_data.yaml)
-for all options (notably `n_smallest`, `min_class_count`, and the
-`mode` validity rules; valid `mode` values are `stellar`,
-`full_barycentric`, `graded`).
+Simplicial models get random vertex features from
+`transform@dataset.transform.embedding=simplex_random_features`; they
+are written to `random_features_0`, and `propagate_vertex_features`
+lifts them to the higher simplices.
 
-### 2. Build the pre_transform cache for that level
-
-Using the demo stellar level-1 JSON produced in step 1:
-
-```bash
-.venv/bin/python precompute_barycentric.py \
-    +bary_level=1 \
-    dataset.root=data/bary1_2d_unbalanced_random_features_dual_graph \
-    dataset.local_path=/tmp/mantra_bary_demo/2_manifolds_bary_1.json \
-    dataset.dimension=2 \
-    dataset.balanced=False \
-    representation@dataset.transform.representation=dual_graph \
-    transform@dataset.transform.embedding=random_features \
-    dataset.transform.select_features.src=random_features \
-    task=name model=gcn trainer.device=cpu
-```
-
-`precompute_barycentric.py` deliberately drops the
-`local_path XOR balanced` assertion that `main.py` enforces, so it
-can take an unbalanced subdivided JSON via `dataset.local_path`.
-
-The aggregated launchers used in the paper are
-`scripts/precompute_{gnn,cwn,san,sccnn}_barycentric_all*.sh` and
-`run_precompute_array.sh` (SLURM job array form).
-
-### 3. Evaluate a trained checkpoint on the subdivided cache
-
-```bash
-.venv/bin/python evaluate_barycentric.py \
-    checkpoint_dir=checkpoints/<run_name> \
-    bary_level=1 \
-    bary_dataset_root=data/bary1_2d_unbalanced_random_features_dual_graph \
-    bary_local_path=/tmp/mantra_bary_demo/2_manifolds_bary_1.json \
-    bary_balanced=False \
-    device=cpu
-```
-
-`evaluate_barycentric.py` loads the *training* config from
-`<checkpoint_dir>/config.yaml`, replays the same model-shape mutations
-that `main.py` applies (in particular `model.out_channels` from
-`label_to_index`), strips the `_orig_mod.` prefix introduced by
-`torch.compile`, and runs the test loop on the subdivided dataset.
-
-The `bary_balanced` flag **must** match the `dataset.balanced` value used
-when the cache was built; the script aborts with a clear error otherwise.
-
-To sweep over levels and / or checkpoints, use Hydra multirun:
-
-```bash
-.venv/bin/python evaluate_barycentric.py --multirun \
-    checkpoint_dir=checkpoints/run_a,checkpoints/run_b \
-    bary_level=1 \
-    bary_dataset_root='data/bary${bary_level}_2d_unbalanced_random_features_dual_graph' \
-    bary_local_path='/tmp/mantra_bary_demo/2_manifolds_bary_${bary_level}.json'
-```
-
-Per-checkpoint results are written to
-`<checkpoint_dir>/barycentric_results_level_<L>.json`.
+`+transform@dataset.transform.permute=permute_vertices` relabels every
+triangulation by a random vertex permutation (seeded with
+`dataset.seed`), so label-dependent encodings such as the moment curve
+and the orientations of signed incidence matrices do not inherit the
+stored vertex order. It must come first in `dataset.transform_order`,
+before any representation; the camera-ready manifests use it on every
+arm.
 
 ## Tests
 
