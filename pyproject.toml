@@ -47,6 +47,15 @@ cu130 = [
     "torch-scatter==2.1.2+pt29cu130; sys_platform == 'linux'",
     "torch-cluster==1.6.3+pt29cu130; sys_platform == 'linux'",
 ]
+cu128 = [
+    "mantra-dataset; sys_platform == 'linux'",
+    "torch==2.9.0+cu128; sys_platform == 'linux'",
+    "torch-geometric; sys_platform == 'linux'",
+    "pyg-lib==0.6.0+pt29cu128; sys_platform == 'linux'",
+    "torch-sparse==0.6.18+pt29cu128; sys_platform == 'linux'",
+    "torch-scatter==2.1.2+pt29cu128; sys_platform == 'linux'",
+    "torch-cluster==1.6.3+pt29cu128; sys_platform == 'linux'",
+]
 
 [dependency-groups]
 dev = [
@@ -59,6 +68,7 @@ conflicts = [
     [
         { extra = "cpu" },
         { extra = "cu130" },
+        { extra = "cu128" },
     ],
 ]
 
@@ -70,6 +80,12 @@ explicit = true
 [[tool.uv.index]]
 name = "pyg-cuda" 
 url = "https://data.pyg.org/whl/torch-2.9.0+cu130.html"
+explicit = true
+format = "flat"
+
+[[tool.uv.index]]
+name = "pyg-cu128"
+url = "https://data.pyg.org/whl/torch-2.9.0+cu128.html"
 explicit = true
 format = "flat"
 
@@ -88,19 +104,23 @@ pyg-lib = [
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Linux'"},
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Darwin'"},
     { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"},
+    { index = "pyg-cu128", extra = "cu128", marker = "platform_system == 'Linux'"},
 ]
 torch-sparse = [
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Linux'"},
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Darwin'"},
     { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"},
+    { index = "pyg-cu128", extra = "cu128", marker = "platform_system == 'Linux'"},
 ]
 torch-scatter = [
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Linux'"},
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Darwin'"},
     { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"},
+    { index = "pyg-cu128", extra = "cu128", marker = "platform_system == 'Linux'"},
 ]
 torch-cluster = [
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Linux'"},
     { index = "pyg-cpu", extra = "cpu", marker = "platform_system == 'Darwin'"},
     { index = "pyg-cuda", extra = "cu130", marker = "platform_system == 'Linux'"},
+    { index = "pyg-cu128", extra = "cu128", marker = "platform_system == 'Linux'"},
 ]

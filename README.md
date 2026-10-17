@@ -53,6 +53,14 @@ uv sync --extra cpu
 uv sync --extra cu130
 ```
 
+CUDA 13 wheels have no kernels for Volta GPUs (V100 and older). For such
+a node install the CUDA 12.8 build into a second environment and point
+the job scripts at it:
+
+```bash
+UV_PROJECT_ENVIRONMENT=.venv-cu128 uv sync --extra cu128
+```
+
 This will:
 
 1. Create `.venv/` with Python ≥ 3.12 and install all pinned dependencies.
