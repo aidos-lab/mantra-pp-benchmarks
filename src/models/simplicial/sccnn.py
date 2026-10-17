@@ -510,8 +510,10 @@ class SCCNN(nn.Module):
      pool_method : str
          Readout of each rank's cells into one row per complex.
      readout_norm : bool
-         LayerNorm on each pooled rank vector, so a sum readout over
-         thousands of cells does not scale the output with the complex size.
+         LayerNorm before the heads: on each pooled rank vector at graph
+         level, on the rank-0 states at node level. Without aggregation
+         normalisation the Laplacian stack scales features with the cell
+         degrees, and the normalisation keeps the head input at unit scale.
     """
 
     def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2, task_level: str = 'graph', pool_method: str = 'sum', readout_norm: bool = False):
@@ -530,6 +532,7 @@ class SCCNN(nn.Module):
 
         if task_level == 'node':
             # Per-vertex head on the rank-0 states
+            self.node_norm = nn.LayerNorm(hidden_channels[0]) if readout_norm else nn.Identity()
             self.node_readout = nn.Linear(hidden_channels[0], out_channels)
         else:
             self.readouts = nn.ModuleList(
@@ -603,7 +606,7 @@ class SCCNN(nn.Module):
         )
 
         if self.task_level == 'node':
-            return self.node_readout(x_0)
+            return self.node_readout(self.node_norm(x_0))
 
         return sum(
             head(readout(x, belongs))

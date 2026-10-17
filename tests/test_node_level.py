@@ -158,11 +158,11 @@ def _cwn(task_level, out_channels=1):
                out_channels=out_channels, task_level=task_level)
 
 
-def _sccnn(task_level, out_channels=1):
+def _sccnn(task_level, out_channels=1, **kwargs):
     torch.manual_seed(7)
     return SCCNN(in_channels=[3, 3, 3], hidden_channels=[4, 4, 4],
                  out_channels=out_channels, conv_order=1, sc_order=2,
-                 n_layers=2, task_level=task_level)
+                 n_layers=2, task_level=task_level, **kwargs)
 
 
 class _FakeRun:
@@ -260,6 +260,12 @@ class TestSCCNNNodeHead:
         assert model.node_readout.in_features == 4
         assert model.node_readout.out_features == 3
         assert not hasattr(model, "readouts")
+
+    def test_readout_norm_normalises_rank0_before_the_head(self):
+        plain, normed = _sccnn("node"), _sccnn("node", readout_norm=True)
+        assert isinstance(plain.node_norm, nn.Identity)
+        assert isinstance(normed.node_norm, nn.LayerNorm)
+        assert normed(_sccnn_batch(seed=3)).shape == (7, 1)
 
         graph_model = _sccnn("graph", out_channels=3)
         assert not hasattr(graph_model, "node_readout")
