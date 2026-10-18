@@ -1,0 +1,5 @@
+# @package transform
+# Bipartite graph of the vertices and the maximal simplices
+_target_: mantra.representations.LeviGraph
+# turn on by feature_propagation=x
+feature_propagation: null

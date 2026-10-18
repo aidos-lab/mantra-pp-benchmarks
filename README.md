@@ -181,7 +181,7 @@ Key Hydra groups:
 | Group                                         | Options                                                                                             |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `gin`, `deepsets`, `pointnetpp`, `san`, `san_tmx`, `cwn`, `sccnn` |
-| `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
+| `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `levi_graph`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
 | `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge_reg`, `hodge_class`, `chern_node`     |
 | `trainer`                                     | `default`                                                                                           |
@@ -250,7 +250,7 @@ smoke tests; the limit applies before the class filter.
 To feed the vertex coordinates instead of the random-walk embedding,
 propagate them to all simplex ranks with `propagate_convex_comb` before
 the representation and let the representation read them (works for
-`hasse_diagram` and `dual_graph`):
+`hasse_diagram`, `levi_graph` and `dual_graph`):
 
 ```bash
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_reg \
