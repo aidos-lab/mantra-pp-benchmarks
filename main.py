@@ -152,7 +152,9 @@ def create_dataset(cfg):
         remap_labels = RemapLabels(label_to_index)
 
         for dataset in (train_dataset, val_dataset, test_dataset, *ood_datasets.values()):
-            dataset.transform = Compose([dataset.transform, remap_labels])
+            dataset.transform = Compose(
+                [t for t in (dataset.transform, remap_labels) if t is not None]
+            )
 
     return train_dataset, val_dataset, test_dataset, ood_datasets, label_to_index
 
