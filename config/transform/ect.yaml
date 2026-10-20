@@ -1,0 +1,12 @@
+_target_: mantra.transforms.EulerCharacteristicTransform
+
+# Thresholds span [-radius, radius]; radius 8 covers 98.2 % of the
+# h12<10 polytopes entirely (99th percentile of the max vertex norm
+# is 9.2, the median 3.0).
+num_directions: 64
+resolution: 64
+radius: 8.0
+# null: every face; 1: the one-skeleton (vertices and edges).
+max_rank: null
+source: coords
+seed: 0
