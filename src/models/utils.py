@@ -23,6 +23,17 @@ def pool(x, batch, reduce="mean"):
     return scatter(x, batch, dim=-2, reduce=reduce)
 
 
+def target_nodes(x, batch):
+    """Rows of `x` that carry node-level targets.
+
+    Representations whose nodes are not all vertices (e.g. the Levi graph)
+    mark the vertex nodes in `vertex_mask`; without a mask every node is
+    a target.
+    """
+    mask = getattr(batch, "vertex_mask", None)
+    return x if mask is None else x[mask]
+
+
 class GraphReadout(nn.Module):
     """Pool the node rows into one row per graph, optionally normalised.
 

@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from pydantic import BaseModel
 from torch import nn
 
-from src.models.utils import GraphReadout
+from src.models.utils import GraphReadout, target_nodes
 
 
 class ResidualGatedGCNConfig(BaseModel):
@@ -101,9 +101,10 @@ class ResidualGatedGCN(nn.Module):
         x = self.input_proj(x)
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
-        # Node-level tasks keep one embedding per node
         if self.task_level == "graph":
             x = self.readout(x, batch_idx)
+        else:
+            x = target_nodes(x, batch)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.final_linear(x)
         return x

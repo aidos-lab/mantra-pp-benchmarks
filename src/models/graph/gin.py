@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import MLP, GINConv
 
-from src.models.utils import GraphReadout
+from src.models.utils import GraphReadout, target_nodes
 
 
 class GINLayer(nn.Module):
@@ -117,7 +117,8 @@ class GIN(nn.Module):
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
 
-        # Node-level tasks keep one embedding per node
         if self.task_level == "graph":
             x = self.readout(x, batch_idx)
+        else:
+            x = target_nodes(x, batch)
         return self.final_linear(x)
