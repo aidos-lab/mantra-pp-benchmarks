@@ -4,17 +4,33 @@
 `_data`, so none of this needs a pass over the transformed samples.
 """
 
+import torch
+
+
 def target_values(cfg, dataset):
     """Raw target column of `dataset` as one flat float tensor."""
     return dataset._data[cfg.task.target].reshape(-1).float()
 
 
-def feature_stats(train, key):
+def feature_stats(train, key, chunk=4096):
     """Per-feature mean and standard deviation of a cached tensor
     attribute such as `ect`, over the train split; the std is floored at
-    one so that features varying by less than one count keep their scale."""
-    values = train._data[key].float()
-    return values.mean(dim=0), values.std(dim=0).clamp_min(1.0)
+    one so that features varying by less than one count keep their scale.
+
+    Accumulated in chunks so that an int16 cache of tens of GB is never
+    copied to float as a whole.
+    """
+    values = train._data[key]
+    n = values.shape[0]
+    total = torch.zeros(values.shape[1:], dtype=torch.float64)
+    squares = torch.zeros_like(total)
+    for start in range(0, n, chunk):
+        part = values[start : start + chunk].double()
+        total += part.sum(dim=0)
+        squares += (part * part).sum(dim=0)
+    mean = total / n
+    var = (squares - n * mean * mean) / max(n - 1, 1)
+    return mean.float(), var.clamp_min(0).sqrt().float().clamp_min(1.0)
 
 
 def regression_target_stats(cfg, train):

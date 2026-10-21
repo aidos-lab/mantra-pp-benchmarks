@@ -8,5 +8,7 @@ resolution: 64
 radius: 8.0
 # null: every face; 1: the one-skeleton (vertices and edges).
 max_rank: null
+# true: face counts per rank, shape (max_rank + 1, directions, resolution).
+per_rank: false
 source: coords
 seed: 0
