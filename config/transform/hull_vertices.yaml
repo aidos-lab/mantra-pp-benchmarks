@@ -1,0 +1,6 @@
+_target_: src.transforms.HullVertices
+
+# Boolean mask of the polytope's vertices among the lattice points,
+# read by models with `point_mask=hull_mask`.
+source: coords
+target: hull_mask
