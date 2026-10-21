@@ -38,6 +38,22 @@ def test_point_mask_hides_the_other_points():
     assert a.shape == (1, 3)
 
 
-def test_node_level_is_rejected():
+def test_node_level_predicts_every_point_in_batch_order():
+    torch.manual_seed(0)
+    model = InvariantFeatureMLP(4, 2, max_points=12, hidden_channels=16, task_level="node").eval()
+    small, large = _set(CROSS), _set(CROSS + [[2, 0, 0, 0], [0, 2, 0, 0]])
+    out = model(Batch.from_data_list([small, large]))
+    assert out.shape == (9 + 11, 2)
+    assert torch.allclose(out[:9], model(Batch.from_data_list([small])), atol=1e-5)
+    assert torch.allclose(out[9:], model(Batch.from_data_list([large])), atol=1e-5)
+
+
+def test_node_level_rejects_a_point_mask():
     with pytest.raises(ValueError):
-        InvariantFeatureMLP(4, 3, max_points=9, task_level="node")
+        InvariantFeatureMLP(4, 3, max_points=9, point_mask="hull_mask", task_level="node")
+
+
+def test_too_many_points_are_an_error():
+    model = InvariantFeatureMLP(4, 3, max_points=4, hidden_channels=16).eval()
+    with pytest.raises(ValueError):
+        model(Batch.from_data_list([_set(CROSS)]))

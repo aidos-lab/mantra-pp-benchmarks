@@ -14,6 +14,12 @@ with 26 vertices and reached 96.9 % accuracy on the first Hodge number.
 The row encoder needs a fixed width, so point sets are zero-padded to
 `max_points`; with `point_mask` only the marked points (e.g. the hull
 vertices of `src.transforms.HullVertices`) enter either encoder.
+
+At node level the decoder runs per point on the point's own column
+feature plus the pooled set feature, which keeps the invariances and
+gives one prediction per point in batch order. This head is not part
+of the paper; it only checks whether the invariant features carry
+per-point information.
 """
 
 import torch
@@ -50,7 +56,8 @@ class InvariantFeatureMLP(nn.Module):
         Boolean batch attribute selecting the points that enter the
         encoders; `None` uses every point.
     task_level : str
-        Only `'graph'`: the features are pooled over the points.
+        `'graph'` pools the features over the points; `'node'` predicts
+        per point and needs every point, so it excludes `point_mask`.
     """
 
     def __init__(
@@ -65,8 +72,11 @@ class InvariantFeatureMLP(nn.Module):
         task_level: str = "graph",
     ):
         super().__init__()
-        if task_level != "graph":
-            raise ValueError("InvariantFeatureMLP predicts one value per point set")
+        if task_level not in ("graph", "node"):
+            raise ValueError(f"task_level must be 'graph' or 'node', got {task_level!r}")
+        if task_level == "node" and point_mask is not None:
+            raise ValueError("node level predicts every point, so point_mask must be None")
+        self.task_level = task_level
         self.max_points = max_points
         self.point_mask = point_mask
         h = hidden_channels
@@ -83,6 +93,11 @@ class InvariantFeatureMLP(nn.Module):
             keep = batch[self.point_mask]
             x, index = x[keep], index[keep]
         dense, mask = to_dense_batch(x, index, max_num_nodes=self.max_points)
-        columns = self.column_encoder(dense).masked_fill(~mask[..., None], float("-inf"))
-        rows = self.row_encoder(dense.transpose(1, 2))
-        return self.decoder(columns.amax(dim=1) + rows.amax(dim=1))
+        if mask.sum() != x.shape[0]:
+            raise ValueError(f"a point set exceeds max_points={self.max_points}")
+        columns = self.column_encoder(dense)
+        pooled = columns.masked_fill(~mask[..., None], float("-inf")).amax(dim=1)
+        pooled = pooled + self.row_encoder(dense.transpose(1, 2)).amax(dim=1)
+        if self.task_level == "node":
+            return self.decoder((columns + pooled[:, None])[mask])
+        return self.decoder(pooled)
