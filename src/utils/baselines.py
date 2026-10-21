@@ -9,6 +9,14 @@ def target_values(cfg, dataset):
     return dataset._data[cfg.task.target].reshape(-1).float()
 
 
+def feature_stats(train, key):
+    """Per-feature mean and standard deviation of a cached tensor
+    attribute such as `ect`, over the train split; the std is floored at
+    one so that features varying by less than one count keep their scale."""
+    values = train._data[key].float()
+    return values.mean(dim=0), values.std(dim=0).clamp_min(1.0)
+
+
 def regression_target_stats(cfg, train):
     """Mean and standard deviation of the train-split regression target."""
     values = target_values(cfg, train)

@@ -31,7 +31,7 @@ from mantra.transforms.task_transforms import (
 
 from src.schema import RootConfig
 from src.transforms import DropCacheAttributes, RemapLabels
-from src.utils.baselines import regression_target_stats, trivial_baselines
+from src.utils.baselines import feature_stats, regression_target_stats, trivial_baselines
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
@@ -283,9 +283,10 @@ class TargetAffine(torch.nn.Module):
         return self.mean + self.std * self.model(batch)
 
 
-def create_model(cfg, num_features, label_to_index, target_stats=None):
+def create_model(cfg, num_features, label_to_index, target_stats=None, input_stats=None):
     """Instantiate the configured model; regression heads get `TargetAffine`
-    with the train-split `target_stats` (mean, std) when given."""
+    with the train-split `target_stats` (mean, std) when given, and a model
+    with `set_input_stats` receives the per-feature `input_stats`."""
     cfg.model.out_channels = (
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
@@ -302,6 +303,8 @@ def create_model(cfg, num_features, label_to_index, target_stats=None):
 
     #NOTE: Model initialization
     model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
+    if input_stats is not None and hasattr(model, "set_input_stats"):
+        model.set_input_stats(*input_stats)
     if target_stats is not None and cfg.task.task_type == "regression":
         model = TargetAffine(model, *target_stats)
     model = model.to(cfg.trainer.device)
@@ -345,7 +348,8 @@ def main(cfg: RootConfig):
         if cfg.task.task_type == "regression"
         else None
     )
-    model = create_model(cfg, num_features, label_to_index, target_stats)
+    input_stats = feature_stats(train_ds, "ect") if "ect" in train_ds._data else None
+    model = create_model(cfg, num_features, label_to_index, target_stats, input_stats)
 
     print(f"Model parameters: {count_parameters(model)}")
 
