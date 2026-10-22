@@ -1,0 +1,4 @@
+_target_: mantra.transforms.PermuteVertices
+
+# One fixed labelling per cache; the draw is tied to the split seed.
+rng: ${dataset.seed}

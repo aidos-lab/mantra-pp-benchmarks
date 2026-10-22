@@ -9,6 +9,7 @@ defaults:
   - transform@dataset.transform.select_features: select_features
   - task: name
   - trainer: default
+  - ood: null
 
 train: True
 torch_seed: 42
