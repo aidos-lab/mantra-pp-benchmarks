@@ -148,7 +148,13 @@ def create_dataset(cfg):
 
     if is_cy:
         select = transform_cfg.get("select_features")
-        drop = DropCacheAttributes([select.src] if select is not None else [])
+        graph = any(
+            type(t).__module__.startswith("mantra.representations.graph")
+            for t in transforms
+        )
+        drop = DropCacheAttributes(
+            [select.src] if select is not None else [], graph=graph
+        )
         pre_transform = Compose([*transforms, drop])
         dataset_parameters = {
             "root": dataset_cfg.root,
