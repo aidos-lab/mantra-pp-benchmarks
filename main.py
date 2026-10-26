@@ -30,7 +30,7 @@ from mantra.transforms.task_transforms import (
 )
 
 from src.schema import RootConfig
-from src.transforms import RemapLabels
+from src.transforms import DropCacheAttributes, RemapLabels
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
@@ -84,9 +84,9 @@ def task_to_transform(cfg):
 def cache_name(dataset_cfg):
     """Name of the cached variant: a hash of its transform config.
 
-    `MantraDataset` keys its processed directory on this name, so a root
-    can hold several transform stacks side by side and a changed stack
-    never reads a stale cache.
+    `MantraDataset` and `CalabiYau` key their processed directory on this
+    name, so a root can hold several transform stacks side by side and a
+    changed stack never reads a stale cache.
     """
     chain = OmegaConf.to_container(dataset_cfg.transform, resolve=True)
     order = list(dataset_cfg.transform_order)
@@ -147,8 +147,12 @@ def create_dataset(cfg):
     split = dataset_cfg.train_parameters.split
 
     if is_cy:
+        select = transform_cfg.get("select_features")
+        drop = DropCacheAttributes([select.src] if select is not None else [])
+        pre_transform = Compose([*transforms, drop])
         dataset_parameters = {
             "root": dataset_cfg.root,
+            "name": cache_name(dataset_cfg),
             "version": dataset_cfg.version,
             "local_path": dataset_cfg.local_path,
             "limit": dataset_cfg.limit,
@@ -158,7 +162,8 @@ def create_dataset(cfg):
             "stratified": dataset_cfg.use_stratified,
             "label_source": dataset_cfg.label_source,
             "min_sample_per_class": dataset_cfg.min_sample_per_class,
-            "transform": Compose([task_transform, *transforms]),
+            "pre_transform": pre_transform,
+            "transform": task_transform,
         }
 
         train_dataset = CalabiYauDataset(split_type="train", **dataset_parameters)
@@ -166,7 +171,6 @@ def create_dataset(cfg):
         test_dataset = CalabiYauDataset(split_type="test", **dataset_parameters)
         ood_datasets = {}
     else:
-
         dataset_parameters = {
             "root": dataset_cfg.root,
             "name": cache_name(dataset_cfg),

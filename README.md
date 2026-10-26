@@ -256,6 +256,11 @@ python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hod
 The tests in `tests/test_cy_dataset.py` skip unless the installed
 mantra ships `CalabiYauDataset`.
 
+The `cy` dataset caches its transform chain like `MantraDataset` (see
+the OOD section). Before saving, `DropCacheAttributes` strips what no
+model reads: the simplex trie, the raw triangulation, the intersection
+numbers, connectivity above rank 2 and the copied embedding.
+
 ### Point-set models
 
 `deepsets` and `pointnetpp` read only `batch.x` and
