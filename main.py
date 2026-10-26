@@ -156,17 +156,19 @@ def create_dataset(cfg):
             "version": dataset_cfg.version,
             "local_path": dataset_cfg.local_path,
             "limit": dataset_cfg.limit,
-            "force_reload": dataset_cfg.reload,
             "seed": dataset_cfg.seed,
             "split_proportions": [split.train, split.val, split.test],
             "stratified": dataset_cfg.use_stratified,
             "label_source": dataset_cfg.label_source,
             "min_sample_per_class": dataset_cfg.min_sample_per_class,
             "pre_transform": pre_transform,
+            "pre_transform_workers": dataset_cfg.pre_transform_workers,
             "transform": task_transform,
         }
 
-        train_dataset = CalabiYauDataset(split_type="train", **dataset_parameters)
+        train_dataset = CalabiYauDataset(
+            split_type="train", force_reload=dataset_cfg.reload, **dataset_parameters
+        )
         val_dataset = CalabiYauDataset(split_type="val", **dataset_parameters)
         test_dataset = CalabiYauDataset(split_type="test", **dataset_parameters)
         ood_datasets = {}

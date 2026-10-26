@@ -18,6 +18,9 @@ use_stratified: False
 label_source: h11
 min_sample_per_class: null
 
+# null uses every CPU the job may run on.
+pre_transform_workers: null
+
 # 20% test split as in arXiv:2112.09117.
 train_parameters:
   split:

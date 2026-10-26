@@ -54,6 +54,8 @@ class DatasetMeta:
     use_stratified: bool = True
     # Attribute whose values stratify / filter the splits (cy only).
     label_source: str | None = None
+    # Processes building the cy cache; None uses every available CPU.
+    pre_transform_workers: int | None = None
 
     seed: int = 42
     transform: Dict[str, TransformMeta] = field(default_factory=dict)

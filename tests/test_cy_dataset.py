@@ -8,6 +8,7 @@ from collections import Counter
 
 import pytest
 import torch
+from torch_geometric.transforms import Compose
 from torch_geometric.utils import degree
 
 try:
@@ -72,6 +73,7 @@ def _cfg(tmp_path, *overrides, rows=None):
                 "dataset=cy",
                 f"dataset.local_path={_write_parquet(tmp_path, rows)}",
                 f"dataset.root={tmp_path / 'root'}",
+                "dataset.pre_transform_workers=1",
                 *overrides,
             ],
         )
@@ -287,3 +289,32 @@ class TestCYNodeLevel:
         )
         assert torch.isfinite(torch.tensor(metrics["val/loss"]))
 
+
+class TestCYTransformCache:
+    def test_chain_is_cached_and_slimmed(self, tmp_path):
+        """The representation chain runs once at process time; the cached
+        samples carry neither the Python objects nor the raw labels."""
+        cfg = _cfg(tmp_path, "task=hodge_reg", ONE_SKELETON)
+        train, _, _, _, _ = main.create_dataset(cfg)
+
+        assert isinstance(train.pre_transform, Compose)
+        assert not isinstance(train.transform, Compose)
+        cached = train.get(0)
+        assert "edge_index" in cached and "x" in cached
+        for key in ("triangulation", "simplex_trie", "intersection_numbers", "random_walk_pe"):
+            assert key not in cached
+        assert train[0].y.shape == (1, 1)
+
+    def test_workers_reach_the_dataset(self, tmp_path):
+        cfg = _cfg(tmp_path, "task=hodge_reg", ONE_SKELETON, "dataset.pre_transform_workers=2")
+        train, _, _, _, _ = main.create_dataset(cfg)
+        assert train.pre_transform_workers == 2
+
+    def test_cache_name_follows_the_transform_config(self, tmp_path):
+        skeleton = _cfg(tmp_path, "task=hodge_reg", ONE_SKELETON)
+        dual = _cfg(tmp_path, "task=hodge_reg",
+                    "representation@dataset.transform.representation=dual_graph")
+        assert main.cache_name(skeleton.dataset) != main.cache_name(dual.dataset)
+        assert main.cache_name(skeleton.dataset) == main.cache_name(
+            _cfg(tmp_path, "task=hodge_class", ONE_SKELETON).dataset
+        )
