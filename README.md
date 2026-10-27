@@ -178,7 +178,7 @@ Key Hydra groups:
 
 | Group                                         | Options                                                                                             |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `gin`, `deepsets`, `pointnetpp`, `san`, `san_tmx`, `cwn`, `sccnn` |
+| `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `gin`, `deepsets`, `pointnetpp`, `san`, `san_tmx`, `cwn`, `sccnn`, `ect_vit` |
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `levi_graph`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
 | `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge_reg`, `hodge_class`, `chern_node`     |
@@ -303,6 +303,31 @@ which `uv sync` installs. The random-walk embedding is still computed
 and then replaced by `select_features`; dropping it also needs
 `'~dataset.transform.embedding'` with
 `'dataset.transform_order=[representation,select_features]'`.
+
+### Euler characteristic transform
+
+`ect_vit` reads only `batch.ect`, written by the mantra
+`EulerCharacteristicTransform`: per seeded direction, the Euler
+characteristic of the sublevel subcomplex at `resolution` thresholds,
+of the `max_rank`-skeleton or of every face. Every direction's curve is
+a token of a small pre-norm transformer; `main.py` standardises the
+curves with train-split statistics (`feature_stats`), without which the
+raw counts make the model collapse on validation. The transform reads
+the coordinates, so it must precede `select_features` in the order:
+
+```bash
+python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_class \
+    model=ect_vit '~dataset.transform.representation' '~dataset.transform.embedding' \
+    +transform@dataset.transform.ect=ect dataset.transform.select_features.src=coords \
+    'dataset.transform_order=[ect,select_features]'
+```
+
+Every top simplex of a Calabi-Yau triangulation contains the origin, so
+the ECT of the full complex is only the support function of the
+polytope; `dataset.transform.ect.per_rank=true` keeps the face count of
+every rank instead (`model.num_ranks=max_rank+1`), which is strictly
+more informative. At node level the lattice points join the token
+sequence and are predicted one by one.
 
 Read the Hodge results with the counting shortcut in mind: for a
 favorable polytope `h11_cy` (the `h12` column in the Kreuzer-Skarke

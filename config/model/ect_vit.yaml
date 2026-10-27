@@ -1,0 +1,15 @@
+_target_: src.models.ect_vit.ECTViT
+
+# Must match dataset.transform.ect (num_directions, resolution).
+num_directions: 64
+resolution: 64
+# 1 for the Euler characteristic; max_rank + 1 with dataset.transform.ect.per_rank=True.
+num_ranks: 1
+
+hidden_channels: 128
+n_layers: 3
+num_heads: 4
+mlp_ratio: 4.0
+dropout: 0.0
+out_channels: 1 # Get from task
+task_level: graph # Get from task

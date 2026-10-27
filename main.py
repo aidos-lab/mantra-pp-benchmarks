@@ -31,6 +31,7 @@ from mantra.transforms.task_transforms import (
 
 from src.schema import RootConfig
 from src.transforms import DropCacheAttributes, RemapLabels
+from src.utils.feature_stats import feature_stats
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
@@ -282,9 +283,10 @@ class RescaleOutput(torch.nn.Module):
         return self.mean + self.std * self.model(batch)
 
 
-def create_model(cfg, num_features, label_to_index, target_mean_std=None):
+def create_model(cfg, num_features, label_to_index, target_mean_std=None, input_stats=None):
     """Instantiate the configured model; for regression, `target_mean_std`
-    of the train split rescales its output to target units."""
+    of the train split rescales its output to target units, and a model
+    with `set_input_stats` standardises its inputs with `input_stats`."""
     cfg.model.out_channels = (
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
@@ -301,6 +303,8 @@ def create_model(cfg, num_features, label_to_index, target_mean_std=None):
 
     #NOTE: Model initialization
     model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
+    if input_stats is not None:
+        model.set_input_stats(*input_stats)
     if target_mean_std is not None and cfg.task.task_type == "regression":
         model = RescaleOutput(model, *target_mean_std)
     model = model.to(cfg.trainer.device)
@@ -341,7 +345,10 @@ def main(cfg: RootConfig):
         # Raw train-split target column; one entry per vertex at node level.
         values = train_ds._data[cfg.task.target].reshape(-1).float()
         target_mean_std = values.mean().item(), values.std().clamp_min(1e-6).item()
-    model = create_model(cfg, num_features, label_to_index, target_mean_std)
+    input_stats = None
+    if hasattr(hydra.utils.get_class(cfg.model._target_), "set_input_stats"):
+        input_stats = feature_stats(train_ds, "ect")
+    model = create_model(cfg, num_features, label_to_index, target_mean_std, input_stats)
 
     print(f"Model parameters: {count_parameters(model)}")
 
