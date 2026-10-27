@@ -265,7 +265,26 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
 
     return train_loader, val_loader, test_loader, ood_loaders
 
-def create_model(cfg, num_features, label_to_index):
+class RescaleOutput(torch.nn.Module):
+    """Map a model's output from standardised to target units.
+
+    The wrapped model predicts a zero-mean, unit-variance quantity;
+    `mean + std * f(x)` is what the loss and the metrics see.
+    """
+
+    def __init__(self, model, mean, std):
+        super().__init__()
+        self.model = model
+        self.register_buffer("mean", torch.tensor(float(mean)))
+        self.register_buffer("std", torch.tensor(float(std)))
+
+    def forward(self, batch):
+        return self.mean + self.std * self.model(batch)
+
+
+def create_model(cfg, num_features, label_to_index, target_mean_std=None):
+    """Instantiate the configured model; for regression, `target_mean_std`
+    of the train split rescales its output to target units."""
     cfg.model.out_channels = (
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
@@ -282,6 +301,8 @@ def create_model(cfg, num_features, label_to_index):
 
     #NOTE: Model initialization
     model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
+    if target_mean_std is not None and cfg.task.task_type == "regression":
+        model = RescaleOutput(model, *target_mean_std)
     model = model.to(cfg.trainer.device)
 
     # Only compile on GPU
@@ -315,7 +336,12 @@ def main(cfg: RootConfig):
         ]
 
     # ----- Model ----
-    model = create_model(cfg, num_features, label_to_index)
+    target_mean_std = None
+    if cfg.task.task_type == "regression":
+        # Raw train-split target column; one entry per vertex at node level.
+        values = train_ds._data[cfg.task.target].reshape(-1).float()
+        target_mean_std = values.mean().item(), values.std().clamp_min(1e-6).item()
+    model = create_model(cfg, num_features, label_to_index, target_mean_std)
 
     print(f"Model parameters: {count_parameters(model)}")
 
