@@ -124,13 +124,15 @@ def test_training_loop_saves_typed_label_mapping(tmp_path):
         y=torch.tensor([0, 1]),
     )
 
+    run = FakeRun()
     training_loop(
-        [batch], [batch], BatchLinear(), [], FakeRun(), cfg, {4: 0, 12: 1}
+        [batch], [batch], BatchLinear(), [], run, cfg, {4: 0, 12: 1}
     )
 
     with open(tmp_path / "test-run" / "label_to_index.json") as file:
         records = json.load(file)
     assert records == [{"label": 4, "index": 0}, {"label": 12, "index": 1}]
+    assert {"val/loss", "train_eval/loss"} <= set(run.summary)
 
 
 class FakeMantraDataset:

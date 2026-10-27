@@ -57,6 +57,9 @@ cu128 = [
     "torch-cluster==1.6.3+pt29cu128; sys_platform == 'linux'",
 ]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [dependency-groups]
 dev = [
     "pytest>=7.0",

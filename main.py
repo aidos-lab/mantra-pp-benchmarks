@@ -457,7 +457,11 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
     state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
 
     model.load_state_dict(state_dict)
-    run.summary.update(best_val_metrics)
+    # best checkpoint on the train split in eval mode, like `val/*`.
+    train_eval_metrics = validate(
+        model, train_dataloader, loss_fn, accuracies, cfg, prefix="train_eval"
+    )
+    run.summary.update({**best_val_metrics, **train_eval_metrics})
     return model, last_epoch
 
 if __name__ == "__main__":

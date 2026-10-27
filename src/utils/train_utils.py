@@ -52,10 +52,8 @@ def train(model, optimizer, train_dataset, loss_fn, accuracies, cfg):
 
     return metrics
 
-def validate(model,  val_dataset, loss_fn, accuracies, cfg):
-    """ Run the validation evaluation
-
-    """
+def validate(model, val_dataset, loss_fn, accuracies, cfg, prefix="val"):
+    """Evaluate one split in eval mode; metrics are logged under `prefix`."""
     model.eval()
     for _, acc in accuracies:
         acc.reset()
@@ -80,10 +78,10 @@ def validate(model,  val_dataset, loss_fn, accuracies, cfg):
 
         losses = torch.stack(losses)
         sizes = torch.tensor(batch_sizes, device=losses.device, dtype=losses.dtype)
-        metrics['val/loss'] = (losses * sizes).sum().item() / sizes.sum().item()
+        metrics[f'{prefix}/loss'] = (losses * sizes).sum().item() / sizes.sum().item()
 
     for name, acc in accuracies:
-        metrics[f"val/{name}"] = acc.compute().detach().cpu().item()
+        metrics[f"{prefix}/{name}"] = acc.compute().detach().cpu().item()
         acc.reset()
 
     return metrics
