@@ -53,6 +53,12 @@ uv sync --extra cpu
 uv sync --extra cu130
 ```
 
+### GPU install (Linux + Cuda 12.8)
+
+```bash
+UV_PROJECT_ENVIRONMENT=.venv-cu128 uv sync --extra cu128
+```
+
 This will:
 
 1. Create `.venv/` with Python ≥ 3.12 and install all pinned dependencies.
