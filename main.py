@@ -382,7 +382,9 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
         )
 
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, patience=cfg.trainer.scheduler_patience
+    )
     loss_fn = hydra.utils.instantiate(cfg.task.loss)
 
     early_stopping_cnt = cfg.trainer.early_stopping

@@ -11,6 +11,7 @@ class TrainerMeta:
     early_stopping: int
     batch_size: int
     device: str
+    scheduler_patience: int = 10
     num_workers: int = 0
     pin_memory: bool = True
 
