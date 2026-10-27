@@ -221,6 +221,15 @@ Tasks:
   0 is the origin, whose entry is c2 . K = -(sum of the others); see
   below.
 
+`baseline.py` takes the same overrides and logs the trivial baselines
+as W&B runs with `model.name=baseline`: the majority class or the train
+median, and for `h11` the point count minus five (`kind=count`), which
+is exact for favorable polytopes, 94% of the `ks_h12lt10` rows. The
+count reads `n_vertices`, which the Hasse and dual representations
+overwrite, so pass
+`representation@dataset.transform.representation=one_skeleton`; the
+split does not depend on the representation.
+
 Splits are seeded with `dataset.seed` and sized by
 `dataset.train_parameters.split` (0.7/0.1/0.2); the split files encode
 both, so variants coexist under `dataset.root`. Stratification mirrors
