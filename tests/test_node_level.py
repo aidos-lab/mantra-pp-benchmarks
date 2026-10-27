@@ -218,6 +218,17 @@ class TestGraphModelNodeHeads:
         assert batched.shape == (5, 2)
         assert torch.allclose(batched, single, atol=1e-5)
 
+    @pytest.mark.parametrize("build", [_gcn, _rgg])
+    def test_vertex_mask_selects_the_target_rows(self, build):
+        model = build("node", out_channels=2)
+        model.eval()
+        graphs = _graphs()
+        mask = torch.tensor([True, False, True, True, True])
+        unmasked = model(_batch(graphs))
+        for g, m in zip(graphs, (mask[:3], mask[3:])):
+            g.vertex_mask = m
+        assert torch.allclose(model(_batch(graphs)), unmasked[mask], atol=1e-6)
+
 
 
 class TestCWNNodeHead:

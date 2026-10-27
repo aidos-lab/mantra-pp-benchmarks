@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import MLP, GINConv
 
-from src.models.utils import pool
+from src.models.utils import pool, target_nodes
 
 
 class GINLayer(nn.Module):
@@ -77,7 +77,8 @@ class GIN(nn.Module):
     pool_method : str
         Graph readout: `'mean'`, `'sum'` or `'max'`.
     task_level : str
-        `'graph'` pools before the readout, `'node'` emits one row per node.
+        `'graph'` pools before the readout, `'node'` emits one row per
+        target node (see `target_nodes`).
     """
 
     def __init__(
@@ -112,7 +113,8 @@ class GIN(nn.Module):
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
 
-        # Node-level tasks keep one embedding per node
         if self.task_level == "graph":
             x = pool(x, batch_idx, self.pool_method)
+        else:
+            x = target_nodes(x, batch)
         return self.final_linear(x)

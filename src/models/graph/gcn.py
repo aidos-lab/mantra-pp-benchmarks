@@ -5,7 +5,7 @@ Implementation for Graph Convolutional Neural Network.
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import GCNConv
-from src.models.utils import pool
+from src.models.utils import pool, target_nodes
 
 
 
@@ -63,15 +63,14 @@ class GCN(nn.Module):
         )
 
     def forward(self, batch):
-        x, edge_index, batch = batch.x, batch.edge_index, batch.batch
-        # 1. Obtain node embeddings
-        #x = self.conv_input(x, edge_index)
+        x, edge_index = batch.x, batch.edge_index
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
 
-        # 2. Readout layer; node-level tasks keep one embedding per node
         if self.task_level == "graph":
-            x = pool(x, batch, self.pool_method)  # [batch_size, hidden_channels]
+            x = pool(x, batch.batch, self.pool_method)  # [batch_size, hidden_channels]
+        else:
+            x = target_nodes(x, batch)
         # 3. Apply a final classifier
         x = self.final_linear(x)
         return x
