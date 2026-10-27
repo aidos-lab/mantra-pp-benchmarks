@@ -1,0 +1,14 @@
+_target_: src.models.set.inv_feature_mlp.InvariantFeatureMLP
+
+# Ewert et al. (2024): encoders and decoder of width 256.
+hidden_channels: 256
+n_layers: 3
+decoder_layers: 3
+# Width of the row encoder; must cover the largest point set of the file.
+max_points: 73
+# Boolean attribute selecting the points, e.g. hull_mask written by
+# +transform@dataset.transform.hull=hull_vertices (put hull before
+# select_features in transform_order); null uses every point.
+point_mask: null
+out_channels: 1 # Get from task
+task_level: graph # Get from task

@@ -178,7 +178,7 @@ Key Hydra groups:
 
 | Group                                         | Options                                                                                             |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `gin`, `deepsets`, `pointnetpp`, `san`, `san_tmx`, `cwn`, `sccnn`, `ect_vit` |
+| `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `gin`, `deepsets`, `pointnetpp`, `san`, `san_tmx`, `cwn`, `sccnn`, `ect_vit`, `inv_feature_mlp` |
 | `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `levi_graph`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
 | `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge_reg`, `hodge_class`, `chern_node`     |
@@ -303,6 +303,15 @@ which `uv sync` installs. The random-walk embedding is still computed
 and then replaced by `select_features`; dropping it also needs
 `'~dataset.transform.embedding'` with
 `'dataset.transform_order=[representation,select_features]'`.
+
+`inv_feature_mlp` is the MLP with invariant features of Ewert et al.
+(2024): a point-wise column encoder max-pooled over the points plus an
+axis-wise row encoder max-pooled over the four axes, on the same
+coordinate matrix zero-padded to `model.max_points`. The paper used the
+vertex matrix of the polytope; `+transform@dataset.transform.hull=hull_vertices`
+marks the hull vertices among the lattice points and
+`model.point_mask=hull_mask` restricts the model to them (`hull` goes
+before `select_features` in `transform_order`).
 
 ### Euler characteristic transform
 
