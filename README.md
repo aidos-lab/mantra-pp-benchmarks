@@ -278,7 +278,12 @@ only its `keep_keys`: the graph inputs, the task targets and what
 `baseline.py` reads. Any `dataset.transform_order` you pass must end
 with `select_attributes`. Simplicial and ECT chains select their own
 lists with `transform@dataset.transform.select_attributes=select_attributes_sc`
-or `=select_attributes_ect`, as the ECT example below does.
+or `=select_attributes_ect`, as the ECT example below does. Simplicial
+chains also add `+transform@dataset.transform.scale=scale_operators`
+before `select_attributes`: it divides every Laplacian and adjacency
+operator by its largest absolute row sum, without which the SCCNN's
+Chebyshev convolutions blow the features up by the operators'
+eigenvalues (up to 14 here) at every layer.
 
 ### Point-set models
 
