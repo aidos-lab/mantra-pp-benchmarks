@@ -335,7 +335,7 @@ def main(cfg: RootConfig):
     # ----- Model ----
     target_mean_std = None
     if cfg.task.task_type == "regression":
-        # Raw train-split target column; one entry per vertex at node level.
+        # Raw train-split target column; one entry per vertex or triangle below graph level.
         values = train_ds._data[cfg.task.target].reshape(-1).float()
         target_mean_std = values.mean().item(), values.std().clamp_min(1e-6).item()
     input_stats = None

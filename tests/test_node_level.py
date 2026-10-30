@@ -13,9 +13,13 @@ from torch_geometric.utils import scatter
 
 import main
 from src.metrics.regression import RoundedAccuracy
+from src.models.ect_vit import ECTViT
 from src.models.graph.gcn import GCN
 from src.models.utils import target_rows
 from src.models.graph.graphormer import Graphormer
+from src.models.point_cloud.pointnet import PointNetPP
+from src.models.set.deep_sets import DeepSets
+from src.models.set.inv_feature_mlp import InvariantFeatureMLP
 from src.models.set.mlp import MLP
 from src.models.graph.res_gcn import ResidualGatedGCN
 from src.models.cells.cwn import CWN
@@ -269,15 +273,37 @@ class TestTriangleHeads:
         out = target_rows(batch.x, batch, "triangle")
         assert torch.allclose(out, torch.stack([batch.x[:3].sum(0), batch.x[3:].sum(0)]))
 
-    @pytest.mark.parametrize("build", [_gcn, _rgg])
-    def test_graph_models_are_symmetric_in_the_triangle_vertices(self, build):
+    @pytest.mark.parametrize("build,spd", GRAPH_MODELS)
+    def test_graph_models_are_symmetric_in_the_triangle_vertices(self, build, spd):
         model = build("triangle")
         model.eval()
         graphs = self._triangle_graphs()
-        out = model(_batch(graphs))
+        out = model(_batch(graphs, spd=spd))
         assert out.shape == (2, 1)
         graphs[1].simplex_index_2 = torch.tensor([[2], [0], [1]])
-        assert torch.allclose(model(_batch(graphs)), out, atol=1e-6)
+        assert torch.allclose(model(_batch(graphs, spd=spd)), out, atol=1e-6)
+
+    @pytest.mark.parametrize("build", [
+        lambda: DeepSets(4, hidden_channels=8, n_layers=1, task_level="triangle"),
+        lambda: PointNetPP(4, hidden_channels=8, sa_ratios=[0.5], sa_radii=[4.0], task_level="triangle"),
+        lambda: InvariantFeatureMLP(4, 1, max_points=6, hidden_channels=8, task_level="triangle"),
+        lambda: ECTViT(4, 1, 8, 6, hidden_channels=8, n_layers=1, task_level="triangle"),
+    ], ids=["deepsets", "pointnetpp", "inv_feature_mlp", "ect_vit"])
+    def test_point_models_emit_one_symmetric_row_per_triangle(self, build):
+        torch.manual_seed(0)
+        model = build()
+        model.eval()
+        sets = []
+        for n, triangles in ((4, [[0], [1], [2]]), (6, [[0, 1], [2, 3], [4, 5]])):
+            sets.append(Data(
+                x=torch.randint(-3, 4, (n, 4)).float(),
+                ect=torch.randint(-50, 2, (1, 8, 6), dtype=torch.int16),
+                simplex_index_2=torch.tensor(triangles),
+            ))
+        out = model(Batch.from_data_list(sets))
+        assert out.shape == (3, 1)
+        sets[1].simplex_index_2 = torch.tensor([[4, 5], [0, 1], [2, 3]])
+        assert torch.allclose(model(Batch.from_data_list(sets)), out, atol=1e-5)
 
     def test_simplicial_models_emit_one_row_per_triangle(self):
         assert _sccnn("triangle", out_channels=3)(_sccnn_batch()).shape == (3, 3)

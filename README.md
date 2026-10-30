@@ -265,7 +265,7 @@ python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hod
     dataset.transform.representation.feature_propagation=x \
     transform@dataset.transform.embedding=propagate_convex_comb \
     '~dataset.transform.select_features' \
-    'dataset.transform_order=[embedding,representation,select_attributes]'
+    'dataset.transform_order=[embedding,representation,kappa,select_attributes]'
 ```
 
 The tests in `tests/test_cy_dataset.py` skip unless the installed
@@ -275,15 +275,18 @@ The `cy` dataset caches its transform chain like `MantraDataset` (see
 the OOD section). The chain ends with mantra's `SelectAttributes`
 (`config/transform/select_attributes.yaml`), so a cached sample holds
 only its `keep_keys`: the graph inputs, the task targets and what
-`baseline.py` reads. Any `dataset.transform_order` you pass must end
-with `select_attributes`. Simplicial and ECT chains select their own
+`baseline.py` reads. The chain also holds `kappa`, which writes the
+per-triangle intersection numbers for the triangle task, so every cy
+parquet needs the `intersection_numbers` column and any
+`dataset.transform_order` you pass must end with `kappa,
+select_attributes`. Simplicial and ECT chains select their own keep
 lists with `transform@dataset.transform.select_attributes=select_attributes_sc`
 or `=select_attributes_ect`, as the ECT example below does. Simplicial
 chains also add `+transform@dataset.transform.scale=scale_operators`
-before `select_attributes`: it divides every Laplacian and adjacency
-operator by its largest absolute row sum, without which the SCCNN's
-Chebyshev convolutions blow the features up by the operators'
-eigenvalues (up to 14 here) at every layer.
+before `kappa`: it divides every Laplacian and adjacency operator by
+its largest absolute row sum, without which the SCCNN's Chebyshev
+convolutions blow the features up by the operators' eigenvalues (up to
+14 here) at every layer.
 
 ### Point-set models
 
@@ -311,7 +314,7 @@ feature-propagation levels at node level). It needs `torch-cluster`,
 which `uv sync` installs. The random-walk embedding is still computed
 and then replaced by `select_features`; dropping it also needs
 `'~dataset.transform.embedding'` with
-`'dataset.transform_order=[representation,select_features,select_attributes]'`.
+`'dataset.transform_order=[representation,select_features,kappa,select_attributes]'`.
 
 `inv_feature_mlp` is the MLP with invariant features of Ewert et al.
 (2024): a point-wise column encoder max-pooled over the points plus an
@@ -337,7 +340,7 @@ the coordinates, so it must precede `select_features` in the order:
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_class \
     model=ect_vit '~dataset.transform.representation' '~dataset.transform.embedding' \
     +transform@dataset.transform.ect=ect dataset.transform.select_features.src=coords \
-    'dataset.transform_order=[ect,select_features,select_attributes]' \
+    'dataset.transform_order=[ect,select_features,kappa,select_attributes]' \
     transform@dataset.transform.select_attributes=select_attributes_ect
 ```
 
@@ -400,11 +403,16 @@ that the simplicial representations use for rank 2 (zero where the
 sparse `intersection_numbers` have no entry), and `simplex_index_2`,
 the triangles' vertex indices. Models with one embedding per vertex
 sum the three vertex embeddings of a triangle before the output layer
-(`target_rows`), which is symmetric like the target; `cwn` and `sccnn`
-read out their rank-2 states. Vertex 0 is the canonical class, so a
-triangle through the origin carries minus the sum of the numbers of
-the triangles it shares its edge with; these are targets like the
-others.
+(`target_rows`), which is symmetric like the target; `sccnn` reads out
+its rank-2 states and `cwn`, whose layers update edges only, sums the
+final edge states of each triangle. Vertex 0 is the canonical class,
+so a triangle through the origin carries minus the sum over all
+divisors of the numbers on its edge, self-intersections included; the
+self-intersections are not targets, so origin triangles are not a
+function of the other targets and stay in loss and metrics. Between
+40 % and 80 % of the triangles have intersection number 0 depending on
+the file, which is what the median baseline scores in rounded
+accuracy.
 
 ## Evaluating subdivisions in the training run
 

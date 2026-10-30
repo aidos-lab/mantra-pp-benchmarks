@@ -472,8 +472,6 @@ class CWN(torch.nn.Module):
                 incidence_1.t(),
             )
 
-
-
         if self.task_level == 'triangle':
             return self.triangle_readout(incidence_2.t() @ x_1)
 

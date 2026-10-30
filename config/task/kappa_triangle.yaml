@@ -8,9 +8,7 @@ name: KappaTriangle
 task_type: regression
 task_level: triangle
 
-# Intersection number of the three divisors of every triangle of the
-# triangulation, written by the `kappa` transform of the cy dataset;
-# triangles through the origin (the canonical class) are targets too.
+# Written per triangle by the cy dataset's `kappa` transform.
 target: kappa_2
 
 metrics:

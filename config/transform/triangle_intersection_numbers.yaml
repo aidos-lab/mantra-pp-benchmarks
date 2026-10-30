@@ -1,8 +1,6 @@
 _target_: mantra.transforms.TriangleIntersectionNumbers
 
-# Per-triangle intersection numbers `kappa_2` and the triangles' vertex
-# indices `simplex_index_2`; reads the triangulation, so it runs before
-# select_attributes.
+# Reads the triangulation, so it runs before select_attributes.
 source: intersection_numbers
 target: kappa_2
 index: simplex_index_2

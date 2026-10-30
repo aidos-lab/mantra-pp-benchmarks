@@ -306,9 +306,8 @@ class TestCYTriangleLevel:
         for batch in train_loader:
             assert batch.y.shape == (4 * batch.num_graphs, 1)
             assert batch.simplex_index_2.shape == (3, 4 * batch.num_graphs)
-            assert batch.batch[batch.simplex_index_2].eq(
-                batch.batch[batch.simplex_index_2[0]]
-            ).all()
+            graphs = torch.arange(batch.num_graphs).repeat_interleave(4)
+            assert batch.batch[batch.simplex_index_2].eq(graphs).all()
 
     def test_levi_graph_indices_point_at_vertex_nodes(self, tmp_path):
         cfg = _cfg(
