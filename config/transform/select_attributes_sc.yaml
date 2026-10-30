@@ -1,0 +1,31 @@
+_target_: mantra.transforms.SelectAttributes
+
+# Simplicial chains: features of every rank (collate_simplicial walks
+# ranks 0 to `dimension`), the operators of ranks 0 to 2 that CWN and
+# SCCNN read, the targets and what baseline.py reads.
+keep_keys:
+  - dimension
+  - x_0
+  - x_1
+  - x_2
+  - x_3
+  - x_4
+  - incidence_1
+  - incidence_2
+  - adjacency_0
+  - adjacency_1
+  - adjacency_2
+  - up_laplacian_0
+  - up_laplacian_1
+  - up_laplacian_2
+  - down_laplacian_1
+  - down_laplacian_2
+  - hodge_laplacian_0
+  - hodge_laplacian_1
+  - hodge_laplacian_2
+  - coords
+  - n_vertices
+  - h11
+  - h12
+  - c2
+  - c2_anticanonical

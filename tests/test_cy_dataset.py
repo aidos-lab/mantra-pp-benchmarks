@@ -301,7 +301,7 @@ class TestCYTransformCache:
         assert not isinstance(train.transform, Compose)
         cached = train.get(0)
         assert "edge_index" in cached and "x" in cached
-        for key in ("triangulation", "simplex_trie", "intersection_numbers", "random_walk_pe"):
+        for key in ("triangulation", "simplex_trie", "intersection_numbers", "random_walk_pe", "chi"):
             assert key not in cached
         assert train[0].y.shape == (1, 1)
 

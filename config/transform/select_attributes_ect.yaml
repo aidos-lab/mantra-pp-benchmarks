@@ -1,0 +1,13 @@
+_target_: mantra.transforms.SelectAttributes
+
+# ECT chains: the curves, the coordinates in `x` for the point count and
+# the node-level tokens, the targets and what baseline.py reads.
+keep_keys:
+  - ect
+  - x
+  - coords
+  - n_vertices
+  - h11
+  - h12
+  - c2
+  - c2_anticanonical

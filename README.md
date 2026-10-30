@@ -265,16 +265,20 @@ python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hod
     dataset.transform.representation.feature_propagation=x \
     transform@dataset.transform.embedding=propagate_convex_comb \
     '~dataset.transform.select_features' \
-    'dataset.transform_order=[embedding,representation]'
+    'dataset.transform_order=[embedding,representation,select_attributes]'
 ```
 
 The tests in `tests/test_cy_dataset.py` skip unless the installed
 mantra ships `CalabiYauDataset`.
 
 The `cy` dataset caches its transform chain like `MantraDataset` (see
-the OOD section). Before saving, `DropCacheAttributes` strips what no
-model reads: the simplex trie, the raw triangulation, the intersection
-numbers, connectivity above rank 2 and the copied embedding.
+the OOD section). The chain ends with mantra's `SelectAttributes`
+(`config/transform/select_attributes.yaml`), so a cached sample holds
+only its `keep_keys`: the graph inputs, the task targets and what
+`baseline.py` reads. Any `dataset.transform_order` you pass must end
+with `select_attributes`. Simplicial and ECT chains select their own
+lists with `transform@dataset.transform.select_attributes=select_attributes_sc`
+or `=select_attributes_ect`, as the ECT example below does.
 
 ### Point-set models
 
@@ -302,7 +306,7 @@ feature-propagation levels at node level). It needs `torch-cluster`,
 which `uv sync` installs. The random-walk embedding is still computed
 and then replaced by `select_features`; dropping it also needs
 `'~dataset.transform.embedding'` with
-`'dataset.transform_order=[representation,select_features]'`.
+`'dataset.transform_order=[representation,select_features,select_attributes]'`.
 
 `inv_feature_mlp` is the MLP with invariant features of Ewert et al.
 (2024): a point-wise column encoder max-pooled over the points plus an
@@ -328,7 +332,8 @@ the coordinates, so it must precede `select_features` in the order:
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_class \
     model=ect_vit '~dataset.transform.representation' '~dataset.transform.embedding' \
     +transform@dataset.transform.ect=ect dataset.transform.select_features.src=coords \
-    'dataset.transform_order=[ect,select_features]'
+    'dataset.transform_order=[ect,select_features,select_attributes]' \
+    transform@dataset.transform.select_attributes=select_attributes_ect
 ```
 
 Every top simplex of a Calabi-Yau triangulation contains the origin, so

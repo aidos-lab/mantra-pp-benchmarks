@@ -1,5 +1,6 @@
 defaults:
   - dataset
+  - /transform@transform.select_attributes: select_attributes
 
 # Calabi-Yau star triangulations from a parquet file. Requires the
 # mantra `cy` branch: `CalabiYau` is not part of mantra main.
@@ -20,6 +21,13 @@ min_sample_per_class: null
 
 # null uses every CPU the job may run on.
 pre_transform_workers: null
+
+# select_attributes comes last, so the cache holds only its keep_keys.
+transform_order:
+  - representation
+  - embedding
+  - select_features
+  - select_attributes
 
 # 20% test split as in arXiv:2112.09117.
 train_parameters:

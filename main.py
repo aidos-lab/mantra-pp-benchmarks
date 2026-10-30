@@ -30,7 +30,7 @@ from mantra.transforms.task_transforms import (
 )
 
 from src.schema import RootConfig
-from src.transforms import DropCacheAttributes, RemapLabels
+from src.transforms import RemapLabels
 from src.utils.feature_stats import feature_stats
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
@@ -148,15 +148,7 @@ def create_dataset(cfg):
     split = dataset_cfg.train_parameters.split
 
     if is_cy:
-        select = transform_cfg.get("select_features")
-        graph = any(
-            type(t).__module__.startswith("mantra.representations.graph")
-            for t in transforms
-        )
-        drop = DropCacheAttributes(
-            [select.src] if select is not None else [], graph=graph
-        )
-        pre_transform = Compose([*transforms, drop])
+        pre_transform = Compose(transforms)
         dataset_parameters = {
             "root": dataset_cfg.root,
             "name": cache_name(dataset_cfg),
