@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - override /task: hodge_class
+
+task:
+  target: h11
+  name: H11Class
+
+dataset:
+  use_stratified: True
+  label_source: h11
+  min_sample_per_class: 10

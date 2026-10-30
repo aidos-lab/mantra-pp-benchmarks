@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - /experiment/cy/base
+  - override /model: cwn
+
+# Ranks 0 to 2 of the 4-dimensional complexes, hence three widths.
+model:
+  hidden_channels: [128, 128, 128]
+  n_layers: 6
+
+trainer:
+  learning_rate: 0.0005

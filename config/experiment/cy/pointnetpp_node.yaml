@@ -1,0 +1,9 @@
+# @package _global_
+# Two levels: on 6 to 14 points a third is degenerate once feature
+# propagation is added.
+defaults:
+  - /experiment/cy/pointnetpp
+
+model:
+  sa_ratios: [0.5, 0.5]
+  sa_radii: [2.0, 4.0]

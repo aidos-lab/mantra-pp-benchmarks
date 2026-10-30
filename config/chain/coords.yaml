@@ -1,0 +1,12 @@
+# @package _global_
+# One-skeleton whose node features are the lattice coordinates; the
+# point-set models read `x` as the coordinate matrix.
+defaults:
+  - override /representation@dataset.transform.representation: one_skeleton
+  - override /transform@dataset.transform.embedding: null
+
+dataset:
+  transform:
+    select_features:
+      src: coords
+  transform_order: [representation, select_features, select_attributes]

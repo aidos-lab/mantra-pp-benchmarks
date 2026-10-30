@@ -212,6 +212,23 @@ at a local parquet file:
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_reg
 ```
 
+The paper's runs compose three config groups on top of that:
+`+experiment=cy/<model>` holds the protocol (`config/experiment/cy/base.yaml`:
+split seed, batch size, epochs, early stopping, scheduler patience) and
+the model's size and learning rate; `+chain=<stack>` the representation
+and feature stack (`skel`, `coords`, `coordsh`, `dualc`, `levic`, `cwn`,
+`sccnn`, `ect1`, `ectfull`, `fvec1`, `fvecfull`, see `config/chain/`);
+`+cy_task=<row>` the task with its split settings (`h11_class`,
+`h21_class`, `h21_reg`, `chern_node`). `deepsets_node` and
+`pointnetpp_node` are the node-level sizes of those two models, and
+`invmlp` needs `model.max_points` for the file. Anything on the command
+line still overrides them:
+
+```bash
+python main.py +experiment=cy/gcn +chain=levic +cy_task=h11_class \
+    dataset.local_path=/path/to/manifolds.parquet trainer.device=cuda
+```
+
 Tasks:
 
 - `task=hodge_reg` — graph-level regression of `h11`, scored with MAE
@@ -232,9 +249,8 @@ as W&B runs with `model.name=baseline`: the majority class or the train
 median, and for `h11` the point count minus five (`kind=count`), which
 is exact for favorable polytopes, 94% of the `ks_h12lt10` rows. The
 count reads `n_vertices`, which the Hasse and dual representations
-overwrite, so pass
-`representation@dataset.transform.representation=one_skeleton`; the
-split does not depend on the representation.
+overwrite, so pass `+chain=coords`; the split does not depend on the
+representation.
 
 Splits are seeded with `dataset.seed` and sized by
 `dataset.train_parameters.split` (0.7/0.1/0.2); the split files encode
@@ -261,11 +277,7 @@ the representation and let the representation read them (works for
 
 ```bash
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_reg \
-    representation@dataset.transform.representation=hasse_diagram \
-    dataset.transform.representation.feature_propagation=x \
-    transform@dataset.transform.embedding=propagate_convex_comb \
-    '~dataset.transform.select_features' \
-    'dataset.transform_order=[embedding,representation,kappa,select_attributes]'
+    +chain=levic representation@dataset.transform.representation=hasse_diagram
 ```
 
 The tests in `tests/test_cy_dataset.py` skip unless the installed
@@ -299,9 +311,7 @@ polytope and nothing of the triangulation:
 
 ```bash
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_reg \
-    model=deepsets \
-    representation@dataset.transform.representation=one_skeleton \
-    dataset.transform.select_features.src=coords
+    model=deepsets +chain=coords
 ```
 
 `deepsets` is a DeepSets network (shared point-wise MLP, sum pooling,
@@ -311,10 +321,7 @@ Geometric's `pointnet2` examples (farthest point sampling starting at
 the origin,
 radius grouping with `sa_radii` sized for integer coordinates, and
 feature-propagation levels at node level). It needs `torch-cluster`,
-which `uv sync` installs. The random-walk embedding is still computed
-and then replaced by `select_features`; dropping it also needs
-`'~dataset.transform.embedding'` with
-`'dataset.transform_order=[representation,select_features,kappa,select_attributes]'`.
+which `uv sync` installs.
 
 `inv_feature_mlp` is the MLP with invariant features of Ewert et al.
 (2024): a point-wise column encoder max-pooled over the points plus an
@@ -338,10 +345,7 @@ the coordinates, so it must precede `select_features` in the order:
 
 ```bash
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_class \
-    model=ect_vit '~dataset.transform.representation' '~dataset.transform.embedding' \
-    +transform@dataset.transform.ect=ect dataset.transform.select_features.src=coords \
-    'dataset.transform_order=[ect,select_features,kappa,select_attributes]' \
-    transform@dataset.transform.select_attributes=select_attributes_ect
+    model=ect_vit +chain=ect1
 ```
 
 Every top simplex of a Calabi-Yau triangulation contains the origin, so
@@ -378,8 +382,7 @@ over all rows. Two things must line up with that:
 
 ```bash
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet \
-    task=chern_node model=gcn \
-    representation@dataset.transform.representation=one_skeleton
+    task=chern_node model=gcn +chain=coords
 ```
 
 The origin is a target like every other vertex. Its value is the

@@ -1,0 +1,8 @@
+# @package _global_
+# Node-level size: the head concatenates the pooled set feature.
+defaults:
+  - /experiment/cy/deepsets
+
+model:
+  hidden_channels: 256
+  n_layers: 8

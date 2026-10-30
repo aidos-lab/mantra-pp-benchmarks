@@ -1,0 +1,20 @@
+# @package _global_
+# Signed incidence and adjacency operators with barycentric features
+# x_0 ... x_4; CWN reads ranks 0 to 2.
+defaults:
+  - /representation@dataset.transform.representation_1: incidence_sc
+  - /representation@dataset.transform.representation_2: adjacency_sc
+  - /transform@dataset.transform.propagate: propagate_convex_comb
+  - /transform@dataset.transform.scale: scale_operators
+  - override /representation@dataset.transform.representation: null
+  - override /transform@dataset.transform.embedding: null
+  - override /transform@dataset.transform.select_features: null
+  - override /transform@dataset.transform.select_attributes: select_attributes_sc
+
+dataset:
+  transform:
+    representation_1:
+      signed: True
+    representation_2:
+      signed: True
+  transform_order: [representation_1, representation_2, propagate, scale, select_attributes]

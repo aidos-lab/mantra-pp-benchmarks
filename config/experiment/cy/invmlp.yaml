@@ -1,0 +1,9 @@
+# @package _global_
+# model.max_points must cover the file's largest point set; the paper's
+# variant is model.point_mask=hull_mask on chain coordsh.
+defaults:
+  - /experiment/cy/base
+  - override /model: inv_feature_mlp
+
+trainer:
+  learning_rate: 0.001

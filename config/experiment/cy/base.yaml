@@ -1,0 +1,19 @@
+# @package _global_
+# Protocol of the Calabi-Yau experiments, included by the model files of
+# this group, whose widths and depths give every model 400k to 600k
+# parameters. The parquet, the device and the W&B project come from the
+# command line.
+defaults:
+  - override /dataset: cy
+
+dataset:
+  seed: 40
+
+trainer:
+  weight_decay: 0.0
+  batch_size: 256
+  max_epoch: 300
+  early_stopping: 50
+  scheduler_patience: 5
+
+compile: False

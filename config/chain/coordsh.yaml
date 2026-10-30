@@ -1,0 +1,12 @@
+# @package _global_
+# `coords` plus `hull_mask`, the polytope's vertices among the points.
+defaults:
+  - /transform@dataset.transform.hull: hull_vertices
+  - override /representation@dataset.transform.representation: one_skeleton
+  - override /transform@dataset.transform.embedding: null
+
+dataset:
+  transform:
+    select_features:
+      src: coords
+  transform_order: [representation, hull, select_features, select_attributes]

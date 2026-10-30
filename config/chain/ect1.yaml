@@ -1,0 +1,19 @@
+# @package _global_
+# Euler characteristic curves of the one-skeleton. For ect_vit only.
+defaults:
+  - /transform@dataset.transform.ect: ect
+  - override /representation@dataset.transform.representation: null
+  - override /transform@dataset.transform.embedding: null
+  - override /transform@dataset.transform.select_attributes: select_attributes_ect
+
+dataset:
+  transform:
+    ect:
+      max_rank: 1
+      per_rank: false
+    select_features:
+      src: coords
+  transform_order: [ect, select_features, select_attributes]
+
+model:
+  num_ranks: 1

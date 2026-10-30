@@ -1,0 +1,14 @@
+# @package _global_
+# Levi graph whose nodes carry the barycentres of all simplices; the
+# vertex nodes come first and carry `vertex_mask` for node-level tasks.
+defaults:
+  - /transform@dataset.transform.propagate: propagate_convex_comb
+  - override /representation@dataset.transform.representation: levi_graph
+  - override /transform@dataset.transform.embedding: null
+  - override /transform@dataset.transform.select_features: null
+
+dataset:
+  transform:
+    representation:
+      feature_propagation: x
+  transform_order: [propagate, representation, select_attributes]

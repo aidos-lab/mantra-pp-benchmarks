@@ -1,0 +1,36 @@
+# @package _global_
+# The five signed operators the SCCNN reads, with barycentric features.
+defaults:
+  - /representation@dataset.transform.representation_1: incidence_sc
+  - /representation@dataset.transform.representation_2: adjacency_sc
+  - /representation@dataset.transform.representation_3: up_laplacian_sc
+  - /representation@dataset.transform.representation_4: down_laplacian_sc
+  - /representation@dataset.transform.representation_5: hodge_laplacian_sc
+  - /transform@dataset.transform.propagate: propagate_convex_comb
+  - /transform@dataset.transform.scale: scale_operators
+  - override /representation@dataset.transform.representation: null
+  - override /transform@dataset.transform.embedding: null
+  - override /transform@dataset.transform.select_features: null
+  - override /transform@dataset.transform.select_attributes: select_attributes_sc
+
+dataset:
+  transform:
+    representation_1:
+      signed: True
+    representation_2:
+      signed: True
+    representation_3:
+      signed: True
+    representation_4:
+      signed: True
+    representation_5:
+      signed: True
+  transform_order:
+    - representation_1
+    - representation_2
+    - representation_3
+    - representation_4
+    - representation_5
+    - propagate
+    - scale
+    - select_attributes

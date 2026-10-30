@@ -1,0 +1,13 @@
+# @package _global_
+# Run with an ect chain, which sets model.num_ranks; `x` keeps the
+# coordinates for the point count and the node-level tokens.
+defaults:
+  - /experiment/cy/base
+  - override /model: ect_vit
+
+model:
+  hidden_channels: 128
+  n_layers: 3
+
+trainer:
+  learning_rate: 0.0005

@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - /experiment/cy/base
+  - override /model: mlp
+
+model:
+  hidden_channels: 512
+  n_layers: 2
+  dropout: 0.2
+
+trainer:
+  learning_rate: 0.001

@@ -1,0 +1,13 @@
+# @package _global_
+# Three set-abstraction levels; chern_node runs pointnetpp_node.
+defaults:
+  - /experiment/cy/base
+  - override /model: pointnetpp
+
+model:
+  hidden_channels: 256
+  sa_ratios: [0.5, 0.5, 0.5]
+  sa_radii: [2.0, 4.0, 8.0]
+
+trainer:
+  learning_rate: 0.001

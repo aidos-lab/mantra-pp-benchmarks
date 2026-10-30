@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - override /task: hodge_class
+
+task:
+  target: h12
+  name: H21Class
+
+# Drops the rare h12 values; 500 keeps 97.7 % of the h12<10 rows.
+dataset:
+  use_stratified: True
+  label_source: h12
+  min_sample_per_class: 500

@@ -1,0 +1,13 @@
+# @package _global_
+# Dual graph whose nodes carry the barycentres of the top simplices.
+defaults:
+  - /transform@dataset.transform.propagate: propagate_convex_comb
+  - override /representation@dataset.transform.representation: dual_graph
+  - override /transform@dataset.transform.embedding: null
+  - override /transform@dataset.transform.select_features: null
+
+dataset:
+  transform:
+    representation:
+      feature_propagation: x
+  transform_order: [propagate, representation, select_attributes]

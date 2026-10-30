@@ -1,0 +1,4 @@
+# @package _global_
+# One-skeleton with the random-walk embedding as node features.
+defaults:
+  - override /representation@dataset.transform.representation: one_skeleton
