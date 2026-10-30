@@ -27,7 +27,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.utils import to_dense_batch
 
-from src.models.utils import mlp
+from src.models.utils import mlp, target_rows
 
 
 class InvariantFeatureMLP(nn.Module):
@@ -68,10 +68,10 @@ class InvariantFeatureMLP(nn.Module):
         task_level: str = "graph",
     ):
         super().__init__()
-        if task_level not in ("graph", "node"):
-            raise ValueError(f"task_level must be 'graph' or 'node', got {task_level!r}")
-        if task_level == "node" and point_mask is not None:
-            raise ValueError("node level predicts every point, so point_mask must be None")
+        if task_level not in ("graph", "node", "triangle"):
+            raise ValueError(f"task_level must be 'graph', 'node' or 'triangle', got {task_level!r}")
+        if task_level != "graph" and point_mask is not None:
+            raise ValueError("node and triangle levels need every point, so point_mask must be None")
         self.task_level = task_level
         self.max_points = max_points
         self.point_mask = point_mask
@@ -94,6 +94,7 @@ class InvariantFeatureMLP(nn.Module):
         columns = self.column_encoder(dense)
         pooled = columns.masked_fill(~mask[..., None], float("-inf")).amax(dim=1)
         pooled = pooled + self.row_encoder(dense.transpose(1, 2)).amax(dim=1)
-        if self.task_level == "node":
-            return self.decoder((columns + pooled[:, None])[mask])
+        if self.task_level != "graph":
+            points = (columns + pooled[:, None])[mask]
+            return self.decoder(target_rows(points, batch, self.task_level))
         return self.decoder(pooled)

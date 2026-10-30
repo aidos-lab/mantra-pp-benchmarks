@@ -14,3 +14,5 @@ keep_keys:
   - h12
   - c2
   - c2_anticanonical
+  - kappa_2
+  - simplex_index_2

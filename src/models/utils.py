@@ -23,13 +23,16 @@ def pool(x, batch, reduce="mean"):
     return scatter(x, batch, dim=-2, reduce=reduce)
 
 
-def target_nodes(x, batch):
-    """Rows of `x` that carry node-level targets.
+def target_rows(x, batch, task_level):
+    """Rows of `x` that carry the targets of `task_level`.
 
-    Representations whose nodes are not all vertices (e.g. the Levi graph)
-    mark the vertex nodes in `vertex_mask`; without a mask every node is
-    a target.
+    `node`: the vertex rows; representations whose nodes are not all
+    vertices (e.g. the Levi graph) mark them in `vertex_mask`.
+    `triangle`: the sum of the three vertex rows of every triangle in
+    `simplex_index_2`, symmetric like the intersection numbers.
     """
+    if task_level == "triangle":
+        return x[batch.simplex_index_2].sum(0)
     mask = getattr(batch, "vertex_mask", None)
     return x if mask is None else x[mask]
 

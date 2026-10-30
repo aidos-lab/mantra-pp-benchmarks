@@ -5,7 +5,7 @@ Implementation for Graph Convolutional Neural Network.
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import GCNConv
-from src.models.utils import pool, target_nodes
+from src.models.utils import pool, target_rows
 
 
 
@@ -70,7 +70,7 @@ class GCN(nn.Module):
         if self.task_level == "graph":
             x = pool(x, batch.batch, self.pool_method)  # [batch_size, hidden_channels]
         else:
-            x = target_nodes(x, batch)
+            x = target_rows(x, batch, self.task_level)
         # 3. Apply a final classifier
         x = self.final_linear(x)
         return x

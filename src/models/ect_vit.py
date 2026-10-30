@@ -26,6 +26,8 @@ import torch
 import torch.nn as nn
 from torch_geometric.utils import to_dense_batch
 
+from src.models.utils import target_rows
+
 
 class ECTViT(nn.Module):
     """Vision transformer whose tokens are the direction curves of an ECT.
@@ -77,8 +79,8 @@ class ECTViT(nn.Module):
         task_level: str = "graph",
     ):
         super().__init__()
-        if task_level not in ("graph", "node"):
-            raise ValueError(f"task_level must be 'graph' or 'node', got {task_level!r}")
+        if task_level not in ("graph", "node", "triangle"):
+            raise ValueError(f"task_level must be 'graph', 'node' or 'triangle', got {task_level!r}")
         self.num_ranks = num_ranks
         self.task_level = task_level
         shape = (num_ranks, num_directions, resolution) if num_ranks > 1 else (num_directions, resolution)
@@ -86,7 +88,7 @@ class ECTViT(nn.Module):
         self.register_buffer("input_std", torch.ones(shape))
 
         self.embedding = nn.Linear(num_ranks * resolution, hidden_channels)
-        if task_level == "node":
+        if task_level != "graph":
             self.point_embedding = nn.Linear(in_channels, hidden_channels)
             self.point_type = nn.Parameter(0.02 * torch.randn(1, 1, hidden_channels))
         self.pos_embedding = nn.Parameter(
@@ -134,11 +136,12 @@ class ECTViT(nn.Module):
         cls = self.cls_token.expand(ect.shape[0], -1, -1)
         h = torch.cat([cls, tokens], dim=1)
         padding = None
-        if self.task_level == "node":
+        if self.task_level != "graph":
             points, present = to_dense_batch(batch.x.float(), batch.batch)
             h = torch.cat([h, self.point_embedding(points) + self.point_type], dim=1)
             padding = torch.cat([present.new_zeros(h.shape[0], tokens.shape[1] + 1), ~present], dim=1)
         h = self.encoder(self.embed_dropout(h), src_key_padding_mask=padding)
-        if self.task_level == "node":
-            return self.readout(self.norm(h[:, tokens.shape[1] + 1 :][present]))
+        if self.task_level != "graph":
+            points = h[:, tokens.shape[1] + 1 :][present]
+            return self.readout(self.norm(target_rows(points, batch, self.task_level)))
         return self.readout(self.norm(h[:, 0]))

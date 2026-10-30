@@ -391,6 +391,21 @@ task.task_level=node`. As at graph level, the classes are the values
 seen in the train split; a vertex value that occurs only in val or
 test is an error at start-up, since no model could predict it.
 
+### Triangle-level task
+
+`task=kappa_triangle` regresses the intersection number of the three
+toric divisors of every triangle of the triangulation. The `cy` chain
+writes `kappa_2`, one value per triangle in the lexicographic order
+that the simplicial representations use for rank 2 (zero where the
+sparse `intersection_numbers` have no entry), and `simplex_index_2`,
+the triangles' vertex indices. Models with one embedding per vertex
+sum the three vertex embeddings of a triangle before the output layer
+(`target_rows`), which is symmetric like the target; `cwn` and `sccnn`
+read out their rank-2 states. Vertex 0 is the canonical class, so a
+triangle through the origin carries minus the sum of the numbers of
+the triangles it shares its edge with; these are targets like the
+others.
+
 ## Evaluating subdivisions in the training run
 
 The `ood` config group lists subdivisions of the test split that are

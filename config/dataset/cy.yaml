@@ -1,5 +1,6 @@
 defaults:
   - dataset
+  - /transform@transform.kappa: triangle_intersection_numbers
   - /transform@transform.select_attributes: select_attributes
 
 # Calabi-Yau star triangulations from a parquet file. Requires the
@@ -27,6 +28,7 @@ transform_order:
   - representation
   - embedding
   - select_features
+  - kappa
   - select_attributes
 
 # 20% test split as in arXiv:2112.09117.

@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from pydantic import BaseModel
 from torch import nn
 
-from src.models.utils import pool, target_nodes
+from src.models.utils import pool, target_rows
 
 
 class ResidualGatedGCNConfig(BaseModel):
@@ -102,7 +102,7 @@ class ResidualGatedGCN(nn.Module):
         if self.task_level == "graph":
             x = pool(x, batch_idx, self.pool_method)
         else:
-            x = target_nodes(x, batch)
+            x = target_rows(x, batch, self.task_level)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.final_linear(x)
         return x

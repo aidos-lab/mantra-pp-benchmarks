@@ -14,6 +14,7 @@ from torch_geometric.utils import scatter
 import main
 from src.metrics.regression import RoundedAccuracy
 from src.models.graph.gcn import GCN
+from src.models.utils import target_rows
 from src.models.graph.graphormer import Graphormer
 from src.models.set.mlp import MLP
 from src.models.graph.res_gcn import ResidualGatedGCN
@@ -256,6 +257,33 @@ class TestCWNNodeHead:
         assert model.proj_0.weight.grad.abs().sum() > 0
 
 
+class TestTriangleHeads:
+    def _triangle_graphs(self):
+        graphs = [_node_graph(3, seed=1), _node_graph(3, seed=2)]
+        for g in graphs:
+            g.simplex_index_2 = torch.tensor([[0], [1], [2]])
+        return graphs
+
+    def test_target_rows_sums_the_vertex_rows_of_each_graph(self):
+        batch = _batch(self._triangle_graphs())
+        out = target_rows(batch.x, batch, "triangle")
+        assert torch.allclose(out, torch.stack([batch.x[:3].sum(0), batch.x[3:].sum(0)]))
+
+    @pytest.mark.parametrize("build", [_gcn, _rgg])
+    def test_graph_models_are_symmetric_in_the_triangle_vertices(self, build):
+        model = build("triangle")
+        model.eval()
+        graphs = self._triangle_graphs()
+        out = model(_batch(graphs))
+        assert out.shape == (2, 1)
+        graphs[1].simplex_index_2 = torch.tensor([[2], [0], [1]])
+        assert torch.allclose(model(_batch(graphs)), out, atol=1e-6)
+
+    def test_simplicial_models_emit_one_row_per_triangle(self):
+        assert _sccnn("triangle", out_channels=3)(_sccnn_batch()).shape == (3, 3)
+        assert _cwn("triangle", out_channels=3)(_cwn_batch()).shape == (3, 3)
+
+
 class TestSCCNNNodeHead:
     def test_node_output_shape(self):
         model = _sccnn("node", out_channels=3)
@@ -430,6 +458,18 @@ class TestCollateSimplicialNodeLevel:
         assert batch.y.flatten().tolist() == [10, 11, 12, 20, 21, 22, 23]
         assert batch.batch_0.tolist() == [0, 0, 0, 1, 1, 1, 1]
         assert batch.x_0.shape == (7, 2)
+
+    def test_triangle_index_is_concatenated_with_vertex_offsets(self):
+        from src.utils.data_loading import collate_simplicial
+
+        first = Data(x_0=torch.randn(3, 2), dimension=torch.tensor(0),
+                     simplex_index_2=torch.tensor([[0], [1], [2]]))
+        second = Data(x_0=torch.randn(4, 2), dimension=torch.tensor(0),
+                      simplex_index_2=torch.tensor([[0, 1], [1, 2], [2, 3]]))
+
+        batch = collate_simplicial([first, second])
+
+        assert batch.simplex_index_2.tolist() == [[0, 3, 4], [1, 4, 5], [2, 5, 6]]
 
 
 

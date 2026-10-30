@@ -396,6 +396,10 @@ class CWN(torch.nn.Module):
             for _ in range(n_layers)
         )
         self.readout = PropagateSignalDown(max_dimension=3, hidden_channel=hidden_channels[0])
+        # The layers update the edges only, so a triangle's state is the
+        # sum of its edges' final states.
+        if task_level == 'triangle':
+            self.triangle_readout = torch.nn.Linear(hidden_channels[0], kwargs['out_channels'])
         self.graph_readout = MLP(in_channels=hidden_channels[0], hidden_channels=hidden_channels[0], out_channels=kwargs['out_channels'], num_layers=2)
 
     def _reconstruct(self, batch, name):
@@ -469,6 +473,9 @@ class CWN(torch.nn.Module):
             )
 
 
+
+        if self.task_level == 'triangle':
+            return self.triangle_readout(incidence_2.t() @ x_1)
 
         model_out = {
             'x_0': x_0,

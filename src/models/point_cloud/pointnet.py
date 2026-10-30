@@ -29,7 +29,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import PointNetConv, fps, knn_interpolate, radius
 
-from src.models.utils import mlp, pool
+from src.models.utils import mlp, pool, target_rows
 
 
 class PointNetPP(nn.Module):
@@ -103,7 +103,7 @@ class PointNetPP(nn.Module):
         skips = [h] * len(sa_ratios) + [in_channels]
         self.fp_mlps = nn.ModuleList(
             [mlp([h + skip, h, h], dropout) for skip in skips]
-            if task_level == "node"
+            if task_level != "graph"
             else []
         )
         self.final_linear = nn.Linear(h, out_channels)
@@ -140,4 +140,4 @@ class PointNetPP(nn.Module):
             x = knn_interpolate(x, p, p_skip, b, b_skip, k=self.k)
             x = fp(torch.cat([x, x_skip], dim=1))
             p, b = p_skip, b_skip
-        return self.final_linear(x)
+        return self.final_linear(target_rows(x, batch, self.task_level))

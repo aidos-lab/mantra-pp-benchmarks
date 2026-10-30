@@ -34,7 +34,9 @@ CONFIG_DIR = os.path.abspath(
 # 30 star triangulations of the cone over a square boundary; h11
 # enumerates the samples and h12 cycles through three values. The
 # per-vertex `c2` mimics c2 . D_i: vertex 0 is the origin and holds
-# minus the sum of the other entries.
+# minus the sum of the other entries. The sparse intersection numbers
+# give triangle (0,1,2) the value h11, triangle (0,2,3) the value 5,
+# and hold one self-intersection entry that no triangle target reads.
 N_ROWS = 30
 
 
@@ -52,6 +54,7 @@ def _rows(n=N_ROWS):
             "h11": i,
             "h12": i % 3,
             "c2": _c2(i),
+            "intersection_numbers": [[0, 1, 2, i], [2, 3, 0, 5], [1, 1, 2, 9]],
         }
         for i in range(n)
     ]
@@ -288,6 +291,35 @@ class TestCYNodeLevel:
             [("mae", torchmetrics.MeanAbsoluteError())], cfg,
         )
         assert torch.isfinite(torch.tensor(metrics["val/loss"]))
+
+
+class TestCYTriangleLevel:
+    def test_regression_targets_per_triangle(self, tmp_path):
+        cfg = _cfg(tmp_path, "task=kappa_triangle", ONE_SKELETON)
+        train, _, _, _, _ = main.create_dataset(cfg)
+        train_loader, _, _, _ = main.create_loaders(cfg, train, train, train)
+
+        # Triangles in lexicographic order: (0,1,2), (0,1,4), (0,2,3), (0,3,4).
+        for data in train:
+            assert data.y.flatten().tolist() == [float(data.h11), 0.0, 5.0, 0.0]
+            assert data.simplex_index_2[:, 1].tolist() == [0, 1, 4]
+        for batch in train_loader:
+            assert batch.y.shape == (4 * batch.num_graphs, 1)
+            assert batch.simplex_index_2.shape == (3, 4 * batch.num_graphs)
+            assert batch.batch[batch.simplex_index_2].eq(
+                batch.batch[batch.simplex_index_2[0]]
+            ).all()
+
+    def test_levi_graph_indices_point_at_vertex_nodes(self, tmp_path):
+        cfg = _cfg(
+            tmp_path, "task=kappa_triangle",
+            "representation@dataset.transform.representation=levi_graph",
+        )
+        train, _, _, _, _ = main.create_dataset(cfg)
+        train_loader, _, _, _ = main.create_loaders(cfg, train, train, train)
+        for batch in train_loader:
+            assert batch.vertex_mask[batch.simplex_index_2].all()
+            assert batch.y.shape == (4 * batch.num_graphs, 1)
 
 
 class TestCYTransformCache:

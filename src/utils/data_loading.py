@@ -11,8 +11,15 @@ from typing import List, Dict, Any
 from torch_sparse import SparseTensor
 
 
-# NOTE: Could be useful in the future ?
 class SimplicialData(Data):
+    """Sample of `collate_simplicial`, whose operators are `<name>_idx`/`<name>_val` pairs.
+
+    `__inc__` shifts each index tensor by the simplex counts of the ranks
+    it connects, and `simplex_index_2` by the vertex count, so that
+    `Batch.from_data_list` yields block-diagonal operators and a triangle
+    index into the concatenated `x_0`.
+    """
+
     def __inc__(self, key, value, *args, **kwargs):
         if key.endswith('_idx'):
             prefix = key[:-4]
@@ -30,28 +37,16 @@ class SimplicialData(Data):
             ])
         if key.startswith("batch_"):
             return 1
+        if key.startswith("simplex_index_"):
+            return self["x_0"].size(0)
         return 0
 
     def __cat_dim__(self, key: str, value: Any, *args, **kwargs) -> Any:
-        if key.endswith("_idx"):
+        if key.endswith("_idx") or key.startswith("simplex_index_"):
             return 1
         if key.endswith('_val'):
             return 0
         return 0
-
-# class SimplicialData(Data):
-#     def is_valid(self, string):
-#         valid_names = ["adj", "incidence", "laplacian"]
-#         return any(name in string for name in valid_names)
-
-#     def __cat_dim__(self, key: str, value: Any, *args, **kwargs) -> Any:
-#         if torch_geometric.utils.is_sparse(value) and self.is_valid(key):
-#             return (0, 1)
-#         elif "index" in key or key == "face":
-#             return -1
-#         else:
-#             return 0
-
 
 def convert_connectivity(A, key, data):
     if is_sparse(A):

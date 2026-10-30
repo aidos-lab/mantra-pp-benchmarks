@@ -29,7 +29,7 @@ class TaskMeta:
     loss: LossMeta
     target: str
     task_type: str
-    # 'graph': one target per sample; 'node': one target per vertex.
+    # 'graph': one target per sample; 'node': one per vertex; 'triangle': one per triangle.
     task_level: str = "graph"
     metrics: Dict[str, MetricMeta] = field(default_factory=dict)
 

@@ -4,7 +4,7 @@ Multi-Layer Perceptron implementation.
 
 import torch.nn as nn
 
-from src.models.utils import pool
+from src.models.utils import pool, target_rows
 
 
 class MLPLayer(nn.Module):
@@ -62,8 +62,9 @@ class MLP(nn.Module):
         x = batch.x
         for layer in self.hidden_layers:
             x = layer(x)
-        # Node-level tasks keep one embedding per node
         if self.task_level == "graph":
             x = pool(x, batch.batch, self.pool_method)
+        else:
+            x = target_rows(x, batch, self.task_level)
         x = self.readout(x)
         return x

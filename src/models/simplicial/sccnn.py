@@ -526,6 +526,8 @@ class SCCNN(nn.Module):
         if task_level == 'node':
             # Per-vertex head on the rank-0 states
             self.node_readout = nn.Linear(hidden_channels[0], out_channels)
+        elif task_level == 'triangle':
+            self.triangle_readout = nn.Linear(hidden_channels[2], out_channels)
         else:
             self.readout_0 = SumReadout(
                 hidden_channels[0], out_channels
@@ -604,6 +606,8 @@ class SCCNN(nn.Module):
 
         if self.task_level == 'node':
             return self.node_readout(x_0)
+        if self.task_level == 'triangle':
+            return self.triangle_readout(x_2)
 
         #TODO: Figure out what to do about this readout
         out_0 = self.readout_0(x_0, x_bel_0)
