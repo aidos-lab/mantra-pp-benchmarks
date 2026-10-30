@@ -13,7 +13,7 @@ dataset:
       per_rank: true
     select_features:
       src: coords
-  transform_order: [ect, select_features, select_attributes]
+  transform_order: [ect, select_features, kappa, select_attributes]
 
 model:
   num_ranks: 5

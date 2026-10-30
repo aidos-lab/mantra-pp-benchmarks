@@ -10,4 +10,4 @@ dataset:
   transform:
     representation:
       feature_propagation: x
-  transform_order: [propagate, representation, select_attributes]
+  transform_order: [propagate, representation, kappa, select_attributes]

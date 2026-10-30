@@ -17,4 +17,4 @@ dataset:
       signed: True
     representation_2:
       signed: True
-  transform_order: [representation_1, representation_2, propagate, scale, select_attributes]
+  transform_order: [representation_1, representation_2, propagate, scale, kappa, select_attributes]

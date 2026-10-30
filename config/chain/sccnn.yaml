@@ -33,4 +33,5 @@ dataset:
     - representation_5
     - propagate
     - scale
+    - kappa
     - select_attributes

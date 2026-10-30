@@ -9,4 +9,4 @@ dataset:
   transform:
     select_features:
       src: coords
-  transform_order: [representation, select_features, select_attributes]
+  transform_order: [representation, select_features, kappa, select_attributes]
