@@ -10,6 +10,7 @@ from torch_scatter import scatter_add
 from torch_geometric.nn import MLP
 
 from src.models.conv_down import Conv, PropagateSignalDown
+from src.models.utils import head, triangle_rows
 
 
 class CWNLayer(nn.Module):
@@ -379,6 +380,7 @@ class CWN(torch.nn.Module):
         hidden_channels: List[int],
         n_layers,
         task_level: str = 'graph',
+        head_layers: int = 0,
         **kwargs,
     ):
         super().__init__()
@@ -399,7 +401,7 @@ class CWN(torch.nn.Module):
         # The layers update the edges only, so a triangle's state is the
         # sum of its edges' final states.
         if task_level == 'triangle':
-            self.triangle_readout = torch.nn.Linear(hidden_channels[0], kwargs['out_channels'])
+            self.triangle_readout = head(hidden_channels[0], kwargs['out_channels'], head_layers)
         self.graph_readout = MLP(in_channels=hidden_channels[0], hidden_channels=hidden_channels[0], out_channels=kwargs['out_channels'], num_layers=2)
 
     def _reconstruct(self, batch, name):
@@ -473,7 +475,7 @@ class CWN(torch.nn.Module):
             )
 
         if self.task_level == 'triangle':
-            return self.triangle_readout(incidence_2.t() @ x_1)
+            return self.triangle_readout(triangle_rows(incidence_2.t() @ x_1, batch))
 
         model_out = {
             'x_0': x_0,

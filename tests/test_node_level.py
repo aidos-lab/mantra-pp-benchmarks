@@ -15,6 +15,7 @@ import main
 from src.metrics.regression import RoundedAccuracy
 from src.models.ect_vit import ECTViT
 from src.models.graph.gcn import GCN
+from src.models.graph.gin import GIN
 from src.models.utils import target_rows
 from src.models.graph.graphormer import Graphormer
 from src.models.point_cloud.pointnet import PointNetPP
@@ -116,6 +117,7 @@ def _cwn_batch(seed=0):
     batch.incidence_1_val = torch.tensor([1.0, -1.0])
     batch.incidence_2_idx = torch.tensor([[0, 1], [0, 1]])
     batch.incidence_2_val = torch.tensor([1.0, -1.0])
+    batch.triangle_mask = torch.tensor([True, False, True])
     return batch
 
 
@@ -137,6 +139,7 @@ def _sccnn_batch(seed=0):
     batch.incidence_1_val = torch.tensor([1.0, -1.0])
     batch.incidence_2_idx = torch.tensor([[0, 1], [0, 1]])
     batch.incidence_2_val = torch.tensor([1.0, -1.0])
+    batch.triangle_mask = torch.tensor([True, False, True])
     return batch
 
 
@@ -261,15 +264,29 @@ class TestCWNNodeHead:
         assert model.proj_0.weight.grad.abs().sum() > 0
 
 
-class TestTriangleHeads:
-    def _triangle_graphs(self):
-        graphs = [_node_graph(3, seed=1), _node_graph(3, seed=2)]
-        for g in graphs:
-            g.simplex_index_2 = torch.tensor([[0], [1], [2]])
-        return graphs
+def _point_sets():
+    """Two point sets (4 + 6 points) with one and two triangles."""
+    torch.manual_seed(0)
+    sets = []
+    for n, triangles in ((4, [[0], [1], [2]]), (6, [[0, 1], [2, 3], [4, 5]])):
+        sets.append(Data(
+            x=torch.randint(-3, 4, (n, 4)).float(),
+            ect=torch.randint(-50, 2, (1, 8, 6), dtype=torch.int16),
+            simplex_index_2=torch.tensor(triangles),
+        ))
+    return sets
 
+
+def _triangle_graphs():
+    graphs = [_node_graph(3, seed=1), _node_graph(3, seed=2)]
+    for g in graphs:
+        g.simplex_index_2 = torch.tensor([[0], [1], [2]])
+    return graphs
+
+
+class TestTriangleHeads:
     def test_target_rows_sums_the_vertex_rows_of_each_graph(self):
-        batch = _batch(self._triangle_graphs())
+        batch = _batch(_triangle_graphs())
         out = target_rows(batch.x, batch, "triangle")
         assert torch.allclose(out, torch.stack([batch.x[:3].sum(0), batch.x[3:].sum(0)]))
 
@@ -277,7 +294,7 @@ class TestTriangleHeads:
     def test_graph_models_are_symmetric_in_the_triangle_vertices(self, build, spd):
         model = build("triangle")
         model.eval()
-        graphs = self._triangle_graphs()
+        graphs = _triangle_graphs()
         out = model(_batch(graphs, spd=spd))
         assert out.shape == (2, 1)
         graphs[1].simplex_index_2 = torch.tensor([[2], [0], [1]])
@@ -293,21 +310,67 @@ class TestTriangleHeads:
         torch.manual_seed(0)
         model = build()
         model.eval()
-        sets = []
-        for n, triangles in ((4, [[0], [1], [2]]), (6, [[0, 1], [2, 3], [4, 5]])):
-            sets.append(Data(
-                x=torch.randint(-3, 4, (n, 4)).float(),
-                ect=torch.randint(-50, 2, (1, 8, 6), dtype=torch.int16),
-                simplex_index_2=torch.tensor(triangles),
-            ))
+        sets = _point_sets()
         out = model(Batch.from_data_list(sets))
         assert out.shape == (3, 1)
         sets[1].simplex_index_2 = torch.tensor([[4, 5], [0, 1], [2, 3]])
         assert torch.allclose(model(Batch.from_data_list(sets)), out, atol=1e-5)
 
-    def test_simplicial_models_emit_one_row_per_triangle(self):
-        assert _sccnn("triangle", out_channels=3)(_sccnn_batch()).shape == (3, 3)
-        assert _cwn("triangle", out_channels=3)(_cwn_batch()).shape == (3, 3)
+    @pytest.mark.parametrize("build,batch", [(_sccnn, _sccnn_batch), (_cwn, _cwn_batch)],
+                             ids=["sccnn", "cwn"])
+    def test_simplicial_models_emit_the_masked_triangle_rows(self, build, batch):
+        model = build("triangle", out_channels=3)
+        model.eval()
+        masked = model(batch())
+        assert masked.shape == (2, 3)
+        every = batch()
+        every.triangle_mask = torch.ones(3, dtype=torch.bool)
+        assert torch.allclose(masked, model(every)[batch().triangle_mask], atol=1e-6)
+        no_mask = batch()
+        del no_mask.triangle_mask
+        with pytest.raises(ValueError, match="triangle_mask"):
+            model(no_mask)
+
+    @pytest.mark.parametrize("build,batch,readout,rows", [
+        (lambda: GCN(in_channels=2, hidden_channels=8, out_channels=1, n_layers=1, residuals=False,
+                     batch_norm=False, dropout=0.0, task_level="triangle", head_layers=2),
+         lambda: _batch(_triangle_graphs()), lambda m: m.final_linear, 2),
+        (lambda: GIN(2, 8, 1, 1, False, False, 0.0, task_level="triangle", head_layers=2),
+         lambda: _batch(_triangle_graphs()), lambda m: m.final_linear, 2),
+        (lambda: ResidualGatedGCN(hidden_channels=8, n_layers=1, in_channels=2, out_channels=1,
+                                  batch_norm=False, dropout=0.0, task_level="triangle", head_layers=2),
+         lambda: _batch(_triangle_graphs()), lambda m: m.final_linear, 2),
+        (lambda: MLP(2, 8, 1, n_layers=1, dropout=0.0, batch_norm=False, residuals=False,
+                     task_level="triangle", head_layers=2),
+         lambda: _batch(_triangle_graphs()), lambda m: m.readout, 2),
+        (lambda: Graphormer(hidden_channels=8, n_layers=1, in_channels=2, out_channels=1, num_heads=2,
+                            dropout=0.0, max_degree=4, max_distance=4, task_level="triangle", head_layers=2),
+         lambda: _batch(_triangle_graphs(), spd=True), lambda m: m.final_linear, 2),
+        (lambda: DeepSets(4, hidden_channels=8, n_layers=1, task_level="triangle", head_layers=2),
+         lambda: Batch.from_data_list(_point_sets()), lambda m: m.rho[1], 3),
+        (lambda: PointNetPP(4, hidden_channels=8, sa_ratios=[0.5], sa_radii=[4.0], task_level="triangle",
+                            head_layers=2),
+         lambda: Batch.from_data_list(_point_sets()), lambda m: m.final_linear, 3),
+        (lambda: ECTViT(4, 1, 8, 6, hidden_channels=8, n_layers=1, task_level="triangle", head_layers=2),
+         lambda: Batch.from_data_list(_point_sets()), lambda m: m.readout, 3),
+        (lambda: InvariantFeatureMLP(4, 1, max_points=6, hidden_channels=8, task_level="triangle",
+                                     head_layers=2),
+         lambda: Batch.from_data_list(_point_sets()), lambda m: m.decoder[-1], 3),
+        (lambda: CWN(in_channels=[3, 3, 3], hidden_channels=[4, 4, 4], n_layers=1, out_channels=1,
+                     task_level="triangle", head_layers=2),
+         _cwn_batch, lambda m: m.triangle_readout, 2),
+        (lambda: SCCNN(in_channels=[3, 3, 3], hidden_channels=[4, 4, 4], n_layers=1, out_channels=1,
+                       task_level="triangle", head_layers=2, conv_order=1, sc_order=2),
+         _sccnn_batch, lambda m: m.triangle_readout, 2),
+    ], ids=["gcn", "gin", "residual_gated_gcn", "mlp", "graphormer", "deepsets", "pointnetpp",
+            "ect_vit", "inv_feature_mlp", "cwn", "sccnn"])
+    def test_every_model_takes_head_layers(self, build, batch, readout, rows):
+        """`head_layers=2` turns the readout into an MLP before the linear layer."""
+        torch.manual_seed(0)
+        model = build()
+        model.eval()
+        assert [type(m) for m in readout(model)] == [nn.Sequential, nn.Linear]
+        assert model(batch()).shape == (rows, 1)
 
 
 class TestSCCNNNodeHead:
@@ -489,13 +552,16 @@ class TestCollateSimplicialNodeLevel:
         from src.utils.data_loading import collate_simplicial
 
         first = Data(x_0=torch.randn(3, 2), dimension=torch.tensor(0),
-                     simplex_index_2=torch.tensor([[0], [1], [2]]))
+                     simplex_index_2=torch.tensor([[0], [1], [2]]),
+                     triangle_mask=torch.tensor([False, True]))
         second = Data(x_0=torch.randn(4, 2), dimension=torch.tensor(0),
-                      simplex_index_2=torch.tensor([[0, 1], [1, 2], [2, 3]]))
+                      simplex_index_2=torch.tensor([[0, 1], [1, 2], [2, 3]]),
+                      triangle_mask=torch.tensor([True, False, True]))
 
         batch = collate_simplicial([first, second])
 
         assert batch.simplex_index_2.tolist() == [[0, 3, 4], [1, 4, 5], [2, 5, 6]]
+        assert batch.triangle_mask.tolist() == [False, True, True, False, True]
 
 
 

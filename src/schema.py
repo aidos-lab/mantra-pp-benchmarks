@@ -76,6 +76,8 @@ class ModelMeta:
     dropout: float = 0.2
     pool_method: str = "mean"
     task_level: str = "graph"
+    # Hidden layers of the readout after pooling or the triangle sum; 0 is a linear layer.
+    head_layers: int = 0
 
 @dataclass
 class LoggerMeta:

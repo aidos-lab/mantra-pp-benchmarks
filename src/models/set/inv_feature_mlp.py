@@ -27,7 +27,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.utils import to_dense_batch
 
-from src.models.utils import mlp, target_rows
+from src.models.utils import head, mlp, target_rows
 
 
 class InvariantFeatureMLP(nn.Module):
@@ -48,6 +48,8 @@ class InvariantFeatureMLP(nn.Module):
         Layers per encoder.
     decoder_layers : int
         Hidden layers of the decoder.
+    head_layers : int
+        Hidden layers of the readout (`head`) after the decoder's own.
     point_mask : str or None
         Boolean batch attribute selecting the points that enter the
         encoders; `None` uses every point.
@@ -64,6 +66,7 @@ class InvariantFeatureMLP(nn.Module):
         hidden_channels: int = 256,
         n_layers: int = 3,
         decoder_layers: int = 3,
+        head_layers: int = 0,
         point_mask: str | None = None,
         task_level: str = "graph",
     ):
@@ -81,7 +84,7 @@ class InvariantFeatureMLP(nn.Module):
         decoder = []
         for _ in range(decoder_layers):
             decoder += [nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU()]
-        self.decoder = nn.Sequential(*decoder, nn.Linear(h, out_channels))
+        self.decoder = nn.Sequential(*decoder, head(h, out_channels, head_layers))
 
     def forward(self, batch) -> torch.Tensor:
         x, index = batch.x, batch.batch

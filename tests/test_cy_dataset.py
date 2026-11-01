@@ -31,12 +31,6 @@ CONFIG_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "config")
 )
 
-# 30 star triangulations of the cone over a square boundary; h11
-# enumerates the samples and h12 cycles through three values. The
-# per-vertex `c2` mimics c2 . D_i: vertex 0 is the origin and holds
-# minus the sum of the other entries. The sparse intersection numbers
-# give triangle (0,1,2) the value h11, triangle (0,2,3) the value 5,
-# and hold one self-intersection entry that no triangle target reads.
 N_ROWS = 30
 
 
@@ -45,6 +39,11 @@ def _c2(i):
 
 
 def _rows(n=N_ROWS):
+    """`n` star triangulations of the cone over a square boundary: h11
+    enumerates the samples, h12 cycles through three values, and `c2`
+    mimics c2 . D_i with the origin (vertex 0) holding minus the sum of
+    the other entries. The 2-d fan has no boundary triangle, so the
+    intersection numbers reach no target; `_kappa_rows` has them."""
     simplices = [[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1]]
     vertices = [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1]]
     return [
@@ -58,6 +57,19 @@ def _rows(n=N_ROWS):
         }
         for i in range(n)
     ]
+
+
+def _kappa_rows(n=N_ROWS):
+    """Cone over the boundary of a tetrahedron: the boundary triangles
+    (1,2,3), (1,2,4), (1,3,4), (2,3,4) follow the six through the origin.
+    Triangle (1,2,3) holds h11 and (2,3,4) holds 5; the rows through the
+    origin and the self-intersection are not targets."""
+    rows = _rows(n)
+    for i, row in enumerate(rows):
+        row["simplices"] = [[0, 1, 2, 3], [0, 1, 2, 4], [0, 1, 3, 4], [0, 2, 3, 4]]
+        row["vertices"] = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, -1, -1]]
+        row["intersection_numbers"] = [[1, 2, 3, i], [2, 3, 4, 5], [0, 1, 2, 7], [1, 1, 2, 9]]
+    return rows
 
 
 def _write_parquet(tmp_path, rows=None):
@@ -295,24 +307,48 @@ class TestCYNodeLevel:
 
 class TestCYTriangleLevel:
     def test_regression_targets_per_triangle(self, tmp_path):
-        cfg = _cfg(tmp_path, "task=kappa_triangle", ONE_SKELETON)
+        cfg = _cfg(tmp_path, "task=kappa_triangle", ONE_SKELETON, rows=_kappa_rows())
         train, _, _, _, _ = main.create_dataset(cfg)
         train_loader, _, _, _ = main.create_loaders(cfg, train, train, train)
 
-        # Triangles in lexicographic order: (0,1,2), (0,1,4), (0,2,3), (0,3,4).
         for data in train:
-            assert data.y.flatten().tolist() == [float(data.h11), 0.0, 5.0, 0.0]
-            assert data.simplex_index_2[:, 1].tolist() == [0, 1, 4]
+            assert data.y.flatten().tolist() == [float(data.h11), 0.0, 0.0, 5.0]
+            assert data.simplex_index_2[:, 0].tolist() == [1, 2, 3]
+            # The graph chain's select_attributes drops the mask of the simplicial models.
+            assert "triangle_mask" not in data
         for batch in train_loader:
             assert batch.y.shape == (4 * batch.num_graphs, 1)
             assert batch.simplex_index_2.shape == (3, 4 * batch.num_graphs)
             graphs = torch.arange(batch.num_graphs).repeat_interleave(4)
             assert batch.batch[batch.simplex_index_2].eq(graphs).all()
 
+    def test_simplicial_chain_masks_the_rank_2_skeleton(self, tmp_path):
+        cfg = _cfg(
+            tmp_path, "task=kappa_triangle",
+            "representation@dataset.transform.representation=incidence_sc",
+            "dataset.transform.representation.signed=True",
+            "transform@dataset.transform.embedding=propagate_convex_comb",
+            "~transform@dataset.transform.select_features",
+            "transform@dataset.transform.select_attributes=select_attributes_sc",
+            "dataset.transform_order=[representation,embedding,kappa,select_attributes]",
+            rows=_kappa_rows(),
+        )
+        train, _, _, _, _ = main.create_dataset(cfg)
+        train_loader, _, _, _ = main.create_loaders(cfg, train, train, train)
+        for data in train:
+            assert data.triangle_mask.tolist() == [False] * 6 + [True] * 4
+            assert data.x_2.shape[0] == 10
+            assert data.y.flatten().tolist() == [float(data.h11), 0.0, 0.0, 5.0]
+        for batch in train_loader:
+            n = batch.y.shape[0] // 4
+            assert batch.triangle_mask.tolist() == ([False] * 6 + [True] * 4) * n
+            assert batch.x_2.shape[0] == 10 * n
+
     def test_levi_graph_indices_point_at_vertex_nodes(self, tmp_path):
         cfg = _cfg(
             tmp_path, "task=kappa_triangle",
             "representation@dataset.transform.representation=levi_graph",
+            rows=_kappa_rows(),
         )
         train, _, _, _, _ = main.create_dataset(cfg)
         train_loader, _, _, _ = main.create_loaders(cfg, train, train, train)

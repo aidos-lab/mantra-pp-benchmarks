@@ -8,3 +8,4 @@ residuals: true
 dropout: 0.0
 pool_method: mean
 task_level: graph # Get from task
+head_layers: 0

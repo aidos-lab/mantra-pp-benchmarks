@@ -4,3 +4,4 @@ _target_: mantra.transforms.TriangleIntersectionNumbers
 source: intersection_numbers
 target: kappa_2
 index: simplex_index_2
+mask: triangle_mask
