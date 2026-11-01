@@ -5,7 +5,7 @@ Implementation for Graph Convolutional Neural Network.
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import GCNConv
-from src.models.utils import pool, target_rows
+from src.models.utils import head, pool, target_rows
 
 
 
@@ -45,7 +45,7 @@ class GCNLayer(nn.Module):
 
 
 class GCN(nn.Module):
-    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,  n_layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5, pool_method: str = "mean", task_level: str = "graph"):
+    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,  n_layers: int, residuals: bool, batch_norm: bool, dropout: float = 0.5, pool_method: str = "mean", task_level: str = "graph", head_layers: int = 0):
         super().__init__()
         self.pool_method = pool_method
         self.task_level = task_level
@@ -58,9 +58,7 @@ class GCN(nn.Module):
         )
         self.hidden_layers.insert(0, GCNLayer(in_channels, hidden_channels, batch_norm, residual=False, dropout=dropout))
 
-        self.final_linear = nn.Linear(
-            hidden_channels, out_channels
-        )
+        self.final_linear = head(hidden_channels, out_channels, head_layers)
 
     def forward(self, batch):
         x, edge_index = batch.x, batch.edge_index
@@ -71,6 +69,5 @@ class GCN(nn.Module):
             x = pool(x, batch.batch, self.pool_method)  # [batch_size, hidden_channels]
         else:
             x = target_rows(x, batch, self.task_level)
-        # 3. Apply a final classifier
         x = self.final_linear(x)
         return x

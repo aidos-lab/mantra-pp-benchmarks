@@ -26,7 +26,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.utils import to_dense_batch
 
-from src.models.utils import target_rows
+from src.models.utils import head, target_rows
 
 
 class ECTViT(nn.Module):
@@ -62,6 +62,8 @@ class ECTViT(nn.Module):
     task_level : str
         `'graph'` reads the class token; `'node'` appends one token per
         lattice point and predicts from those.
+    head_layers : int
+        Hidden layers of the readout (`head`).
     """
 
     def __init__(
@@ -77,6 +79,7 @@ class ECTViT(nn.Module):
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
         task_level: str = "graph",
+        head_layers: int = 0,
     ):
         super().__init__()
         if task_level not in ("graph", "node", "triangle"):
@@ -109,7 +112,7 @@ class ECTViT(nn.Module):
             layer, num_layers=n_layers, enable_nested_tensor=False
         )
         self.norm = nn.LayerNorm(hidden_channels)
-        self.readout = nn.Linear(hidden_channels, out_channels)
+        self.readout = head(hidden_channels, out_channels, head_layers)
 
     def set_input_stats(self, mean: torch.Tensor, std: torch.Tensor) -> None:
         """Standardise inputs with per-feature statistics in the shape of

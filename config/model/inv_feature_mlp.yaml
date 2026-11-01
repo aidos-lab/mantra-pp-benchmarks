@@ -12,3 +12,4 @@ max_points: 73
 point_mask: null
 out_channels: 1 # Get from task
 task_level: graph # Get from task
+head_layers: 0

@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import MLP, GINConv
 
-from src.models.utils import pool, target_rows
+from src.models.utils import head, pool, target_rows
 
 
 class GINLayer(nn.Module):
@@ -79,6 +79,8 @@ class GIN(nn.Module):
     task_level : str
         `'graph'` pools before the readout, `'node'` emits one row per
         target row (see `target_rows`).
+    head_layers : int
+        Hidden layers of the readout (`head`).
     """
 
     def __init__(
@@ -92,6 +94,7 @@ class GIN(nn.Module):
         dropout: float = 0.5,
         pool_method: str = "sum",
         task_level: str = "graph",
+        head_layers: int = 0,
     ):
         super().__init__()
         self.pool_method = pool_method
@@ -106,7 +109,7 @@ class GIN(nn.Module):
             ]
         )
 
-        self.final_linear = nn.Linear(h, out_channels)
+        self.final_linear = head(h, out_channels, head_layers)
 
     def forward(self, batch) -> torch.Tensor:
         x, edge_index, batch_idx = batch.x, batch.edge_index, batch.batch

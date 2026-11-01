@@ -397,22 +397,35 @@ test is an error at start-up, since no model could predict it.
 ### Triangle-level task
 
 `task=kappa_triangle` regresses the intersection number of the three
-toric divisors of every triangle of the triangulation. The `cy` chain
-writes `kappa_2`, one value per triangle in the lexicographic order
-that the simplicial representations use for rank 2 (zero where the
-sparse `intersection_numbers` have no entry), and `simplex_index_2`,
-the triangles' vertex indices. Models with one embedding per vertex
-sum the three vertex embeddings of a triangle before the output layer
-(`target_rows`), which is symmetric like the target; `sccnn` reads out
-its rank-2 states and `cwn`, whose layers update edges only, sums the
-final edge states of each triangle. Vertex 0 is the canonical class,
-so a triangle through the origin carries minus the sum over all
-divisors of the numbers on its edge, self-intersections included; the
-self-intersections are not targets, so origin triangles are not a
-function of the other targets and stay in loss and metrics. Between
-40 % and 80 % of the triangles have intersection number 0 depending on
-the file, which is what the median baseline scores in rounded
-accuracy.
+toric divisors of every boundary triangle of the triangulation, i.e.
+every 3-cone of the fan. Point 0 is the origin, which CYTools identifies
+with the canonical class `K = -sum_l D_l`, so the `intersection_numbers`
+rows through index 0 are not triple intersections of toric divisors (a
+triangle through the origin would carry `K . D_j . D_k`, minus the
+anticanonical degree of the curve `D_j . D_k`, which the linear
+relations determine from the boundary numbers and the coordinates);
+the `kappa` transform ignores them like the self-intersections. It
+writes `kappa_2`, one value per boundary triangle in lexicographic order
+(zero where the sparse `intersection_numbers` have no entry),
+`simplex_index_2`, the triangles' vertex indices, and `triangle_mask`,
+true on the boundary triangles in the rank-2 order of the simplicial
+representations. Models with one embedding per vertex sum the three
+vertex embeddings of a triangle (`target_rows`), which is symmetric like
+the target; `sccnn` reads out its rank-2 states and `cwn`, whose layers
+update edges only, sums the final edge states of each triangle, both
+restricted by `triangle_mask`. A linear layer on the summed rows is
+additive in the vertices and cannot fit the target, so the task sets
+`model.head_layers=2`: the readout of every model becomes `head`, two
+Linear-LayerNorm-ReLU blocks before the final linear layer (`deepsets`
+already has one hidden layer in `rho` and `inv_feature_mlp` its
+`decoder_layers`; the head comes on top of those). The default
+`head_layers=0` is the plain linear layer, so the graph and node
+results are unchanged. About 40 % of the boundary triangles have
+intersection number 0, which is what the median baseline scores in
+rounded accuracy. The `kappa` transform with the `mask` argument and
+the boundary-only targets needs mantra's `cy-experiments` branch with
+`scripts/cy/patches/mantra-kappa-boundary.patch` applied; an older
+mantra fails at dataset construction.
 
 ## Evaluating subdivisions in the training run
 

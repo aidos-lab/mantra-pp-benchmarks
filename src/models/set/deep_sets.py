@@ -21,7 +21,7 @@ triangulation, the geometry-only control of the Calabi-Yau benchmarks
 import torch
 import torch.nn as nn
 
-from src.models.utils import mlp, pool, target_rows
+from src.models.utils import head, mlp, pool, target_rows
 
 
 class DeepSets(nn.Module):
@@ -46,6 +46,8 @@ class DeepSets(nn.Module):
         the prediction extensive), `'mean'`, or `'max'` (PointNet).
     task_level : str
         `'graph'` for one prediction per set, `'node'` for one per point.
+    head_layers : int
+        Hidden layers of the readout (`head`).
     """
 
     def __init__(
@@ -58,6 +60,7 @@ class DeepSets(nn.Module):
         layer_norm: bool = True,
         pool_method: str = "sum",
         task_level: str = "graph",
+        head_layers: int = 0,
     ):
         super().__init__()
         self.pool_method = pool_method
@@ -67,7 +70,8 @@ class DeepSets(nn.Module):
         self.phi = mlp([in_channels] + [h] * n_layers, dropout, layer_norm)
         rho_in = h if task_level == "graph" else 2 * h
         self.rho = nn.Sequential(
-            mlp([rho_in, h], dropout, layer_norm), nn.Linear(h, out_channels)
+            mlp([rho_in, h], dropout, layer_norm),
+            head(h, out_channels, head_layers),
         )
 
     def forward(self, batch) -> torch.Tensor:
