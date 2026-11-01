@@ -1,3 +1,8 @@
 # @package _global_
 defaults:
   - override /task: kappa_triangle
+
+# The target is not additive in the three vertices, so every model gets
+# the same MLP after its symmetric sum (see `head` in src/models/utils.py).
+model:
+  head_layers: 2
