@@ -166,6 +166,9 @@ def create_dataset(cfg):
             "transform": task_transform,
         }
 
+        if dataset_cfg.group_by:  # needs mantra's grouped split (cy-experiments)
+            dataset_parameters["group_by"] = dataset_cfg.group_by
+
         train_dataset = CalabiYauDataset(
             split_type="train", force_reload=dataset_cfg.reload, **dataset_parameters
         )

@@ -3,6 +3,7 @@
 Skipped when the installed mantra does not ship CalabiYauDataset (the
 mantra cy branch with its split support)."""
 
+import inspect
 import os
 from collections import Counter
 
@@ -385,3 +386,70 @@ class TestCYTransformCache:
         assert main.cache_name(skeleton.dataset) == main.cache_name(
             _cfg(tmp_path, "task=hodge_class", ONE_SKELETON).dataset
         )
+
+
+def _phase_rows(n=N_ROWS):
+    """`_kappa_rows` as two phases per polytope: rows 2p and 2p + 1 share
+    `polytope_id` p and `h11`, triangle (1,2,3) holds 2p in one phase
+    and 2p + 1 in the other while (2,3,4) holds 5 in both, and `c2`
+    differs between the phases."""
+    rows = _kappa_rows(n)
+    for i, row in enumerate(rows):
+        row["polytope_id"] = i // 2
+        row["h11"] = i // 2
+    return rows
+
+
+@pytest.mark.skipif(
+    "group_by" not in inspect.signature(CalabiYauDataset.__init__).parameters,
+    reason="requires mantra's grouped split (cy-experiments)",
+)
+class TestCYPhases:
+    def _phases(self, tmp_path, task):
+        cfg = _cfg(
+            tmp_path, f"task={task}", ONE_SKELETON,
+            "dataset.group_by=polytope_id", rows=_phase_rows(),
+        )
+        return main.create_dataset(cfg)[:3]
+
+    def test_group_by_keeps_the_phases_of_a_polytope_together(self, tmp_path):
+        train, val, test = self._phases(tmp_path, "kappa_triangle")
+        ids = [{int(d.polytope_id) for d in ds} for ds in (train, val, test)]
+        assert ids[0].isdisjoint(ids[1]) and ids[0].isdisjoint(ids[2])
+        assert ids[1].isdisjoint(ids[2])
+        assert sorted(ids[0] | ids[1] | ids[2]) == list(range(N_ROWS // 2))
+        assert all(len(ds) % 2 == 0 for ds in (train, val, test))
+
+    def test_oracle_takes_the_median_over_the_phases(self, tmp_path):
+        import baseline
+        from torch_geometric.data import Batch
+
+        _, _, test = self._phases(tmp_path, "kappa_triangle")
+        assert len(test) > 0
+        oracle = baseline.PhaseOracle(test, "triangle")
+        batch = Batch.from_data_list(list(test))
+        pred = oracle(batch).reshape(-1)
+        assert pred.shape == batch.y.reshape(-1).shape
+        for data in test:
+            p = int(data.polytope_id)
+            rows = batch.polytope_id[batch.batch[batch.simplex_index_2[0]]] == p
+            # Triangle (1,2,3) comes first: the median of 2p and 2p + 1;
+            # then (1,2,4), (1,3,4) at 0 and (2,3,4) at 5 in both phases.
+            assert pred[rows].tolist() == [2 * p + 0.5, 0.0, 0.0, 5.0] * 2
+
+    def test_oracle_on_the_vertex_task(self, tmp_path):
+        import baseline
+        from torch_geometric.data import Batch
+
+        _, _, test = self._phases(tmp_path, "chern_node")
+        oracle = baseline.PhaseOracle(test, "node")
+        batch = Batch.from_data_list(list(test))
+        pred = oracle(batch).reshape(-1)
+        assert pred.shape == batch.y.reshape(-1).shape
+        for data in test:
+            rows = batch.polytope_id[batch.batch] == int(data.polytope_id)
+            phases = [d for d in test if int(d.polytope_id) == int(data.polytope_id)]
+            assert len(phases) == 2
+            # The median of two phases is their mean.
+            expected = torch.stack([d.y.reshape(-1) for d in phases]).mean(0)
+            assert pred[rows].tolist() == expected.tolist() * 2

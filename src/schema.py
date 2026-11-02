@@ -55,6 +55,9 @@ class DatasetMeta:
     use_stratified: bool = True
     # Attribute whose values stratify / filter the splits (cy only).
     label_source: str | None = None
+    # Attribute whose value groups samples that must share a split, e.g.
+    # `polytope_id` for the phases of one polytope (cy only).
+    group_by: str | None = None
     # Processes building the cy cache; None uses every available CPU.
     pre_transform_workers: int | None = None
 
