@@ -427,6 +427,42 @@ the boundary-only targets needs mantra's `cy-experiments` branch with
 `scripts/cy/patches/mantra-kappa-boundary.patch` applied; an older
 mantra fails at dataset construction.
 
+### Several phases per polytope
+
+Every polytope of the parquet files above carries one triangulation,
+the Delaunay one, so all targets are functions of the point set and
+the point-set models compete with the simplicial ones. A parquet with
+several Calabi-Yau phases of each polytope makes the per-simplex
+targets depend on the simplices: `scripts/cy/make_phases_parquet.py`
+(run in `.venv-cytools`) enumerates the fine regular star
+triangulations of a seeded random subset of the polytopes with at
+least two phases and within its enumeration caps, keeps one
+representative per 2-face restriction (the Calabi-Yau phase; the
+Delaunay triangulation when its phase is among them) and writes the
+usual columns plus `polytope_id`, `phase`, `n_phases`, `n_frst` and
+`is_delaunay`. `scripts/cy/phase_stats.py` checks such a file against
+the local formula for the intersection numbers, the c2 star sum and the
+chi identity, and prints how many phases the 1-skeleton and the
+boundary triangles tell apart and the ceiling of a phase-blind
+predictor.
+
+Training on it needs `dataset.group_by=polytope_id`, which puts all
+phases of a polytope into the same split (mantra `cy-experiments` with
+`scripts/cy/patches/mantra-group-split.patch`; `label_source` must then
+be constant within a polytope, which the Hodge numbers are). mantra
+reads the group before the pre-transform, so training itself needs no
+extra attribute; `polytope_id` is kept in the caches only for
+`baseline.py`, which then logs the `phase_median_oracle` of the
+per-vertex and per-triangle tasks: the median target of each vertex or
+boundary triangle over the phases of its polytope containing it, the
+best MAE any model that does not see the phase can reach. Adding the
+key changed the cache name of every Calabi-Yau chain once.
+
+Note that the intersection number of a boundary triangle is the same
+in every phase containing it, so the triangle task stays solvable
+without the phase; the per-vertex c2 sums over the triangles present
+and is the task that changes with the phase.
+
 ## Evaluating subdivisions in the training run
 
 The `ood` config group lists subdivisions of the test split that are

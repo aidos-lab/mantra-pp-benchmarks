@@ -20,6 +20,11 @@ use_stratified: False
 label_source: h11
 min_sample_per_class: null
 
+# Samples with the same value of this attribute share a split: set it to
+# polytope_id for a parquet with several phases per polytope
+# (scripts/cy/make_phases_parquet.py).
+group_by: null
+
 # null uses every CPU the job may run on.
 pre_transform_workers: null
 

@@ -13,3 +13,4 @@ keep_keys:
   - c2_anticanonical
   - kappa_2
   - simplex_index_2
+  - polytope_id
