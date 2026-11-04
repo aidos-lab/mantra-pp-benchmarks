@@ -54,9 +54,9 @@ def task_to_transform(cfg):
 
     The MANTRA tasks are keyed by name. Every other task reads the raw
     attribute `task.target`; classification stores the raw value, which
-    `create_dataset` remaps over the train split. `task.task_level=node`
-    or `triangle` selects the per-simplex variants, which read one value
-    per vertex or per triangle.
+    `create_dataset` remaps over the train split. `task.task_level=node`,
+    `triangle` or `candidate` selects the per-simplex variants, which read
+    one value per vertex, per triangle or per candidate triangle.
     """
     task_level = cfg.task.task_level
 
@@ -72,11 +72,11 @@ def task_to_transform(cfg):
         else:
             raise ValueError("Invalid dimension")
     elif cfg.task.task_type == "regression":
-        if task_level in ("node", "triangle"):
+        if task_level in ("node", "triangle", "candidate"):
             return AttributeToNodeRegressionTransform(cfg.task.target)
         return AttributeToRegressionTransform(cfg.task.target)
     elif cfg.task.task_type == "classification":
-        if task_level in ("node", "triangle"):
+        if task_level in ("node", "triangle", "candidate"):
             return AttributeToNodeClassTransform(cfg.task.target, None)
         return AttributeToClassTransform(cfg.task.target, None)
     else:
@@ -289,9 +289,9 @@ def create_model(cfg, num_features, label_to_index, target_mean_std=None, input_
 
     # Models branch on the string, so a typo must not pick a head silently.
     task_level = cfg.task.task_level
-    if task_level not in ("graph", "node", "triangle"):
+    if task_level not in ("graph", "node", "triangle", "candidate"):
         raise ValueError(
-            f"task.task_level must be 'graph', 'node' or 'triangle', got {task_level!r}"
+            f"task.task_level must be 'graph', 'node', 'triangle' or 'candidate', got {task_level!r}"
         )
     cfg.model.task_level = task_level
 

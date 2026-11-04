@@ -7,7 +7,7 @@ import torch
 from torch_sparse import SparseTensor
 
 from torch_geometric.utils import coalesce, scatter, to_dense_adj
-from src.models.utils import SumReadout, head, triangle_rows
+from src.models.utils import SumReadout, head, target_rows, triangle_rows
 
 
 class SCCNNLayer(nn.Module):
@@ -527,6 +527,9 @@ class SCCNN(nn.Module):
             self.node_readout = head(hidden_channels[0], out_channels, head_layers)
         elif task_level == 'triangle':
             self.triangle_readout = head(hidden_channels[2], out_channels, head_layers)
+        elif task_level == 'candidate':
+            # Candidate triangles need not be cells, so they read the vertices.
+            self.candidate_readout = head(hidden_channels[0], out_channels, head_layers)
         else:
             self.readout_0 = SumReadout(
                 hidden_channels[0], out_channels
@@ -607,6 +610,8 @@ class SCCNN(nn.Module):
             return self.node_readout(x_0)
         if self.task_level == 'triangle':
             return self.triangle_readout(triangle_rows(x_2, batch))
+        if self.task_level == 'candidate':
+            return self.candidate_readout(target_rows(x_0, batch, 'candidate'))
 
         #TODO: Figure out what to do about this readout
         out_0 = self.readout_0(x_0, x_bel_0)

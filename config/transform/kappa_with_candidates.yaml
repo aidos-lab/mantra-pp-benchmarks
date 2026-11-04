@@ -1,0 +1,21 @@
+# The `kappa` step of the chain for the candidate-triangle task: the
+# usual boundary-triangle targets, then one target per candidate triangle
+# of the polytope's 2-faces (`face2_points`, written by
+# scripts/cy/make_phases_parquet.py), the intersection number when the
+# triple is a triangle of this phase and zero when it is not. Replacing
+# the step keeps every chain's transform_order.
+_target_: torch_geometric.transforms.Compose
+transforms:
+  - _target_: mantra.transforms.TriangleIntersectionNumbers
+    source: intersection_numbers
+    target: kappa_2
+    index: simplex_index_2
+    mask: triangle_mask
+  - _target_: mantra.transforms.CandidateTriangleIntersectionNumbers
+    source: intersection_numbers
+    faces: face2_points
+    target: kappa_candidate
+    index: candidate_index_2
+    present: candidate_present
+    # 2-faces with fewer lattice points are triangulated alike in every phase.
+    min_points: 4
