@@ -7,7 +7,7 @@ import torch
 from torch_sparse import SparseTensor
 
 from torch_geometric.utils import coalesce, scatter, to_dense_adj
-from src.models.utils import SumReadout
+from src.models.utils import SumReadout, head, target_rows, triangle_rows
 
 
 class SCCNNLayer(nn.Module):
@@ -509,7 +509,7 @@ class SCCNN(nn.Module):
          Number of layers (default: 2).
     """
 
-    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2, task_level: str = 'graph'):
+    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2, task_level: str = 'graph', head_layers: int = 0):
         super().__init__()
         self.sc_order = sc_order
         self.task_level = task_level
@@ -524,8 +524,12 @@ class SCCNN(nn.Module):
         )
 
         if task_level == 'node':
-            # Per-vertex head on the rank-0 states
-            self.node_readout = nn.Linear(hidden_channels[0], out_channels)
+            self.node_readout = head(hidden_channels[0], out_channels, head_layers)
+        elif task_level == 'triangle':
+            self.triangle_readout = head(hidden_channels[2], out_channels, head_layers)
+        elif task_level == 'candidate':
+            # Candidate triangles need not be cells, so they read the vertices.
+            self.candidate_readout = head(hidden_channels[0], out_channels, head_layers)
         else:
             self.readout_0 = SumReadout(
                 hidden_channels[0], out_channels
@@ -604,6 +608,10 @@ class SCCNN(nn.Module):
 
         if self.task_level == 'node':
             return self.node_readout(x_0)
+        if self.task_level == 'triangle':
+            return self.triangle_readout(triangle_rows(x_2, batch))
+        if self.task_level == 'candidate':
+            return self.candidate_readout(target_rows(x_0, batch, 'candidate'))
 
         #TODO: Figure out what to do about this readout
         out_0 = self.readout_0(x_0, x_bel_0)

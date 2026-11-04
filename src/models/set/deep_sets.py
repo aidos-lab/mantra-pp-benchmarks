@@ -21,7 +21,7 @@ triangulation, the geometry-only control of the Calabi-Yau benchmarks
 import torch
 import torch.nn as nn
 
-from src.models.utils import mlp, pool
+from src.models.utils import head, mlp, pool, target_rows
 
 
 class DeepSets(nn.Module):
@@ -46,6 +46,8 @@ class DeepSets(nn.Module):
         the prediction extensive), `'mean'`, or `'max'` (PointNet).
     task_level : str
         `'graph'` for one prediction per set, `'node'` for one per point.
+    head_layers : int
+        Hidden layers of the readout (`head`).
     """
 
     def __init__(
@@ -58,6 +60,7 @@ class DeepSets(nn.Module):
         layer_norm: bool = True,
         pool_method: str = "sum",
         task_level: str = "graph",
+        head_layers: int = 0,
     ):
         super().__init__()
         self.pool_method = pool_method
@@ -65,15 +68,17 @@ class DeepSets(nn.Module):
 
         h = hidden_channels
         self.phi = mlp([in_channels] + [h] * n_layers, dropout, layer_norm)
-        rho_in = 2 * h if task_level == "node" else h
+        rho_in = h if task_level == "graph" else 2 * h
         self.rho = nn.Sequential(
-            mlp([rho_in, h], dropout, layer_norm), nn.Linear(h, out_channels)
+            mlp([rho_in, h], dropout, layer_norm),
+            head(h, out_channels, head_layers),
         )
 
     def forward(self, batch) -> torch.Tensor:
         h = self.phi(batch.x)
         g = pool(h, batch.batch, self.pool_method)
-        if self.task_level == "node":
-            # Each point sees its own embedding and the pooled set feature
-            return self.rho(torch.cat([h, g[batch.batch]], dim=1))
-        return self.rho(g)
+        if self.task_level == "graph":
+            return self.rho(g)
+        # Each point sees its own embedding and the pooled set feature
+        z = torch.cat([h, g[batch.batch]], dim=1)
+        return self.rho(target_rows(z, batch, self.task_level))

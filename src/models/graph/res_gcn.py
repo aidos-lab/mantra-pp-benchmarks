@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from pydantic import BaseModel
 from torch import nn
 
-from src.models.utils import pool
+from src.models.utils import head, pool, target_rows
 
 
 class ResidualGatedGCNConfig(BaseModel):
@@ -71,6 +71,7 @@ class ResidualGatedGCN(nn.Module):
         dropout: float = 0.5,
         pool_method: str = "mean",
         task_level: str = "graph",
+        head_layers: int = 0,
     ):
         super().__init__()
         self.pool_method = pool_method
@@ -89,9 +90,7 @@ class ResidualGatedGCN(nn.Module):
                 for _ in range(n_layers)
             ]
         )
-        self.final_linear = nn.Linear(
-            hidden_channels, out_channels
-        )
+        self.final_linear = head(hidden_channels, out_channels, head_layers)
         self.dropout = dropout
 
     def forward(self, batch):
@@ -99,9 +98,10 @@ class ResidualGatedGCN(nn.Module):
         x = self.input_proj(x)
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
-        # Node-level tasks keep one embedding per node
         if self.task_level == "graph":
             x = pool(x, batch_idx, self.pool_method)
+        else:
+            x = target_rows(x, batch, self.task_level)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.final_linear(x)
         return x

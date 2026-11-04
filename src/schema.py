@@ -11,6 +11,7 @@ class TrainerMeta:
     early_stopping: int
     batch_size: int
     device: str
+    scheduler_patience: int = 10
     num_workers: int = 0
     pin_memory: bool = True
 
@@ -28,7 +29,8 @@ class TaskMeta:
     loss: LossMeta
     target: str
     task_type: str
-    # 'graph': one target per sample; 'node': one target per vertex.
+    # 'graph': one target per sample; 'node': one per vertex; 'triangle': one
+    # per boundary triangle; 'candidate': one per candidate triangle of the 2-faces.
     task_level: str = "graph"
     metrics: Dict[str, MetricMeta] = field(default_factory=dict)
 
@@ -54,6 +56,11 @@ class DatasetMeta:
     use_stratified: bool = True
     # Attribute whose values stratify / filter the splits (cy only).
     label_source: str | None = None
+    # Attribute whose value groups samples that must share a split, e.g.
+    # `polytope_id` for the phases of one polytope (cy only).
+    group_by: str | None = None
+    # Processes building the cy cache; None uses every available CPU.
+    pre_transform_workers: int | None = None
 
     seed: int = 42
     transform: Dict[str, TransformMeta] = field(default_factory=dict)
@@ -73,6 +80,8 @@ class ModelMeta:
     dropout: float = 0.2
     pool_method: str = "mean"
     task_level: str = "graph"
+    # Hidden layers of the readout after pooling or the triangle sum; 0 is a linear layer.
+    head_layers: int = 0
 
 @dataclass
 class LoggerMeta:

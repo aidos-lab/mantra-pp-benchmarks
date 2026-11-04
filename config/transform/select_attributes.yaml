@@ -1,0 +1,22 @@
+_target_: mantra.transforms.SelectAttributes
+
+# What stays in the cache: the inputs of the graph and point-set models,
+# the task targets and what baseline.py reads. Absent keys are ignored;
+# simplicial and ECT chains use the _sc and _ect variants.
+keep_keys:
+  - x
+  - edge_index
+  - vertex_mask
+  - hull_mask
+  - coords
+  - n_vertices
+  - h11
+  - h12
+  - c2
+  - c2_anticanonical
+  - kappa_2
+  - simplex_index_2
+  - kappa_candidate
+  - candidate_index_2
+  - candidate_present
+  - polytope_id

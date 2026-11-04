@@ -1,4 +1,4 @@
-from torch import nn 
+from torch import nn
 from torch_geometric.utils import scatter
 
 def mlp(channels, dropout=0.0, layer_norm=True):
@@ -21,6 +21,53 @@ def mlp(channels, dropout=0.0, layer_norm=True):
 def pool(x, batch, reduce="mean"):
     """Readout of the rows of `x` into one row per graph of `batch`."""
     return scatter(x, batch, dim=-2, reduce=reduce)
+
+
+def target_rows(x, batch, task_level):
+    """Rows of `x` that carry the targets of `task_level`.
+
+    `node`: the vertex rows; representations whose nodes are not all
+    vertices (e.g. the Levi graph) mark them in `vertex_mask`.
+    `triangle`: the sum of the three vertex rows of every boundary
+    triangle in `simplex_index_2`, symmetric like the intersection numbers.
+    `candidate`: the same sum over the candidate triangles of the 2-faces
+    in `candidate_index_2`, present in the triangulation or not.
+    """
+    if task_level == "triangle":
+        return x[batch.simplex_index_2].sum(0)
+    if task_level == "candidate":
+        return x[batch.candidate_index_2].sum(0)
+    mask = getattr(batch, "vertex_mask", None)
+    return x if mask is None else x[mask]
+
+
+def triangle_rows(x, batch):
+    """Rows of the per-triangle states `x` that carry targets: the
+    boundary triangles, which the `kappa` transform marks in
+    `triangle_mask`. Raises instead of falling back to every row, so a
+    cache without the mask cannot pass as the triangle task."""
+    if "triangle_mask" not in batch:
+        raise ValueError("the triangle task needs `triangle_mask` in the batch")
+    return x[batch.triangle_mask]
+
+
+def head(in_features, out_features, hidden_layers=0):
+    """Readout of every model: `hidden_layers` blocks of `mlp`, then a
+    linear layer; the plain linear layer when 0.
+
+    Shared so that `model.head_layers` gives all models the same capacity
+    after their symmetric sum, where a linear layer is additive in the
+    summed rows and cannot fit the triangle targets. The hidden layers
+    use LayerNorm and no dropout whatever the model's own settings.
+    """
+    if hidden_layers < 0:
+        raise ValueError(f"hidden_layers must be >= 0, got {hidden_layers}")
+    if hidden_layers == 0:
+        return nn.Linear(in_features, out_features)
+    return nn.Sequential(
+        mlp([in_features] * (hidden_layers + 1)),
+        nn.Linear(in_features, out_features),
+    )
 
 
 class SumReadout(nn.Module):

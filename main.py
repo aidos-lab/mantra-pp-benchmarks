@@ -31,6 +31,7 @@ from mantra.transforms.task_transforms import (
 
 from src.schema import RootConfig
 from src.transforms import RemapLabels
+from src.utils.feature_stats import feature_stats
 from src.utils.logging import log_metrics
 from src.utils.data_loading import collate_simplicial
 from src.utils.train_utils import train, validate, test, init_metrics
@@ -53,8 +54,9 @@ def task_to_transform(cfg):
 
     The MANTRA tasks are keyed by name. Every other task reads the raw
     attribute `task.target`; classification stores the raw value, which
-    `create_dataset` remaps over the train split. `task.task_level=node`
-    selects the per-vertex variants.
+    `create_dataset` remaps over the train split. `task.task_level=node`,
+    `triangle` or `candidate` selects the per-simplex variants, which read
+    one value per vertex, per triangle or per candidate triangle.
     """
     task_level = cfg.task.task_level
 
@@ -70,11 +72,11 @@ def task_to_transform(cfg):
         else:
             raise ValueError("Invalid dimension")
     elif cfg.task.task_type == "regression":
-        if task_level == "node":
+        if task_level in ("node", "triangle", "candidate"):
             return AttributeToNodeRegressionTransform(cfg.task.target)
         return AttributeToRegressionTransform(cfg.task.target)
     elif cfg.task.task_type == "classification":
-        if task_level == "node":
+        if task_level in ("node", "triangle", "candidate"):
             return AttributeToNodeClassTransform(cfg.task.target, None)
         return AttributeToClassTransform(cfg.task.target, None)
     else:
@@ -84,9 +86,9 @@ def task_to_transform(cfg):
 def cache_name(dataset_cfg):
     """Name of the cached variant: a hash of its transform config.
 
-    `MantraDataset` keys its processed directory on this name, so a root
-    can hold several transform stacks side by side and a changed stack
-    never reads a stale cache.
+    `MantraDataset` and `CalabiYau` key their processed directory on this
+    name, so a root can hold several transform stacks side by side and a
+    changed stack never reads a stale cache.
     """
     chain = OmegaConf.to_container(dataset_cfg.transform, resolve=True)
     order = list(dataset_cfg.transform_order)
@@ -147,26 +149,33 @@ def create_dataset(cfg):
     split = dataset_cfg.train_parameters.split
 
     if is_cy:
+        pre_transform = Compose(transforms)
         dataset_parameters = {
             "root": dataset_cfg.root,
+            "name": cache_name(dataset_cfg),
             "version": dataset_cfg.version,
             "local_path": dataset_cfg.local_path,
             "limit": dataset_cfg.limit,
-            "force_reload": dataset_cfg.reload,
             "seed": dataset_cfg.seed,
             "split_proportions": [split.train, split.val, split.test],
             "stratified": dataset_cfg.use_stratified,
             "label_source": dataset_cfg.label_source,
             "min_sample_per_class": dataset_cfg.min_sample_per_class,
-            "transform": Compose([task_transform, *transforms]),
+            "pre_transform": pre_transform,
+            "pre_transform_workers": dataset_cfg.pre_transform_workers,
+            "transform": task_transform,
         }
 
-        train_dataset = CalabiYauDataset(split_type="train", **dataset_parameters)
+        if dataset_cfg.group_by:  # needs mantra's grouped split (cy-experiments)
+            dataset_parameters["group_by"] = dataset_cfg.group_by
+
+        train_dataset = CalabiYauDataset(
+            split_type="train", force_reload=dataset_cfg.reload, **dataset_parameters
+        )
         val_dataset = CalabiYauDataset(split_type="val", **dataset_parameters)
         test_dataset = CalabiYauDataset(split_type="test", **dataset_parameters)
         ood_datasets = {}
     else:
-
         dataset_parameters = {
             "root": dataset_cfg.root,
             "name": cache_name(dataset_cfg),
@@ -253,16 +262,36 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
 
     return train_loader, val_loader, test_loader, ood_loaders
 
-def create_model(cfg, num_features, label_to_index):
+class RescaleOutput(torch.nn.Module):
+    """Map a model's output from standardised to target units.
+
+    The wrapped model predicts a zero-mean, unit-variance quantity;
+    `mean + std * f(x)` is what the loss and the metrics see.
+    """
+
+    def __init__(self, model, mean, std):
+        super().__init__()
+        self.model = model
+        self.register_buffer("mean", torch.tensor(float(mean)))
+        self.register_buffer("std", torch.tensor(float(std)))
+
+    def forward(self, batch):
+        return self.mean + self.std * self.model(batch)
+
+
+def create_model(cfg, num_features, label_to_index, target_mean_std=None, input_stats=None):
+    """Instantiate the configured model; for regression, `target_mean_std`
+    of the train split rescales its output to target units, and a model
+    with `set_input_stats` standardises its inputs with `input_stats`."""
     cfg.model.out_channels = (
         len(label_to_index) if cfg.task.task_type == "classification" else 1
     )
 
     # Models branch on the string, so a typo must not pick a head silently.
     task_level = cfg.task.task_level
-    if task_level not in ("graph", "node"):
+    if task_level not in ("graph", "node", "triangle", "candidate"):
         raise ValueError(
-            f"task.task_level must be 'graph' or 'node', got {task_level!r}"
+            f"task.task_level must be 'graph', 'node', 'triangle' or 'candidate', got {task_level!r}"
         )
     cfg.model.task_level = task_level
 
@@ -270,6 +299,10 @@ def create_model(cfg, num_features, label_to_index):
 
     #NOTE: Model initialization
     model = hydra.utils.instantiate(cfg.model, in_channels=in_channels)
+    if input_stats is not None:
+        model.set_input_stats(*input_stats)
+    if target_mean_std is not None and cfg.task.task_type == "regression":
+        model = RescaleOutput(model, *target_mean_std)
     model = model.to(cfg.trainer.device)
 
     # Only compile on GPU
@@ -303,7 +336,15 @@ def main(cfg: RootConfig):
         ]
 
     # ----- Model ----
-    model = create_model(cfg, num_features, label_to_index)
+    target_mean_std = None
+    if cfg.task.task_type == "regression":
+        # Raw train-split target column; one entry per vertex or triangle below graph level.
+        values = train_ds._data[cfg.task.target].reshape(-1).float()
+        target_mean_std = values.mean().item(), values.std().clamp_min(1e-6).item()
+    input_stats = None
+    if hasattr(hydra.utils.get_class(cfg.model._target_), "set_input_stats"):
+        input_stats = feature_stats(train_ds, "ect")
+    model = create_model(cfg, num_features, label_to_index, target_mean_std, input_stats)
 
     print(f"Model parameters: {count_parameters(model)}")
 
@@ -344,7 +385,9 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
         )
 
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, patience=cfg.trainer.scheduler_patience
+    )
     loss_fn = hydra.utils.instantiate(cfg.task.loss)
 
     early_stopping_cnt = cfg.trainer.early_stopping
@@ -410,7 +453,11 @@ def training_loop(train_dataloader, val_dataloader, model, accuracies, run, cfg,
     state_dict = torch.load(os.path.join(checkpoint_dir, "best_val.pt"), weights_only=True)
 
     model.load_state_dict(state_dict)
-    run.summary.update(best_val_metrics)
+    # best checkpoint on the train split in eval mode, like `val/*`.
+    train_eval_metrics = validate(
+        model, train_dataloader, loss_fn, accuracies, cfg, prefix="train_eval"
+    )
+    run.summary.update({**best_val_metrics, **train_eval_metrics})
     return model, last_epoch
 
 if __name__ == "__main__":

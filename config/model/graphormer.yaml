@@ -12,3 +12,4 @@ spd_undirected: true
 ffn_expansion_ratio: 4
 pool_method: mean
 task_level: graph # Get from task
+head_layers: 0

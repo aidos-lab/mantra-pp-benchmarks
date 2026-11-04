@@ -1,0 +1,7 @@
+_target_: mantra.transforms.TriangleIntersectionNumbers
+
+# Reads the triangulation, so it runs before select_attributes.
+source: intersection_numbers
+target: kappa_2
+index: simplex_index_2
+mask: triangle_mask
