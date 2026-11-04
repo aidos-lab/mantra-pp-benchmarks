@@ -453,3 +453,99 @@ class TestCYPhases:
             # The median of two phases is their mean.
             expected = torch.stack([d.y.reshape(-1) for d in phases]).mean(0)
             assert pred[rows].tolist() == expected.tolist() * 2
+
+
+try:
+    from mantra.transforms import CandidateTriangleIntersectionNumbers  # noqa: F401
+
+    HAS_CANDIDATES = True
+except ImportError:
+    HAS_CANDIDATES = False
+
+
+def _candidate_rows(n=N_ROWS):
+    """Two phases per polytope on the 2-face {1, 2, 3, 4}: the full cone
+    (even rows, all four triples are triangles) and the half cone over
+    (1,2,3) and (1,2,4) (odd rows). kappa(1,2,3) is the row index."""
+    rows = _phase_rows(n)
+    for i, row in enumerate(rows):
+        row["face2_points"] = [[0, 1], [0, 2], [0, 3], [0, 4]]
+        if i % 2:
+            row["simplices"] = [[0, 1, 2, 3], [0, 1, 2, 4]]
+            row["intersection_numbers"] = [[1, 2, 3, i], [0, 1, 2, 7]]
+    return rows
+
+
+CANDIDATE = (
+    "task=kappa_candidate",
+    "transform@dataset.transform.kappa=kappa_with_candidates",
+)
+CANDIDATES = [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]
+
+
+@pytest.mark.skipif(not HAS_CANDIDATES, reason="requires mantra cy-experiments")
+class TestCYCandidateLevel:
+    def test_targets_per_candidate_triangle(self, tmp_path):
+        cfg = _cfg(tmp_path, *CANDIDATE, ONE_SKELETON, rows=_candidate_rows())
+        train, _, _, _, _ = main.create_dataset(cfg)
+        for data in train:
+            full = data.candidate_present.tolist() == [True] * 4
+            assert data.candidate_index_2.t().tolist() == CANDIDATES
+            assert data.y.flatten().tolist() == [float(data.kappa_2[0]), 0.0, 0.0, 5.0 if full else 0.0]
+        batch = next(iter(main.create_loaders(cfg, train, train, train)[0]))
+        assert batch.y.shape == (4 * batch.num_graphs, 1)
+        graphs = [g for g in range(batch.num_graphs) for _ in range(4)]
+        assert batch.batch[batch.candidate_index_2[0]].tolist() == graphs
+
+    def test_simplicial_chain_offsets_the_candidate_index(self, tmp_path):
+        cfg = _cfg(
+            tmp_path, *CANDIDATE,
+            "representation@dataset.transform.representation=incidence_sc",
+            "transform@dataset.transform.embedding=propagate_convex_comb",
+            "~transform@dataset.transform.select_features",
+            "transform@dataset.transform.select_attributes=select_attributes_sc",
+            "dataset.transform_order=[representation,embedding,kappa,select_attributes]",
+            rows=_candidate_rows(),
+        )
+        train, _, _, _, _ = main.create_dataset(cfg)
+        batch = next(iter(main.create_loaders(cfg, train, train, train)[0]))
+        # Five vertices per sample, so sample g starts at candidate (1, 2, 3) + 5g.
+        n = batch.y.shape[0] // 4
+        assert batch.candidate_index_2[:, ::4].t().tolist() == [[1 + 5 * g, 2 + 5 * g, 3 + 5 * g] for g in range(n)]
+        # The oracle reads simplicial batches too, which have batch_0 instead of batch.
+        import baseline
+
+        assert baseline.PhaseOracle(train, "candidate")(batch).shape == batch.y.shape
+
+    def test_oracle_takes_the_median_over_the_phases(self, tmp_path):
+        import baseline
+        from torch_geometric.data import Batch
+
+        cfg = _cfg(tmp_path, *CANDIDATE, ONE_SKELETON, "dataset.group_by=polytope_id", rows=_candidate_rows())
+        _, _, test, _, _ = main.create_dataset(cfg)
+        batch = Batch.from_data_list(list(test))
+        pred = baseline.PhaseOracle(test, "candidate")(batch).reshape(-1)
+        for data in test:
+            p = int(data.polytope_id)
+            rows = batch.polytope_id[batch.batch[batch.candidate_index_2[0]]] == p
+            # (1,2,3) takes 2p and 2p + 1 over the two phases, (2,3,4) takes 5 and 0.
+            assert pred[rows].tolist() == [2 * p + 0.5, 0.0, 0.0, 2.5] * 2
+
+    def test_train_and_validate_end_to_end(self, tmp_path):
+        import torch.nn as nn
+        import torchmetrics
+
+        from src.utils.train_utils import train as _train, validate
+
+        cfg = _cfg(tmp_path, *CANDIDATE, ONE_SKELETON, "model=gcn", "model.head_layers=2",
+                   "trainer.batch_size=8", rows=_candidate_rows())
+        train, val, test, _, label_to_index = main.create_dataset(cfg)
+        train_loader, val_loader, _, _ = main.create_loaders(cfg, train, val, test)
+        model = main.create_model(cfg, train[0].x.shape[1], label_to_index)
+        assert model.task_level == "candidate"
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        mae = [("mae", torchmetrics.MeanAbsoluteError())]
+        metrics = _train(model, optimizer, train_loader, nn.MSELoss(), mae, cfg)
+        assert torch.isfinite(torch.tensor(metrics["train/loss"]))
+        metrics = validate(model, val_loader, nn.MSELoss(), mae, cfg)
+        assert torch.isfinite(torch.tensor(metrics["val/loss"]))

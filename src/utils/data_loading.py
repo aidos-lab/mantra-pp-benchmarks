@@ -15,7 +15,8 @@ class SimplicialData(Data):
     """Sample of `collate_simplicial`, whose operators are `<name>_idx`/`<name>_val` pairs.
 
     `__inc__` shifts each index tensor by the simplex counts of the ranks
-    it connects, and `simplex_index_2` by the vertex count, so that
+    it connects, and `simplex_index_2` / `candidate_index_2` by the
+    vertex count, so that
     `Batch.from_data_list` yields block-diagonal operators and a triangle
     index into the concatenated `x_0`.
     """
@@ -37,12 +38,12 @@ class SimplicialData(Data):
             ])
         if key.startswith("batch_"):
             return 1
-        if key.startswith("simplex_index_"):
+        if key.startswith(("simplex_index_", "candidate_index_")):
             return self["x_0"].size(0)
         return 0
 
     def __cat_dim__(self, key: str, value: Any, *args, **kwargs) -> Any:
-        if key.endswith("_idx") or key.startswith("simplex_index_"):
+        if key.endswith("_idx") or key.startswith(("simplex_index_", "candidate_index_")):
             return 1
         if key.endswith('_val'):
             return 0

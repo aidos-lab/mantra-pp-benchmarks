@@ -82,8 +82,8 @@ class ECTViT(nn.Module):
         head_layers: int = 0,
     ):
         super().__init__()
-        if task_level not in ("graph", "node", "triangle"):
-            raise ValueError(f"task_level must be 'graph', 'node' or 'triangle', got {task_level!r}")
+        if task_level not in ("graph", "node", "triangle", "candidate"):
+            raise ValueError(f"task_level must be 'graph', 'node', 'triangle' or 'candidate', got {task_level!r}")
         self.num_ranks = num_ranks
         self.task_level = task_level
         shape = (num_ranks, num_directions, resolution) if num_ranks > 1 else (num_directions, resolution)

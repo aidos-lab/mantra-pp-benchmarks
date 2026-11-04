@@ -10,7 +10,7 @@ from torch_scatter import scatter_add
 from torch_geometric.nn import MLP
 
 from src.models.conv_down import Conv, PropagateSignalDown
-from src.models.utils import head, triangle_rows
+from src.models.utils import head, target_rows, triangle_rows
 
 
 class CWNLayer(nn.Module):
@@ -402,6 +402,9 @@ class CWN(torch.nn.Module):
         # sum of its edges' final states.
         if task_level == 'triangle':
             self.triangle_readout = head(hidden_channels[0], kwargs['out_channels'], head_layers)
+        # Candidate triangles need not be cells, so they read the vertices.
+        if task_level == 'candidate':
+            self.candidate_readout = head(hidden_channels[0], kwargs['out_channels'], head_layers)
         self.graph_readout = MLP(in_channels=hidden_channels[0], hidden_channels=hidden_channels[0], out_channels=kwargs['out_channels'], num_layers=2)
 
     def _reconstruct(self, batch, name):
@@ -487,6 +490,8 @@ class CWN(torch.nn.Module):
             'incidence_2': incidence_2
         }
         out = self.readout(model_out, incidence_map)
+        if self.task_level == 'candidate':
+            return self.candidate_readout(target_rows(out['x_0'], batch, 'candidate'))
         out = self.graph_readout(out['x_0'])
 
         # Node-level tasks keep the per-0-cell predictions of the readout

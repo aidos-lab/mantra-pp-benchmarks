@@ -71,8 +71,8 @@ class InvariantFeatureMLP(nn.Module):
         task_level: str = "graph",
     ):
         super().__init__()
-        if task_level not in ("graph", "node", "triangle"):
-            raise ValueError(f"task_level must be 'graph', 'node' or 'triangle', got {task_level!r}")
+        if task_level not in ("graph", "node", "triangle", "candidate"):
+            raise ValueError(f"task_level must be 'graph', 'node', 'triangle' or 'candidate', got {task_level!r}")
         if task_level != "graph" and point_mask is not None:
             raise ValueError("node and triangle levels need every point, so point_mask must be None")
         self.task_level = task_level

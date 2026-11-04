@@ -1,0 +1,21 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.MSELoss
+
+name: KappaCandidate
+task_type: regression
+task_level: candidate
+
+# Written per candidate triangle of the polytope's 2-faces: the
+# intersection number when the triple is a triangle of this phase, zero
+# when it is not. Needs `transform@dataset.transform.kappa=kappa_with_candidates`
+# and a parquet with several phases per polytope.
+target: kappa_candidate
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError
+  rounded_accuracy:
+    _target_: src.metrics.regression.RoundedAccuracy

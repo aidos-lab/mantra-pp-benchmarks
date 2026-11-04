@@ -30,9 +30,13 @@ def target_rows(x, batch, task_level):
     vertices (e.g. the Levi graph) mark them in `vertex_mask`.
     `triangle`: the sum of the three vertex rows of every boundary
     triangle in `simplex_index_2`, symmetric like the intersection numbers.
+    `candidate`: the same sum over the candidate triangles of the 2-faces
+    in `candidate_index_2`, present in the triangulation or not.
     """
     if task_level == "triangle":
         return x[batch.simplex_index_2].sum(0)
+    if task_level == "candidate":
+        return x[batch.candidate_index_2].sum(0)
     mask = getattr(batch, "vertex_mask", None)
     return x if mask is None else x[mask]
 

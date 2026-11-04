@@ -463,6 +463,20 @@ in every phase containing it, so the triangle task stays solvable
 without the phase; the per-vertex c2 sums over the triangles present
 and is the task that changes with the phase.
 
+The candidate-triangle task makes the triangle set itself the target:
+`task=kappa_candidate` with
+`transform@dataset.transform.kappa=kappa_with_candidates` predicts, for
+every point triple on a common 2-face of the polytope with at least
+four lattice points (`face2_points` in the phases parquet, rows of
+face and point index), the
+intersection number when the triple is a triangle of this phase and
+zero when it is not. The phases of a polytope differ exactly in how
+they triangulate such 2-faces, so a model that does not see the
+simplices is capped at the phase-blind oracle, while the triples of
+triangular 2-faces, present in every phase, are left out. The readout
+sums the three vertex rows of each candidate (`task_level=candidate`),
+for the simplicial models too, since an absent triangle has no cell.
+
 ## Evaluating subdivisions in the training run
 
 The `ood` config group lists subdivisions of the test split that are

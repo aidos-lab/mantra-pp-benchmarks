@@ -31,5 +31,8 @@ keep_keys:
   - c2_anticanonical
   - kappa_2
   - simplex_index_2
+  - kappa_candidate
+  - candidate_index_2
+  - candidate_present
   - polytope_id
   - triangle_mask
