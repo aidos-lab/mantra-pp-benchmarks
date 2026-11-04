@@ -1,0 +1,11 @@
+# @package _global_
+# Kappa on the candidate triangles of the 2-faces: needs a parquet with
+# several phases per polytope (`face2_points`) and dataset.group_by.
+defaults:
+  - override /task: kappa_candidate
+  - override /transform@dataset.transform.kappa: kappa_with_candidates
+
+# The target is not additive in the three vertices, so every model gets
+# the same MLP after its symmetric sum (see `head` in src/models/utils.py).
+model:
+  head_layers: 2
