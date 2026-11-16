@@ -1,0 +1,17 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.MSELoss
+
+name: KahlerMargin
+task_type: regression
+
+# Least volume of a generator of the phase's Mori cone under the Kähler
+# class in the fifth coordinate (transform `lift_coords`); positive
+# inside the Kähler cone.
+target: kclass_margin
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError

@@ -1,0 +1,17 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.MSELoss
+
+name: GVTau
+task_type: regression
+task_level: node
+
+# As skc_tau, at the tip of the cone bounded by the curve classes with
+# nonzero Gopakumar-Vafa invariants and the collapsing walls.
+target: gv_log_tau
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError

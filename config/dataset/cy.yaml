@@ -28,8 +28,10 @@ group_by: null
 # null uses every CPU the job may run on.
 pre_transform_workers: null
 
-# select_attributes comes last, so the cache holds only its keep_keys.
+# select_attributes comes last, so the cache holds only its keep_keys;
+# `lift` is empty unless a task sets it (cy_task kclass_*).
 transform_order:
+  - lift
   - representation
   - embedding
   - select_features

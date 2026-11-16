@@ -4,8 +4,7 @@ Takes the overrides of `main.py` (the `model` group is ignored) and logs
 one W&B run per baseline with the task's metrics on the test split: the
 majority class or the train median, for `h11` the vertex count minus
 five, which is exact for favorable polytopes, and on a dataset with
-several phases per polytope (`dataset.group_by`) the phase-blind oracle
-of the per-vertex and per-triangle tasks.
+several phases per polytope (`dataset.group_by`) the phase-blind oracle.
 """
 
 import statistics
@@ -60,28 +59,34 @@ class VertexCount(nn.Module):
 
 
 class PhaseOracle(nn.Module):
-    """Phase-blind ceiling of a per-simplex task on several phases per polytope.
+    """Phase-blind ceiling of a task on several phases per polytope.
 
-    Predicts for a vertex, boundary triangle or candidate triangle the
-    median of its target over the phases of its polytope: the best MAE any
-    predictor that sees the point set and the simplex but not the phase
-    can reach (the mode would be the optimum of the rounded accuracy).
-    Reads the targets of the split it is evaluated on, so it is a
-    ceiling, not a model.
+    Predicts for a vertex, boundary triangle or candidate triangle, or at
+    the graph level for the polytope, the median of its target over the
+    phases of the polytope: the best MAE any predictor that sees the point
+    set and the simplex but not the phase can reach (the mode would be the
+    optimum of the rounded accuracy). For classification it predicts the
+    most frequent class. Reads the targets of the split it is evaluated
+    on, so it is a ceiling, not a model.
     """
 
-    def __init__(self, dataset, task_level):
+    def __init__(self, dataset, task_level, out_channels=1):
         super().__init__()
         self.task_level = task_level
+        self.out_channels = out_channels
         self.index = "candidate_index_2" if task_level == "candidate" else "simplex_index_2"
         values = defaultdict(list)
         for data in dataset:
             for key, y in zip(self.keys(data), data.y.reshape(-1).tolist()):
                 values[(int(data.polytope_id), key)].append(y)
-        self.medians = {k: statistics.median(v) for k, v in values.items()}
+        centre = statistics.median if out_channels == 1 else statistics.mode
+        self.centres = {k: centre(v) for k, v in values.items()}
 
     def keys(self, data):
-        """One key per target row: the vertex index or the triangle."""
+        """One key per target row: the vertex index or the triangle, and
+        None for the single row of a graph-level target."""
+        if self.task_level == "graph":
+            return [None]
         if self.task_level in ("triangle", "candidate"):
             return map(tuple, data[self.index].t().tolist())
         return range(data.y.shape[0])
@@ -90,18 +95,26 @@ class PhaseOracle(nn.Module):
         # Simplicial batches carry the vertex-to-sample map as batch_0.
         node_sample = batch.batch if batch.batch is not None else batch.batch_0
         ptr = torch.cat([node_sample.new_zeros(1), torch.bincount(node_sample).cumsum(0)])
-        if self.task_level in ("triangle", "candidate"):
-            # The triangle index is offset by the node counts when collated.
-            tri = batch[self.index]
-            sample = node_sample[tri[0]]
-            keys = map(tuple, (tri - ptr[sample]).t().tolist())
+        if self.task_level == "graph":
+            pids = batch.polytope_id.tolist()
+            keys = [None] * len(pids)
         else:
-            sample = node_sample
-            local = torch.arange(sample.shape[0], device=sample.device)
-            keys = (local - ptr[sample]).tolist()
-        pids = batch.polytope_id[sample].tolist()
-        medians = [self.medians[(pid, key)] for pid, key in zip(pids, keys)]
-        return torch.tensor(medians, device=batch.y.device).unsqueeze(-1)
+            if self.task_level in ("triangle", "candidate"):
+                # The triangle index is offset by the node counts when collated.
+                tri = batch[self.index]
+                sample = node_sample[tri[0]]
+                keys = map(tuple, (tri - ptr[sample]).t().tolist())
+            else:
+                sample = node_sample
+                local = torch.arange(sample.shape[0], device=sample.device)
+                keys = (local - ptr[sample]).tolist()
+            pids = batch.polytope_id[sample].tolist()
+        centres = torch.tensor(
+            [self.centres[(pid, key)] for pid, key in zip(pids, keys)], device=batch.y.device
+        )
+        if self.out_channels > 1:
+            return F.one_hot(centres.long(), self.out_channels).float()
+        return centres.unsqueeze(-1)
 
 
 @hydra.main(version_base=None, config_path="config", config_name="config")
@@ -119,8 +132,10 @@ def main(cfg: RootConfig):
         baselines = {"median": Constant(y.median(), 1)}
     if cfg.task.target == "h11" and cfg.task.task_level == "graph":
         baselines["count"] = VertexCount(label_to_index)
-    if cfg.task.task_level in ("node", "triangle", "candidate") and cfg.dataset.group_by:
-        baselines["phase_median_oracle"] = PhaseOracle(test_ds, cfg.task.task_level)
+    if cfg.dataset.group_by:
+        baselines["phase_median_oracle"] = PhaseOracle(
+            test_ds, cfg.task.task_level, cfg.model.out_channels
+        )
 
     config = OmegaConf.to_container(cfg, resolve=True)
     for name, baseline in baselines.items():
