@@ -1,3 +1,7 @@
 # @package transform
 _target_: mantra.representations.HasseDiagram
 feature_propagation: null
+# Keep the simplices up to this rank; null keeps every rank.
+max_rank: null
+# Append a one-hot of the rank to the propagated features.
+rank_feature: false

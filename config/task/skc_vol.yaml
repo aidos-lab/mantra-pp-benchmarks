@@ -1,0 +1,16 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.MSELoss
+
+name: StretchedVolume
+task_type: regression
+
+# Log Calabi-Yau volume at the tip of the stretched Kähler cone of the
+# phase (kahler_labels.py of the calabi-yau repository).
+target: skc_log_vol
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError

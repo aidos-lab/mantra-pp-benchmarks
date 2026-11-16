@@ -1,0 +1,19 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.CrossEntropyLoss
+
+name: ToricComplete
+task_type: classification
+
+# Whether every wall of the toric Kähler cone of the phase carries an
+# effective curve (kahler_labels.py of the calabi-yau repository).
+target: toric_cone_complete
+
+metrics:
+  accuracy:
+    _target_: torchmetrics.Accuracy
+  balanced_accuracy:
+    _target_: torchmetrics.Accuracy
+    average: macro

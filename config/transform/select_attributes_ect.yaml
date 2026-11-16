@@ -16,4 +16,11 @@ keep_keys:
   - kappa_candidate
   - candidate_index_2
   - candidate_present
+  - skc_log_tau
+  - skc_log_vol
+  - gv_log_tau
+  - gv_log_vol
+  - toric_cone_complete
+  - kclass_member
+  - kclass_margin
   - polytope_id

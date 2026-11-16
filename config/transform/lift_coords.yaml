@@ -1,0 +1,6 @@
+_target_: src.transforms.AppendColumns
+
+# The Kähler class of a row as a fifth coordinate: every chain reads
+# `coords`, so all models see the lifted points.
+source: kclass_height
+target: coords
