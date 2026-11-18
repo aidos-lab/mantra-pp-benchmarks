@@ -1,0 +1,10 @@
+# @package _global_
+# Needs the Kähler-class parquet of kahler_labels.py and dataset.group_by;
+# the class becomes the fifth coordinate before any other transform.
+defaults:
+  - /transform@dataset.transform.lift: lift_coords
+  - override /task: kclass_member
+  - override /transform@dataset.transform.kappa: null
+
+model:
+  head_layers: 2

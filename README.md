@@ -488,8 +488,9 @@ depends on the 2-face triangulations alone; on a non-favorable polytope
 (column `favorable` is 0) it is the slice of the Kähler cone that the
 toric divisors span. On the label file,
 `task=skc_tau` and `task=skc_vol` predict the log divisor volumes per
-point and the log Calabi-Yau volume at the tip of the stretched cone,
-`task=gv_tau` and `task=gv_vol` the same at the tip of the cone bounded
+point and the log Calabi-Yau volume at the tip of the stretched cone
+(the class of least norm as one height per point, so no divisor basis
+enters), `task=gv_tau` and `task=gv_vol` the same at the tip of the cone bounded
 by the curves with nonzero Gopakumar-Vafa invariants and the collapsing
 walls, and `task=toric_complete` whether the two cones agree. Finding
 the tip is a quadratic program over all walls, so these targets are not

@@ -1,0 +1,17 @@
+# @package _global_
+# Hasse diagram of vertices and edges: the nodes carry the
+# barycentres and a one-hot of the rank, the vertex nodes come first and
+# carry `vertex_mask`. hasse1 to hasse4 differ in `max_rank` alone.
+defaults:
+  - /transform@dataset.transform.propagate: propagate_convex_comb
+  - override /representation@dataset.transform.representation: hasse_diagram
+  - override /transform@dataset.transform.embedding: null
+  - override /transform@dataset.transform.select_features: null
+
+dataset:
+  transform:
+    representation:
+      feature_propagation: x
+      max_rank: 1
+      rank_feature: true
+  transform_order: [lift, propagate, representation, kappa, select_attributes]
