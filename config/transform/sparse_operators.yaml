@@ -1,0 +1,15 @@
+_target_: src.transforms.SparseOperatorsToCOO
+
+# Last step of a simplicial chain, after select_attributes. These are the
+# operators the SCCNN reads with sc_order 3 (sc_order 2 skips
+# up_laplacian_2); every other operator and the features above
+# `max_rank` leave the cache.
+keep:
+  - hodge_laplacian_0
+  - down_laplacian_1
+  - up_laplacian_1
+  - down_laplacian_2
+  - up_laplacian_2
+  - incidence_1
+  - incidence_2
+max_rank: 2

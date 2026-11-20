@@ -1,3 +1,5 @@
+import re
+
 import torch
 from torch.utils.data import DataLoader
 import torch_geometric
@@ -49,6 +51,11 @@ class SimplicialData(Data):
             return 0
         return 0
 
+
+# The COO cache stores this class next to its tensors (`data_cls`).
+torch.serialization.add_safe_globals([SimplicialData])
+
+
 def convert_connectivity(A, key, data):
     if is_sparse(A):
         if isinstance(A, SparseTensor):
@@ -67,6 +74,18 @@ def convert_connectivity(A, key, data):
     setattr(data, key+"_val", val.float()) 
 
 def collate_simplicial(batch):
+    if isinstance(batch[0], SimplicialData):
+        # Samples of `SparseOperatorsToCOO`: `__inc__` offsets the stored
+        # indices, `follow_batch` gives the batch vector of every rank.
+        features = [k for k in batch[0].keys() if re.fullmatch(r"x_\d+", k)]
+        out = torch_geometric.data.Batch.from_data_list(
+            batch, follow_batch=features
+        )
+        for key in features:
+            out[f"batch_{key[2:]}"] = out.pop(f"{key}_batch")
+            del out[f"{key}_ptr"]
+        return out
+
     VALID_CONNECTIVITY = [
             "laplacian",
             "adjacency",

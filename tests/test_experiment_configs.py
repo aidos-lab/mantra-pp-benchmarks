@@ -13,6 +13,8 @@ def _options(group):
 EXPERIMENTS = [e for e in _options("experiment/cy") if e != "base"]
 CHAINS = _options("chain")
 TASKS = _options("cy_task")
+# Split by polytope (`dataset.group_by`), which rules out stratifying.
+GROUPED_TASKS = {"kclass_member", "toric_complete"}
 
 
 def _compose(experiment, chain, task, *overrides):
@@ -33,7 +35,8 @@ def _compose(experiment, chain, task, *overrides):
 def test_cy_experiment_and_chain_compose(experiment, chain):
     cfg = _compose(experiment, chain, TASKS[0])
     assert cfg.dataset.type == "cy"
-    assert set(cfg.dataset.transform) == set(cfg.dataset.transform_order)
+    # A chain orders `lift` too, which only the Kähler-class rows add.
+    assert set(cfg.dataset.transform) <= set(cfg.dataset.transform_order)
     if "ect" in cfg.dataset.transform and cfg.model._target_.endswith("ECTViT"):
         # The complexes are 4-dimensional, so every rank means five.
         ect = cfg.dataset.transform.ect
@@ -44,7 +47,7 @@ def test_cy_experiment_and_chain_compose(experiment, chain):
 @pytest.mark.parametrize("task", TASKS)
 def test_cy_task_rows_stratify_classification_on_their_target(task):
     cfg = _compose(EXPERIMENTS[0], CHAINS[0], task)
-    if cfg.task.task_type == "classification":
+    if cfg.task.task_type == "classification" and task not in GROUPED_TASKS:
         assert cfg.dataset.use_stratified
         assert cfg.dataset.label_source == cfg.task.target
     else:

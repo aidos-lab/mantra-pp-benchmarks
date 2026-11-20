@@ -549,3 +549,89 @@ class TestCYCandidateLevel:
         assert torch.isfinite(torch.tensor(metrics["train/loss"]))
         metrics = validate(model, val_loader, nn.MSELoss(), mae, cfg)
         assert torch.isfinite(torch.tensor(metrics["val/loss"]))
+
+
+SCCNN_CHAIN = (
+    "representation@dataset.transform.representation=incidence_sc",
+    "+representation@dataset.transform.up=up_laplacian_sc",
+    "+representation@dataset.transform.down=down_laplacian_sc",
+    "+representation@dataset.transform.hodge=hodge_laplacian_sc",
+    "transform@dataset.transform.embedding=propagate_convex_comb",
+    "~transform@dataset.transform.select_features",
+    "transform@dataset.transform.select_attributes=select_attributes_sc",
+)
+SCCNN_ORDER = "representation,up,down,hodge,embedding,kappa,select_attributes"
+COO = ("+transform@dataset.transform.coo=sparse_operators",)
+
+
+def _sccnn_cfg(tmp_path, *overrides, coo, order=SCCNN_ORDER):
+    order += ",coo" if coo else ""
+    return _cfg(
+        tmp_path, *overrides, *SCCNN_CHAIN, *(COO if coo else ()),
+        f"dataset.transform_order=[{order}]", "dataset.group_by=polytope_id",
+        rows=_candidate_rows(),
+    )
+
+
+@pytest.mark.skipif(not HAS_CANDIDATES, reason="requires mantra cy-experiments")
+class TestCYSparseOperatorCache:
+    def test_cache_holds_tensors_and_ranks_up_to_two(self, tmp_path):
+        from src.utils.data_loading import SimplicialData
+
+        cfg = _sccnn_cfg(tmp_path, "task=chern_node", coo=True)
+        train, _, _, _, _ = main.create_dataset(cfg)
+
+        assert isinstance(train[0], SimplicialData)
+        assert all(isinstance(v, torch.Tensor) for v in train._data.values())
+        assert "x_2" in train._data and "x_3" not in train._data
+        assert "adjacency_1" not in train._data
+
+    @pytest.mark.parametrize(
+        "task,level",
+        [
+            (("task=hodge_reg",), "graph"),
+            (("task=chern_node",), "node"),
+            (("task=kappa_triangle",), "triangle"),
+            (CANDIDATE, "candidate"),
+        ],
+    )
+    def test_sccnn_outputs_match_the_sparse_cache(self, tmp_path, task, level):
+        from src.models.simplicial.sccnn import SCCNN
+        from src.utils.data_loading import collate_simplicial
+
+        batches = []
+        for coo in (False, True):
+            cfg = _sccnn_cfg(tmp_path, *task, coo=coo)
+            train, _, _, _, _ = main.create_dataset(cfg)
+            batches.append(collate_simplicial(list(train)))
+        sparse, coo = batches
+        torch.manual_seed(0)
+        model = SCCNN(
+            in_channels=[3, 3, 3], hidden_channels=[8, 8, 8], out_channels=1,
+            sc_order=3, n_layers=2, task_level=level,
+            head_layers=0 if level == "graph" else 2,
+        ).eval()
+
+        assert torch.equal(coo.y, sparse.y)
+        assert model(coo).shape == coo.y.shape
+        assert torch.allclose(model(coo), model(sparse), atol=1e-6)
+
+    def test_train_and_validate_end_to_end(self, tmp_path):
+        import torch.nn as nn
+        import torchmetrics
+
+        from src.utils.train_utils import train as _train, validate
+
+        cfg = _sccnn_cfg(
+            tmp_path, "task=kappa_triangle", "model=sccnn", "model.sc_order=3",
+            "model.head_layers=2", "trainer.batch_size=8", coo=True,
+        )
+        train, val, test, _, label_to_index = main.create_dataset(cfg)
+        train_loader, val_loader, _, _ = main.create_loaders(cfg, train, val, test)
+        model = main.create_model(cfg, [3, 3, 3], label_to_index)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        mae = [("mae", torchmetrics.MeanAbsoluteError())]
+        metrics = _train(model, optimizer, train_loader, nn.MSELoss(), mae, cfg)
+        assert torch.isfinite(torch.tensor(metrics["train/loss"]))
+        metrics = validate(model, val_loader, nn.MSELoss(), mae, cfg)
+        assert torch.isfinite(torch.tensor(metrics["val/loss"]))

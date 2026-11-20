@@ -333,6 +333,7 @@ def main(cfg: RootConfig):
         num_features = [
             sample[f"x_{dim}"].shape[1]
             for dim in range(int(sample.dimension.item()) + 1)
+            if f"x_{dim}" in sample
         ]
 
     # ----- Model ----

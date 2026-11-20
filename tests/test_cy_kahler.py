@@ -107,6 +107,19 @@ class TestLiftedCoordinates:
             # Edge (1, 2) comes after the four edges through the origin.
             assert data.x_1[4, 3].item() == pytest.approx(0.0)
 
+    def test_coo_cache_keeps_the_propagated_height(self, tmp_path):
+        from tests.test_cy_dataset import COO, SCCNN_CHAIN
+
+        _, (train, _, _, _, _) = _datasets(
+            tmp_path, "task=kclass_member", *LIFT, *SCCNN_CHAIN, *COO,
+            "dataset.transform_order="
+            "[lift,representation,up,down,hodge,embedding,select_attributes,coo]",
+        )
+        for data in train:
+            assert data.x_0.shape == (5, 4) and data.x_2.shape[1] == 4
+            assert data.x_1[4, 3].item() == pytest.approx(0.0)
+            assert "x_3" not in data and "incidence_2_idx" in data
+
     def test_tasks_without_a_class_keep_the_coordinates(self, tmp_path):
         _, (train, _, _, _, _) = _datasets(tmp_path, "task=skc_vol", *COORDS)
         assert train[0].x.shape == (5, 3)

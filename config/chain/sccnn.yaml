@@ -1,5 +1,6 @@
 # @package _global_
-# The five signed operators the SCCNN reads, with barycentric features.
+# The signed operators the SCCNN reads, with barycentric features; `coo`
+# stores them as index and value tensors and drops ranks above 2.
 defaults:
   - /representation@dataset.transform.representation_1: incidence_sc
   - /representation@dataset.transform.representation_2: adjacency_sc
@@ -8,6 +9,7 @@ defaults:
   - /representation@dataset.transform.representation_5: hodge_laplacian_sc
   - /transform@dataset.transform.propagate: propagate_convex_comb
   - /transform@dataset.transform.scale: scale_operators
+  - /transform@dataset.transform.coo: sparse_operators
   - override /representation@dataset.transform.representation: null
   - override /transform@dataset.transform.embedding: null
   - override /transform@dataset.transform.select_features: null
@@ -36,3 +38,4 @@ dataset:
     - scale
     - kappa
     - select_attributes
+    - coo

@@ -298,7 +298,13 @@ chains also add `+transform@dataset.transform.scale=scale_operators`
 before `kappa`: it divides every Laplacian and adjacency operator by
 its largest absolute row sum, without which the SCCNN's Chebyshev
 convolutions blow the features up by the operators' eigenvalues (up to
-14 here) at every layer.
+14 here) at every layer. For the SCCNN,
+`+transform@dataset.transform.coo=sparse_operators` as the last entry of
+`transform_order`, after `select_attributes`, stores the seven operators
+it reads as index and value tensors and drops the other operators and
+the features above rank 2. The cache then holds plain tensors that
+batch with `Batch.from_data_list`, instead of one sparse object per
+sample and operator that every loader worker copies.
 
 ### Point-set models
 
