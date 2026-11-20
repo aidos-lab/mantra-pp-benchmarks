@@ -1,0 +1,12 @@
+_target_: src.models.graph.gin.GINE
+
+n_layers: 3
+hidden_channels: 64
+out_channels: 1 # Get from task
+edge_channels: 1 # Width of edge_attr fed to GINEConv, e.g. 1 for a scalar ER embedding
+dropout: 0.2
+batch_norm: True
+residuals: True
+
+pool_method: sum
+task_level: graph # Get from task

@@ -2,7 +2,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch_geometric.nn import MLP, GINConv
+from torch_geometric.nn import MLP, GINConv, GINEConv
 
 from src.models.utils import pool
 
@@ -73,6 +73,102 @@ class GIN(nn.Module):
         x, edge_index, batch_idx = batch.x, batch.edge_index, batch.batch
         for layer in self.hidden_layers:
             x = layer(x, edge_index)
+
+        if self.task_level == "graph":
+            x = pool(x, batch_idx, self.pool_method)
+        return self.final_linear(x)
+
+
+class GINELayer(nn.Module):
+
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        edge_dim: int,
+        batch_norm: bool,
+        residual: bool,
+        dropout: float,
+    ):
+        super().__init__()
+        self.residual = residual
+        self.dropout = dropout
+
+        mlp = MLP(
+            [in_dim, out_dim, out_dim],
+            norm="batch_norm" if batch_norm else None,
+            plain_last=True,
+        )
+        # edge_dim: GINEConv adds a Linear(edge_dim, in_dim) so edge_attr
+        # can be summed with the neighbor features in the message.
+        self.conv = GINEConv(mlp, train_eps=True, edge_dim=edge_dim)
+        self.batchnorm_h = (
+            nn.BatchNorm1d(out_dim) if batch_norm else nn.Identity()
+        )
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_attr: torch.Tensor,
+    ) -> torch.Tensor:
+        h = F.relu(
+            self.batchnorm_h(
+                self.conv(x=x, edge_index=edge_index, edge_attr=edge_attr)
+            )
+        )
+        h = F.dropout(h, p=self.dropout, training=self.training)
+        if self.residual:
+            h = x + h
+        return h
+
+
+class GINE(nn.Module):
+    """GIN with edge features (GINEConv). On the ER dual graph, edge_attr
+    holds the effective resistance of the (d-1)-face inducing each dual
+    edge (edge_channels=1)."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_channels: int,
+        out_channels: int,
+        n_layers: int,
+        residuals: bool,
+        batch_norm: bool,
+        edge_channels: int = 1,
+        dropout: float = 0.5,
+        pool_method: str = "sum",
+        task_level: str = "graph",
+    ):
+        super().__init__()
+        self.pool_method = pool_method
+        self.task_level = task_level
+
+        h = hidden_channels
+        self.hidden_layers = nn.ModuleList(
+            [
+                GINELayer(
+                    in_channels, h, edge_channels, batch_norm, False, dropout
+                )
+            ]
+            + [
+                GINELayer(h, h, edge_channels, batch_norm, residuals, dropout)
+                for _ in range(n_layers)
+            ]
+        )
+
+        self.final_linear = nn.Linear(h, out_channels)
+
+    def forward(self, batch) -> torch.Tensor:
+        x, edge_index, edge_attr, batch_idx = (
+            batch.x,
+            batch.edge_index,
+            batch.edge_attr,
+            batch.batch,
+        )
+        for layer in self.hidden_layers:
+            x = layer(x, edge_index, edge_attr)
 
         if self.task_level == "graph":
             x = pool(x, batch_idx, self.pool_method)

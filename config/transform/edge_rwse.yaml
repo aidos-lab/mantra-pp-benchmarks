@@ -1,0 +1,3 @@
+_target_: src.transforms.EdgeRWSE
+walk_length: 8
+attr_name: edge_attr

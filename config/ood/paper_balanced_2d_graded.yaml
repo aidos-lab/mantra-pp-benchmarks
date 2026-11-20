@@ -1,0 +1,15 @@
+# @package dataset.ood_evaluations
+# paper_balanced_2d with the graded splits ACTIVE. Used by the
+# winners-only rerun (launch_graded_eval_2d_balanced.sh) that fills the
+# graded 21-24 columns for the best configuration per model; the full
+# sweeps keep using paper_balanced_2d (graded commented out) because the
+# graded subdivision of every test entry is too expensive to build in
+# all 24 cache directories. Requires dataset.max_vertices=20 so every
+# graded split is strictly larger than any training triangulation.
+graded21: {division_type: graded, graded_vertex_number: 21}
+graded22: {division_type: graded, graded_vertex_number: 22}
+graded23: {division_type: graded, graded_vertex_number: 23}
+graded24: {division_type: graded, graded_vertex_number: 24}
+stellar075: {division_type: stellar, fraction: 0.75}
+stellar1: {division_type: stellar, fraction: 1.0}
+bary1: {division_type: barycentric, round: 1}
