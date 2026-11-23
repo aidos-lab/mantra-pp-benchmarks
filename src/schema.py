@@ -14,6 +14,8 @@ class TrainerMeta:
     scheduler_patience: int = 10
     num_workers: int = 0
     pin_memory: bool = True
+    # Batch size of the test and OOD loaders; None uses batch_size.
+    eval_batch_size: int | None = None
 
 @dataclass
 class MetricMeta:
