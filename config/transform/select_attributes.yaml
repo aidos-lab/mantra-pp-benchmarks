@@ -1,0 +1,10 @@
+_target_: mantra.transforms.SelectAttributes
+
+# Keep only what training needs. Used as the LAST transform of pipelines
+# that go through PropagateConvexComb, whose hardcoded x_0..x_d outputs
+# would otherwise flip main.py's "x_0 in sample" check onto the
+# simplicial collate path.
+# label (the class name string the task transform writes alongside y) is
+# read by test() for the confusion matrix -- dropping it crashed job
+# 32039_7.
+keep_keys: [x, y, label, edge_index, edge_attr, name, dimension, n_vertices]
