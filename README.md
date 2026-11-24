@@ -13,6 +13,78 @@ This repository contains:
   lives in the MANTRA library, which serves the subdivided test set as the
   `ood` split of `MantraDataset`.
 
+
+## TL;DR Usage
+
+```
+import torch
+import torch.nn.functional as F
+from torch import nn
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import GCN, global_mean_pool
+from torch_geometric.transforms import AddRandomWalkPE, Compose
+
+from mantra.datasets import MantraDataset
+from mantra.representations import DualGraph
+from mantra.transforms import NAME_TO_CLASS_2M, NameToClass2MTransform, SelectFeatures
+
+# 1. Representation: triangulation -> dual graph with random-walk features
+WALK_LENGTH = 8
+pipeline = Compose([
+    NameToClass2MTransform(),                                             # y <- homeomorphism type
+    DualGraph(),                                                          # one node per triangle
+    AddRandomWalkPE(walk_length=WALK_LENGTH, attr_name="random_walk_pe"),  # RWPE transform
+    SelectFeatures(src="random_walk_pe", dst=None),                       # x <- random_walk_pe
+])
+common = dict(root="data", dimension=2, name="dual_rwpe", pre_transform=pipeline,
+              min_sample_per_class=100, stratified=True, max_ood_size_per_class=100)
+
+# 2. Data: train/val/test, plus subdivisions of the test set as OOD
+ood = {
+    "stellar": dict(division_type="stellar"),
+    "barycentric": dict(division_type="barycentric"),
+    "graded_16": dict(division_type="graded", graded_vertex_number=16),
+}
+data = {s: MantraDataset(split_type=s, **common) for s in ("train", "val", "test")}
+data |= {k: MantraDataset(split_type="ood", **common, **kw) for k, kw in ood.items()}
+loader = {k: DataLoader(d, batch_size=256, shuffle=(k == "train")) for k, d in data.items()}
+
+
+# 3. Model
+class Model(nn.Module):
+    def __init__(self, hidden=64):
+        super().__init__()
+        self.gnn = GCN(in_channels=WALK_LENGTH, hidden_channels=hidden, num_layers=3)
+        self.head = nn.Linear(hidden, len(NAME_TO_CLASS_2M))
+
+    def forward(self, b):
+        return self.head(global_mean_pool(self.gnn(b.x, b.edge_index), b.batch))
+
+
+model = Model()
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
+
+
+@torch.no_grad()
+def accuracy(split):
+    model.eval()
+    hits = sum((model(b).argmax(-1) == b.y).sum().item() for b in loader[split])
+    return hits / len(data[split])
+
+
+# 4. Train, then test in- and out-of-distribution
+for epoch in range(20):
+    model.train()
+    for b in loader["train"]:
+        optimizer.zero_grad()
+        F.cross_entropy(model(b), b.y).backward()
+        optimizer.step()
+    print(f"epoch {epoch:02d}  val {accuracy('val'):.3f}")
+
+for split in ("test", *ood):
+    print(f"{split:>12}  {accuracy(split):.3f}")
+```
+
 ## MANTRA dependency
 
 The `mantra-dataset` dependency is the upstream MANTRA dataset library
