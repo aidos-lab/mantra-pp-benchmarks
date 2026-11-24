@@ -254,9 +254,13 @@ def create_loaders(cfg, train_dataset, val_dataset, test_dataset, ood_datasets=N
     val_loader = loader_cls(
         val_dataset, shuffle=False, persistent_workers=persistent_workers, **loader_kwargs
     )
-    test_loader = loader_cls(test_dataset, shuffle=False, **loader_kwargs)
+    eval_kwargs = dict(loader_kwargs)
+    if getattr(trainer_cfg, "eval_batch_size", None):
+        eval_kwargs["batch_size"] = trainer_cfg.eval_batch_size
+
+    test_loader = loader_cls(test_dataset, shuffle=False, **eval_kwargs)
     ood_loaders = {
-        name: loader_cls(dataset, shuffle=False, **loader_kwargs)
+        name: loader_cls(dataset, shuffle=False, **eval_kwargs)
         for name, dataset in (ood_datasets or {}).items()
     }
 
