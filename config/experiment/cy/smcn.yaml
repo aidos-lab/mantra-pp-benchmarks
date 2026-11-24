@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - /experiment/cy/base
+  - override /model: smcn
+
+# Pairs (vertex, triangle) on the ranks 0 to 2, as CWN reads them.
+model:
+  hidden_channels: 112
+  n_layers: 4
+  n_cin_layers: 1
+
+trainer:
+  learning_rate: 0.0005
