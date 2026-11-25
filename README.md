@@ -13,6 +13,20 @@ This repository contains:
   lives in the MANTRA library, which serves the subdivided test set as the
   `ood` split of `MantraDataset`.
 
+```bibtex
+@inproceedings{Schmidt26b,
+  title         = {No Triangulation Without Representation: Generalization in Topological Deep Learning},
+  author        = {Johannes S. Schmidt and Martin Carrasco and Ernst Röell and Guy Wolf and Nello Blaser and Bastian Rieck},
+  year          = 2026,
+  booktitle     = {Advances in Neural Information Processing Systems},
+  volume        = {39},
+  publisher     = {Curran Associates, Inc.},
+  pubstate      = {inpress},
+  eprint        = {2605.06467},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.LG},
+}
+```
 
 ## TL;DR Usage
 
@@ -322,21 +336,3 @@ arm.
 The suite under [`tests/`](./tests) covers the math utilities,
 imbalance handling, the barycentric / stellar subdivision routines, and
 the model layers (Graphormer SPD, SAN-TMX, GCN/MLP, residual gated GCN).
-
-
-## Citation
-
-```
-@inproceedings{Schmidt26b,
-  title         = {No Triangulation Without Representation: Generalization in Topological Deep Learning},
-  author        = {Johannes S. Schmidt and Martin Carrasco and Ernst Röell and Guy Wolf and Nello Blaser and Bastian Rieck},
-  year          = 2026,
-  booktitle     = {Advances in Neural Information Processing Systems},
-  volume        = {39},
-  publisher     = {Curran Associates, Inc.},
-  pubstate      = {inpress},
-  eprint        = {2605.06467},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-}
-```
