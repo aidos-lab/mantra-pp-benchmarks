@@ -29,7 +29,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import PointNetConv, fps, knn_interpolate, radius
 
-from src.models.utils import mlp, pool
+from src.models.utils import head, mlp, pool, target_rows
 
 
 class PointNetPP(nn.Module):
@@ -57,6 +57,8 @@ class PointNetPP(nn.Module):
     task_level : str
         `'graph'` for one prediction per set, `'node'` for one per point
         through the FP levels.
+    head_layers : int
+        Hidden layers of the readout (`head`).
     """
 
     def __init__(
@@ -71,6 +73,7 @@ class PointNetPP(nn.Module):
         k: int = 3,
         pool_method: str = "sum",
         task_level: str = "graph",
+        head_layers: int = 0,
     ):
         super().__init__()
         if len(sa_ratios) != len(sa_radii):
@@ -103,10 +106,10 @@ class PointNetPP(nn.Module):
         skips = [h] * len(sa_ratios) + [in_channels]
         self.fp_mlps = nn.ModuleList(
             [mlp([h + skip, h, h], dropout) for skip in skips]
-            if task_level == "node"
+            if task_level != "graph"
             else []
         )
-        self.final_linear = nn.Linear(h, out_channels)
+        self.final_linear = head(h, out_channels, head_layers)
 
     def forward(self, batch) -> torch.Tensor:
         x, p, b = None, batch.x, batch.batch
@@ -140,4 +143,4 @@ class PointNetPP(nn.Module):
             x = knn_interpolate(x, p, p_skip, b, b_skip, k=self.k)
             x = fp(torch.cat([x, x_skip], dim=1))
             p, b = p_skip, b_skip
-        return self.final_linear(x)
+        return self.final_linear(target_rows(x, batch, self.task_level))

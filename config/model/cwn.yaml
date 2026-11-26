@@ -5,3 +5,5 @@ n_layers: 3
 out_channels: 1
 in_channels: 3
 task_level: graph # Get from task
+head_layers: 0
+max_rank: 2

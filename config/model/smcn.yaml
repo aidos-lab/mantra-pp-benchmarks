@@ -1,0 +1,22 @@
+_target_: src.models.cells.smcn.SMCN
+
+# Scalable Multi-Cellular Network (arXiv:2408.05486), ported from
+# https://github.com/yoavgelberg/SMCN. Run with compile=False.
+hidden_channels: 64
+out_channels: 1 # Get from task
+
+# Subcomplex layers on the pairs (vertex, high_rank-cell);
+# 0 is the HOMP baseline: n_cin_layers CIN layers only.
+n_layers: 4
+n_cin_layers: 1
+high_rank: 2
+marking: binary # binary: vertex in cell / distance: hops from vertex to cell
+max_distance: 10
+conv_type: gin # gin / custom_gin
+subcomplex_pool: mean
+pool_method: sum
+output_ranks: null # [0, high_rank]; [0, 1, 2] for n_layers=0
+residuals: False
+dropout: 0.0
+task_level: graph # Get from task
+head_layers: 0

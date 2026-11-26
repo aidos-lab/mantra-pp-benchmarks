@@ -1,0 +1,103 @@
+"""The "MLP with invariant features" of Ewert, Magruder, Maiboroda, Shen,
+Singh and Platt, "Group-invariant machine learning on the Kreuzer-Skarke
+dataset", Phys. Lett. B 858 (2024) 138996, Section 3.3.
+
+The polytope is the `(n_points, 4)` coordinate matrix. A column encoder
+applies one MLP to every point and max-pools over the points, which is
+invariant to reordering the points; a row encoder applies one MLP to
+every coordinate axis, i.e. to the vector of all points' values along
+that axis, and max-pools over the four axes, which is invariant to
+permuting the axes. The sum of the two features goes through a decoder
+MLP.
+
+The paper trained on the 4 x 26 vertex matrices of the polytopes with
+26 vertices. Here the point count varies, so the row encoder's input is
+zero-padded to `max_points`; a padded slot and a zero coordinate look
+the same to it, which the paper's fixed-size matrices never had to
+tell apart. With `point_mask` only the marked points (e.g. the hull
+vertices of `src.transforms.HullVertices`) enter either encoder.
+
+At node level the decoder runs per point on the point's own column
+feature plus the pooled set feature, which keeps the invariances and
+gives one prediction per point in batch order. This head is not part
+of the paper.
+"""
+
+import torch
+import torch.nn as nn
+from torch_geometric.utils import to_dense_batch
+
+from src.models.utils import head, mlp, target_rows
+
+
+class InvariantFeatureMLP(nn.Module):
+    """Column- and row-encoder MLP over the coordinate matrix of a point set.
+
+    Parameters
+    ----------
+    in_channels : int
+        Coordinates per point (4 for the lattice points).
+    out_channels : int
+        Prediction width; set from the task by `main.py`.
+    max_points : int
+        Width of the row encoder: point sets are zero-padded to it and
+        may not exceed it.
+    hidden_channels : int
+        Width of both encoders and of the decoder.
+    n_layers : int
+        Layers per encoder.
+    decoder_layers : int
+        Hidden layers of the decoder.
+    head_layers : int
+        Hidden layers of the readout (`head`) after the decoder's own.
+    point_mask : str or None
+        Boolean batch attribute selecting the points that enter the
+        encoders; `None` uses every point.
+    task_level : str
+        `'graph'` pools the features over the points; `'node'` predicts
+        per point and needs every point, so it excludes `point_mask`.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        max_points: int,
+        hidden_channels: int = 256,
+        n_layers: int = 3,
+        decoder_layers: int = 3,
+        head_layers: int = 0,
+        point_mask: str | None = None,
+        task_level: str = "graph",
+    ):
+        super().__init__()
+        if task_level not in ("graph", "node", "triangle", "candidate"):
+            raise ValueError(f"task_level must be 'graph', 'node', 'triangle' or 'candidate', got {task_level!r}")
+        if task_level != "graph" and point_mask is not None:
+            raise ValueError("node and triangle levels need every point, so point_mask must be None")
+        self.task_level = task_level
+        self.max_points = max_points
+        self.point_mask = point_mask
+        h = hidden_channels
+        self.column_encoder = mlp([in_channels] + [h] * n_layers, layer_norm=False)
+        self.row_encoder = mlp([max_points] + [h] * n_layers, layer_norm=False)
+        decoder = []
+        for _ in range(decoder_layers):
+            decoder += [nn.Linear(h, h), nn.BatchNorm1d(h), nn.ReLU()]
+        self.decoder = nn.Sequential(*decoder, head(h, out_channels, head_layers))
+
+    def forward(self, batch) -> torch.Tensor:
+        x, index = batch.x, batch.batch
+        if self.point_mask is not None:
+            keep = batch[self.point_mask]
+            x, index = x[keep], index[keep]
+        dense, mask = to_dense_batch(x, index, max_num_nodes=self.max_points)
+        if mask.sum() != x.shape[0]:
+            raise ValueError(f"a point set exceeds max_points={self.max_points}")
+        columns = self.column_encoder(dense)
+        pooled = columns.masked_fill(~mask[..., None], float("-inf")).amax(dim=1)
+        pooled = pooled + self.row_encoder(dense.transpose(1, 2)).amax(dim=1)
+        if self.task_level != "graph":
+            points = (columns + pooled[:, None])[mask]
+            return self.decoder(target_rows(points, batch, self.task_level))
+        return self.decoder(pooled)

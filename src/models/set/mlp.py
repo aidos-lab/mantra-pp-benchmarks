@@ -4,7 +4,7 @@ Multi-Layer Perceptron implementation.
 
 import torch.nn as nn
 
-from src.models.utils import pool
+from src.models.utils import head, pool, target_rows
 
 
 class MLPLayer(nn.Module):
@@ -39,7 +39,7 @@ class MLPLayer(nn.Module):
         return h
 
 class MLP(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals, pool_method="mean", task_level="graph"):
+    def __init__(self, in_channels, hidden_channels, out_channels, n_layers, dropout, batch_norm, residuals, pool_method="mean", task_level="graph", head_layers=0):
         super().__init__()
         self.pool_method = pool_method
         self.task_level = task_level
@@ -53,8 +53,7 @@ class MLP(nn.Module):
         # Input layer
         self.hidden_layers.insert(0, MLPLayer(in_channels, hidden_channels, batch_norm=batch_norm, residuals=False, dropout=dropout))
 
-        # Readout layer
-        self.readout = nn.Linear(hidden_channels, out_channels)
+        self.readout = head(hidden_channels, out_channels, head_layers)
 
 
 
@@ -62,8 +61,9 @@ class MLP(nn.Module):
         x = batch.x
         for layer in self.hidden_layers:
             x = layer(x)
-        # Node-level tasks keep one embedding per node
         if self.task_level == "graph":
             x = pool(x, batch.batch, self.pool_method)
+        else:
+            x = target_rows(x, batch, self.task_level)
         x = self.readout(x)
         return x

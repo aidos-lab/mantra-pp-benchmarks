@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from torch import nn
 from torch_geometric.utils import degree, to_dense_batch
 
+from src.models.utils import head, target_rows
+
 
 class GraphormerConfig(BaseModel):
     hidden_channels: int = 128
@@ -162,6 +164,7 @@ class Graphormer(nn.Module):
             spd_undirected: bool = True,
             pool_method: str = 'mean',
             task_level: str = 'graph',
+            head_layers: int = 0,
     ):
         super().__init__()
         if hidden_channels % num_heads != 0:
@@ -205,7 +208,7 @@ class Graphormer(nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
 
-        self.final_linear = nn.Linear(hidden_channels, out_channels)
+        self.final_linear = head(hidden_channels, out_channels, head_layers)
 
     def _unpack_dense_spd(
         self,
@@ -296,9 +299,9 @@ class Graphormer(nn.Module):
             x_dense = layer(x_dense, node_mask, attn_bias)
 
         valid_nodes = ~node_mask
-        if self.task_level == 'node':
+        if self.task_level != 'graph':
             # Unpadding row-major gives the nodes in the order of `batch.x`
-            out = x_dense[valid_nodes]
+            out = target_rows(x_dense[valid_nodes], batch, self.task_level)
         else:
             out = (x_dense * valid_nodes.unsqueeze(-1)).sum(dim=1)
             if self.pool_method == 'mean':

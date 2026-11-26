@@ -7,26 +7,41 @@ import torch
 from torch_sparse import SparseTensor
 
 from torch_geometric.utils import coalesce, scatter, to_dense_adj
-from src.models.utils import SumReadout
+from src.models.utils import (
+    SumReadout,
+    head,
+    per_rank,
+    resolve_max_rank,
+    target_rows,
+    triangle_rows,
+)
 
 
 class SCCNNLayer(nn.Module):
     r"""Layer of a Simplicial Complex Convolutional Neural Network.
 
+    The simplices of every rank k = 0..K, with K = len(in_channels) - 1,
+    receive three signals: their own, the one of rank k - 1 through the
+    boundary matrix B_k and the one of rank k + 1 through B_{k+1}. Each
+    is filtered with the powers 1..conv_order of the down and of the up
+    Laplacian of rank k, and a weight per filter mixes the channels.
+    The vertices have no simplices below them and the top rank none
+    above, so they receive two signals.
+
     Parameters
     ----------
     in_channels : tuple of int
-        Dimensions of input features on nodes, edges, and faces.
+        Dimensions of input features, one per rank (nodes, edges, faces, ...).
     out_channels : tuple of int
-        Dimensions of output features on nodes, edges, and faces.
+        Dimensions of output features, one per rank.
     conv_order : int
         Convolution order of the simplicial filters.
     sc_order : int
-        SC order.
+        Dimension of the complex. The top rank K has an up Laplacian
+        only in a complex of higher dimension (sc_order > K); without
+        one its up filters are zero.
     aggr_norm : bool, optional
         Whether to normalize the aggregated message by the neighborhood size (default: False).
-    update_func : str, optional
-        Activation function used in aggregation layers (default: None).
     initialization : str, optional
         Initialization method for the weights (default: "xavier_normal").
     """
@@ -42,16 +57,7 @@ class SCCNNLayer(nn.Module):
     ) -> None:
         super().__init__()
 
-        in_channels_0, in_channels_1, in_channels_2 = in_channels
-        out_channels_0, out_channels_1, out_channels_2 = out_channels
-
-        self.in_channels_0 = in_channels_0
-        self.in_channels_1 = in_channels_1
-        self.in_channels_2 = in_channels_2
-        self.out_channels_0 = out_channels_0
-        self.out_channels_1 = out_channels_1
-        self.out_channels_2 = out_channels_2
-
+        self.max_rank = len(in_channels) - 1
         self.conv_order = conv_order
         self.sc_order = sc_order
 
@@ -62,43 +68,23 @@ class SCCNNLayer(nn.Module):
         assert initialization in ["xavier_uniform", "xavier_normal"]
         assert self.conv_order > 0
 
-        self.weight_0 = nn.Parameter(
-            torch.Tensor(
-                self.in_channels_0,
-                self.out_channels_0,
-                1 + conv_order + 1 + conv_order,
-            )
-        )
-
-        self.weight_1 = nn.Parameter(
-            torch.Tensor(
-                self.in_channels_1,
-                self.out_channels_1,
-                6 * conv_order + 3,
-            )
-        )
-
-        # determine the third dimensions of the weights
-        # because when SC order is larger than 2, there are lower and upper
-        # parts for L_2; otherwise, L_2 contains only the lower part
-
-        if sc_order > 2:
-            self.weight_2 = nn.Parameter(
-                torch.Tensor(
-                    self.in_channels_2,
-                    self.out_channels_2,
-                    4 * conv_order
-                    + 2,  # in the future for arbitrary sc_order we should have this 6*conv_order + 3,
-                )
-            )
-
-        elif sc_order == 2:
-            self.weight_2 = nn.Parameter(
-                torch.Tensor(
-                    self.in_channels_2,
-                    self.out_channels_2,
-                    4 * conv_order + 2,
-                )
+        # Go thourgh each rank where the max rank has no upper 
+        # counterpar and the 0-th rank has no lower counerpart
+        for rank, (channels_in, channels_out) in enumerate(
+            zip(in_channels, out_channels)
+        ):
+            signals = (rank > 0) + 1 + (rank < self.max_rank)
+            laplacians = 1 if rank == 0 else 2
+            setattr(
+                self,
+                f"weight_{rank}",
+                nn.Parameter(
+                    torch.Tensor(
+                        channels_in,
+                        channels_out,
+                        signals * (1 + laplacians * conv_order),
+                    )
+                ),
             )
 
         self.reset_parameters()
@@ -112,18 +98,16 @@ class SCCNNLayer(nn.Module):
             Gain for the weight initialization.
         """
         if self.initialization == "xavier_uniform":
-            torch.nn.init.xavier_uniform_(self.weight_0, gain=gain)
-            torch.nn.init.xavier_uniform_(self.weight_1, gain=gain)
-            torch.nn.init.xavier_uniform_(self.weight_2, gain=gain)
+            init = torch.nn.init.xavier_uniform_
         elif self.initialization == "xavier_normal":
-            torch.nn.init.xavier_normal_(self.weight_0, gain=gain)
-            torch.nn.init.xavier_normal_(self.weight_1, gain=gain)
-            torch.nn.init.xavier_normal_(self.weight_2, gain=gain)
+            init = torch.nn.init.xavier_normal_
         else:
             raise RuntimeError(
                 "Initialization method not recognized. "
                 "Should be either xavier_uniform or xavier_normal."
             )
+        for rank in range(self.max_rank + 1):
+            init(getattr(self, f"weight_{rank}"), gain=gain)
 
     def aggr_norm_func(self, conv_operator, x):
         r"""Perform aggregation normalization.
@@ -153,8 +137,8 @@ class SCCNNLayer(nn.Module):
 
         Parameters
         ----------
-        conv_operator : torch.sparse
-            Convolution operator.
+        conv_operator : torch.sparse or None
+            Convolution operator; None is the zero operator.
         conv_order : int
             Order of the convolution.
         x : torch.Tensor
@@ -166,6 +150,9 @@ class SCCNNLayer(nn.Module):
             Output tensor.
         """
         num_simplices, num_channels = x.shape
+        if conv_operator is None:
+            return x.new_zeros(num_simplices, num_channels, conv_order)
+
         X = torch.empty(size=(num_simplices, num_channels, conv_order)).to(
             x.device
         )
@@ -182,218 +169,56 @@ class SCCNNLayer(nn.Module):
                 X[:, :, k] = conv_operator @ X[:, :, k - 1]
         return X
 
-    def forward(self, x_all, laplacian_all, incidence_all):
+    def forward(self, x_all, down, up, incidence):
         r"""Forward computation.
 
         Parameters
         ----------
         x_all : tuple of tensors
-            Tuple of input feature tensors (node, edge, face).
-        laplacian_all : tuple of tensors
-            Tuple of Laplacian tensors (graph laplacian L0, down edge laplacian L1_d, upper edge laplacian L1_u, face laplacian L2).
-        incidence_all : tuple of tensors
-            Tuple of order 1 and 2 incidence matrices.
+            Input features, one tensor per rank 0..K.
+        down : list
+            `down[k]` is the down Laplacian of rank k; `down[0]` is None.
+        up : list
+            `up[k]` is the up Laplacian of rank k (L_0 for the vertices);
+            None for the top rank of a complex of dimension K.
+        incidence : list
+            `incidence[k]` is the boundary matrix B_k, of shape
+            (n_{k-1}, n_k); `incidence[0]` is None.
 
         Returns
         -------
-        torch.Tensor
-            Output tensor for each 0-cell.
-        torch.Tensor
-            Output tensor for each 1-cell.
-        torch.Tensor
-            Output tensor for each 2-cell.
+        tuple of tensors
+            Output features, one tensor per rank.
         """
-        x_0, x_1, x_2 = x_all
+        out = []
+        for rank, x in enumerate(x_all):
+            signals = []
+            if rank > 0:
+                signals.append(incidence[rank].t() @ x_all[rank - 1])
+            signals.append(x)
+            if rank < self.max_rank:
+                signals.append(incidence[rank + 1] @ x_all[rank + 1])
 
-        if self.sc_order == 2:
-            (
-                laplacian_0,
-                laplacian_down_1,
-                laplacian_up_1,
-                laplacian_down_2,
-            ) = laplacian_all
-            device = laplacian_down_2.device()
-            laplacian_up_2 =  SparseTensor(
-                row=torch.empty(0, dtype=torch.long, device=device),
-                col=torch.empty(0, dtype=torch.long, device=device),
-                value=torch.empty(0, device=device),
-                sparse_sizes=laplacian_down_2.sparse_sizes()
+            filtered = []
+            for signal in signals:
+                filtered.append(signal.unsqueeze(2))
+                if rank > 0:
+                    filtered.append(
+                        self.chebyshev_conv(down[rank], self.conv_order, signal)
+                    )
+                filtered.append(
+                    self.chebyshev_conv(up[rank], self.conv_order, signal)
+                )
+
+            y = torch.einsum(
+                "nik,iok->no",
+                torch.cat(filtered, dim=2),
+                getattr(self, f"weight_{rank}"),
             )
-        elif self.sc_order > 2:
-            (
-                laplacian_0,
-                laplacian_down_1,
-                laplacian_up_1,
-                laplacian_down_2,
-                laplacian_up_2,
-            ) = laplacian_all
+            out.append(self.update(y))
 
-        # num_nodes, num_edges, num_triangles = x_0.shape[0], x_1.shape[0], x_2.shape[0]
+        return tuple(out)
 
-        b1, b2 = incidence_all
-
-        # identity_0, identity_1, identity_2 = (
-        #     torch.eye(num_nodes).to(x_0.device),
-        #     torch.eye(num_edges).to(x_0.device),
-        #     torch.eye(num_triangles).to(x_0.device),
-        # )
-        """
-        Convolution in the node space
-        """
-        # -----------Logic to obtain update for 0-cells --------
-        # x_identity_0 = torch.unsqueeze(identity_0 @ x_0, 2)
-        # x_0_to_0 = self.chebyshev_conv(laplacian_0, self.conv_order, x_0)
-        # x_0_to_0 = torch.cat((x_identity_0, x_0_to_0), 2)
-
-        x_0_laplacian = self.chebyshev_conv(laplacian_0, self.conv_order, x_0)
-        x_0_to_0 = torch.cat([x_0.unsqueeze(2), x_0_laplacian], dim=2)
-        # -------------------
-
-        # x_1_to_0 = torch.mm(b1, x_1)
-        # x_1_to_0_identity = torch.unsqueeze(identity_0 @ x_1_to_0, 2)
-        # x_1_to_0 = self.chebyshev_conv(laplacian_0, self.conv_order, x_1_to_0)
-        # x_1_to_0 = torch.cat((x_1_to_0_identity, x_1_to_0), 2)
-
-        x_1_to_0_upper = b1 @ x_1
-        x_1_to_0_laplacian = self.chebyshev_conv(
-            laplacian_0, self.conv_order, x_1_to_0_upper
-        )
-        x_1_to_0 = torch.cat(
-            [x_1_to_0_upper.unsqueeze(2), x_1_to_0_laplacian], dim=2
-        )
-        # -------------------
-
-        x_0_all = torch.cat((x_0_to_0, x_1_to_0), 2)
-
-        # -------------------
-        """
-        Convolution in the edge space
-        """
-
-        # -----------Logic to obtain update for 1-cells --------
-        # x_identity_1 = torch.unsqueeze(identity_1 @ x_1, 2)
-        # x_1_down = self.chebyshev_conv(laplacian_down_1, self.conv_order, x_1)
-        # x_1_up = self.chebyshev_conv(laplacian_up_1, self.conv_order, x_1)
-        # x_1_to_1 = torch.cat((x_identity_1, x_1_down, x_1_up), 2)
-
-        x_1_down = self.chebyshev_conv(laplacian_down_1, self.conv_order, x_1)
-        x_1_up = self.chebyshev_conv(laplacian_up_1, self.conv_order, x_1)
-        x_1_to_1 = torch.cat((x_1.unsqueeze(2), x_1_down, x_1_up), 2)
-
-        # -------------------
-
-        # x_0_to_1 = torch.mm(b1.T, x_0)
-        # x_0_to_1_identity = torch.unsqueeze(identity_1 @ x_0_to_1, 2)
-        # x_0_to_1 = self.chebyshev_conv(laplacian_down_1, self.conv_order, x_0_to_1)
-        # x_0_to_1 = torch.cat((x_0_to_1_identity, x_0_to_1), 2)
-
-        # Lower projection
-        x_0_1_lower = b1.t() @ x_0
-
-        # Calculate lowwer chebyshev_conv
-        x_0_1_down = self.chebyshev_conv(
-            laplacian_down_1, self.conv_order, x_0_1_lower
-        )
-
-        # Calculate upper chebyshev_conv (Note: in case of signed incidence should be always zero)
-        x_0_1_up = self.chebyshev_conv(
-            laplacian_up_1, self.conv_order, x_0_1_lower
-        )
-
-        # Concatenate output of filters
-        x_0_to_1 = torch.cat(
-            [x_0_1_lower.unsqueeze(2), x_0_1_down, x_0_1_up], dim=2
-        )
-        # -------------------
-
-        # x_2_to_1 = torch.mm(b2, x_2)
-        # x_2_to_1_identity = torch.unsqueeze(identity_1 @ x_2_to_1, 2)
-        # x_2_to_1 = self.chebyshev_conv(laplacian_up_1, self.conv_order, x_2_to_1)
-        # x_2_to_1 = torch.cat((x_2_to_1_identity, x_2_to_1), 2)
-
-        x_2_1_upper = b2 @ x_2
-
-        # Calculate lowwer chebyshev_conv (Note: In case of signed incidence should be always zero)
-        x_2_1_down = self.chebyshev_conv(
-            laplacian_down_1, self.conv_order, x_2_1_upper
-        )
-
-        # Calculate upper chebyshev_conv
-        x_2_1_up = self.chebyshev_conv(
-            laplacian_up_1, self.conv_order, x_2_1_upper
-        )
-
-        x_2_to_1 = torch.cat(
-            [x_2_1_upper.unsqueeze(2), x_2_1_down, x_2_1_up], dim=2
-        )
-
-        # -------------------
-        x_1_all = torch.cat((x_0_to_1, x_1_to_1, x_2_to_1), 2)
-        """Convolution in the face (triangle) space, depending on the SC order,
-        the exact form maybe a little different."""
-        # -------------------Logic to obtain update for 2-cells --------
-        # x_identity_2 = torch.unsqueeze(identity_2 @ x_2, 2)
-
-        # if self.sc_order == 2:
-        #     x_2 = self.chebyshev_conv(laplacian_2, self.conv_order, x_2)
-        #     x_2_to_2 = torch.cat((x_identity_2, x_2), 2)
-        # elif self.sc_order > 2:
-        #     x_2_down = self.chebyshev_conv(laplacian_down_2, self.conv_order, x_2)
-        #     x_2_up = self.chebyshev_conv(laplacian_up_2, self.conv_order, x_2)
-        #     x_2_to_2 = torch.cat((x_identity_2, x_2_down, x_2_up), 2)
-
-        x_2_down = self.chebyshev_conv(laplacian_down_2, self.conv_order, x_2)
-        x_2_up = self.chebyshev_conv(laplacian_up_2, self.conv_order, x_2)
-
-        x_2_to_2 = torch.cat((x_2.unsqueeze(2), x_2_down, x_2_up), 2)
-
-        # -------------------
-
-        # x_1_to_2 = torch.mm(b2.T, x_1)
-        # x_1_to_2_identity = torch.unsqueeze(identity_2 @ x_1_to_2, 2)
-        # if self.sc_order == 2:
-        #     x_1_to_2 = self.chebyshev_conv(laplacian_2, self.conv_order, x_1_to_2)
-        # elif self.sc_order > 2:
-        #     x_1_to_2 = self.chebyshev_conv(laplacian_down_2, self.conv_order, x_1_to_2)
-        # x_1_to_2 = torch.cat((x_1_to_2_identity, x_1_to_2), 2)
-
-        x_1_2_lower = b2.t() @ x_1
-
-        x_1_2_down = self.chebyshev_conv(
-            laplacian_down_2, self.conv_order, x_1_2_lower
-        )
-        x_1_2_up = self.chebyshev_conv(
-            laplacian_up_2, self.conv_order, x_1_2_lower
-        )
-
-        x_1_to_2 = torch.cat(
-            [x_1_2_lower.unsqueeze(2), x_1_2_down, x_1_2_up], dim=2
-        )
-
-        # That is my code, but to execute this part we need to have simplices order of k+1 in this case order of 3
-        # x_3_2_upper = x_1_to_2 = torch.mm(b2, x_3)
-        # x_3_2_down = self.chebyshev_conv(laplacian_down_2, self.conv_order, x_3_2_upper)
-        # x_3_2_up = self.chebyshev_conv(laplacian_up_2, self.conv_order, x_3_2_upper)
-
-        # x_3_to_2 = torch.cat([x_3_2_upper.unsueeze(2), x_3_2_down, x_3_2_up], dim=2)
-
-        # -------------------
-
-        x_2_all = torch.cat([x_1_to_2, x_2_to_2], dim=2)
-        # The final version of this model should have the following line
-        # x_2_all = torch.cat([x_1_to_2, x_2_to_2, x_3_to_2], dim=2)
-
-        # -------------------
-
-        # Need to check that this einsums are correct
-        y_0 = torch.einsum("nik,iok->no", x_0_all, self.weight_0)
-        y_1 = torch.einsum("nik,iok->no", x_1_all, self.weight_1)
-        y_2 = torch.einsum("nik,iok->no", x_2_all, self.weight_2)
-
-
-        # Perform activations
-
-        return self.update(y_0), self.update(y_1), self.update(y_2)
 
 class SCCNNBackbone(nn.Module):
     """SCCNN implementation for complex classification.
@@ -404,17 +229,15 @@ class SCCNNBackbone(nn.Module):
     Parameters
     ----------
     in_channels_all : tuple of int
-        Dimension of input features on (nodes, edges, faces).
+        Dimension of input features, one per rank (nodes, edges, faces, ...).
     hidden_channels_all : tuple of int
-        Dimension of features of hidden layers on (nodes, edges, faces).
+        Dimension of features of hidden layers, one per rank.
     conv_order : int
         Order of convolutions, we consider the same order for all convolutions.
     sc_order : int
         Order of simplicial complex.
     aggr_norm : bool, optional
         Whether to normalize the aggregation (default: False).
-    update_func : str, optional
-        Update function for the simplicial complex convolution (default: None).
     n_layers : int, optional
         Number of layers (default: 2).
     """
@@ -431,15 +254,12 @@ class SCCNNBackbone(nn.Module):
         super().__init__()
         # first layer
         # we use an MLP to map the features on simplices of different dimensions to the same dimension
-        self.in_linear_0 = nn.Linear(
-            in_channels_all[0], hidden_channels_all[0]
-        )
-        self.in_linear_1 = nn.Linear(
-            in_channels_all[1], hidden_channels_all[1]
-        )
-        self.in_linear_2 = nn.Linear(
-            in_channels_all[2], hidden_channels_all[2]
-        )
+        for rank, (channels_in, channels_hidden) in enumerate(
+            zip(in_channels_all, hidden_channels_all)
+        ):
+            setattr(
+                self, f"in_linear_{rank}", nn.Linear(channels_in, channels_hidden)
+            )
 
         self.layers = nn.ModuleList(
             SCCNNLayer(
@@ -452,32 +272,28 @@ class SCCNNBackbone(nn.Module):
             for _ in range(n_layers)
         )
 
-    def forward(self, x_all, laplacian_all, incidence_all):
+    def forward(self, x_all, down, up, incidence):
         """Forward computation.
 
         Parameters
         ----------
         x_all : tuple(tensors)
-            Tuple of feature tensors (node, edge, face).
-        laplacian_all : tuple(tensors)
-            Tuple of Laplacian tensors (graph laplacian L0, down edge laplacian L1_d, upper edge laplacian L1_u, face laplacian L2).
-        incidence_all : tuple(tensors)
-            Tuple of order 1 and 2 incidence matrices.
+            Tuple of feature tensors, one per rank.
+        down, up, incidence : list
+            Laplacians and boundary matrices by rank, see `SCCNNLayer.forward`.
 
         Returns
         -------
         tuple(tensors)
-            Tuple of final hidden state tensors (node, edge, face).
+            Tuple of final hidden state tensors, one per rank.
         """
-        x_0, x_1, x_2 = x_all
-        in_x_0 = self.in_linear_0(x_0)
-        in_x_1 = self.in_linear_1(x_1)
-        in_x_2 = self.in_linear_2(x_2)
+        x_all = tuple(
+            getattr(self, f"in_linear_{rank}")(x) for rank, x in enumerate(x_all)
+        )
 
         # Forward through SCCNN
-        x_all = (in_x_0, in_x_1, in_x_2)
         for layer in self.layers:
-            x_all = layer(x_all, laplacian_all, incidence_all)
+            x_all = layer(x_all, down, up, incidence)
 
         return x_all
 
@@ -494,48 +310,53 @@ class SCCNN(nn.Module):
      Parameters
      ----------
      in_channels : tuple of int
-         Dimension of input features on (nodes, edges, faces).
-     hidden_channels_all : tuple of int
-         Dimension of features of hidden layers on (nodes, edges, faces).
+         Dimension of input features, one per rank of the data.
+     hidden_channels : int or tuple of int
+         Dimension of features of hidden layers: one per rank
+         0..max_rank, or the same for all of them.
      out_channels : int
          Dimension of output features.
      conv_order : int
          Order of convolutions, we consider the same order for all convolutions.
      sc_order : int
-         Order of simplicial complex.
+         Order of simplicial complex; at least max_rank.
      aggr_norm : bool, optional
          Whether to normalize the aggregation (default: False).
      n_layers : int, optional
          Number of layers (default: 2).
+     max_rank : int, optional
+         Top rank with features and weights (default: 2, up to the
+         triangles). 3 adds the tetrahedra of a 3-dimensional complex;
+         None takes every rank of the data.
     """
 
-    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2, task_level: str = 'graph'):
+    def __init__(self, in_channels: List[int], hidden_channels: List[int], out_channels: int = 3, conv_order: int = 1, sc_order: int = 3, aggr_norm: bool = True, n_layers: int = 2, task_level: str = 'graph', head_layers: int = 0, max_rank: Optional[int] = 2):
         super().__init__()
-        self.sc_order = sc_order
+        self.max_rank = resolve_max_rank(max_rank, in_channels)
+        self.sc_order = max(sc_order, self.max_rank)
         self.task_level = task_level
+        hidden_channels = per_rank(hidden_channels, self.max_rank + 1)
 
         self.sccnn_backbone = SCCNNBackbone(
-            in_channels,
+            list(in_channels)[: self.max_rank + 1],
             hidden_channels,
             conv_order,
-            sc_order,
+            self.sc_order,
             aggr_norm,
             n_layers,
         )
 
         if task_level == 'node':
-            # Per-vertex head on the rank-0 states
-            self.node_readout = nn.Linear(hidden_channels[0], out_channels)
+            self.node_readout = head(hidden_channels[0], out_channels, head_layers)
+        elif task_level == 'triangle':
+            self.triangle_readout = head(hidden_channels[2], out_channels, head_layers)
+        elif task_level == 'candidate':
+            self.candidate_readout = head(hidden_channels[0], out_channels, head_layers)
         else:
-            self.readout_0 = SumReadout(
-                hidden_channels[0], out_channels
-            )
-            self.readout_1 = SumReadout(
-                hidden_channels[1], out_channels
-            )
-            self.readout_2 = SumReadout(
-                hidden_channels[2], out_channels
-            )
+            for rank, channels in enumerate(hidden_channels):
+                setattr(
+                    self, f"readout_{rank}", SumReadout(channels, out_channels)
+                )
 
     def _reconstruct(self, batch, name):
         idx = batch[f"{name}_idx"]
@@ -554,61 +375,40 @@ class SCCNN(nn.Module):
         )
 
     def forward(self, batch):
-        x = {
-            int(x_key.split('_')[-1]): batch[x_key]
-            for x_key in batch.keys() if isinstance(x_key, str) and x_key.split('_')[0] == 'x' and x_key.split('_')[1].isdigit()
-        }
-        batches = {
-            int(x_key.split('_')[-1]): batch[x_key]
-            for x_key in batch.keys() if isinstance(x_key, str) and x_key.split('_')[0] == 'batch' and x_key.split('_')[1].isdigit()
-        }
-
-        x_0, x_1, x_2 = x[0], x[1], x[2]
-
-        x_bel_0, x_bel_1, x_bel_2 = (
-            batches[0],
-            batches[1],
-            batches[2],
-        )
+        ranks = range(self.max_rank + 1)
+        x_all = tuple(batch[f"x_{rank}"] for rank in ranks)
+        x_bel = [batch[f"batch_{rank}"] for rank in ranks]
 
         # Make sure there are the same number of SCs for each batch
-        assert x_bel_0.max() == x_bel_1.max() and x_bel_1.max() == x_bel_2.max(), f"{x_bel_0.max().item()}, {x_bel_1.max().item()}, {x_bel_2.max().item()}" 
-
-        x_all = (x_0, x_1, x_2)
-
-        if self.sc_order > 2:
-            laplacian_names = [
-                "hodge_laplacian_0",
-                "down_laplacian_1",
-                "up_laplacian_1",
-                "down_laplacian_2",
-                "up_laplacian_2",
-            ]
-        else:
-            laplacian_names = [
-                "hodge_laplacian_0",
-                "down_laplacian_1",
-                "up_laplacian_1",
-                "down_laplacian_2",
-            ]
-        laplacian_all = tuple(
-            self._reconstruct(batch, name) for name in laplacian_names
-        )
-        incidence_all = tuple(
-            self._reconstruct(batch, name) for name in ['incidence_1', 'incidence_2'] 
+        assert all(bel.max() == x_bel[0].max() for bel in x_bel), ", ".join(
+            str(bel.max().item()) for bel in x_bel
         )
 
-        x_0, x_1, x_2 = self.sccnn_backbone(
-            x_all, laplacian_all, incidence_all
-        )
+        down = [None] + [
+            self._reconstruct(batch, f"down_laplacian_{rank}") for rank in ranks[1:]
+        ]
+        up = [self._reconstruct(batch, "hodge_laplacian_0")] + [
+            self._reconstruct(batch, f"up_laplacian_{rank}")
+            if rank < self.sc_order
+            else None
+            for rank in ranks[1:]
+        ]
+        incidence = [None] + [
+            self._reconstruct(batch, f"incidence_{rank}") for rank in ranks[1:]
+        ]
+
+        x_all = self.sccnn_backbone(x_all, down, up, incidence)
 
         if self.task_level == 'node':
-            return self.node_readout(x_0)
+            return self.node_readout(x_all[0])
+        if self.task_level == 'triangle':
+            return self.triangle_readout(triangle_rows(x_all[2], batch))
+        if self.task_level == 'candidate':
+            return self.candidate_readout(target_rows(x_all[0], batch, 'candidate'))
 
         #TODO: Figure out what to do about this readout
-        out_0 = self.readout_0(x_0, x_bel_0)
-        out_1 = self.readout_1(x_1, x_bel_1)
-        out_2 = self.readout_2(x_2, x_bel_2)
+        out = self.readout_0(x_all[0], x_bel[0])
+        for rank in ranks[1:]:
+            out = out + getattr(self, f"readout_{rank}")(x_all[rank], x_bel[rank])
 
-
-        return out_0 + out_1 + out_2
+        return out

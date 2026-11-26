@@ -53,6 +53,12 @@ uv sync --extra cpu
 uv sync --extra cu130
 ```
 
+### GPU install (Linux + Cuda 12.8)
+
+```bash
+UV_PROJECT_ENVIRONMENT=.venv-cu128 uv sync --extra cu128
+```
+
 This will:
 
 1. Create `.venv/` with Python ≥ 3.12 and install all pinned dependencies.
@@ -172,8 +178,8 @@ Key Hydra groups:
 
 | Group                                         | Options                                                                                             |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `gin`, `deepsets`, `pointnetpp`, `san`, `san_tmx`, `cwn`, `sccnn` |
-| `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
+| `model`                                       | `gcn`, `mlp`, `residual_gated_gcn`, `graphormer`, `gin`, `deepsets`, `pointnetpp`, `san`, `san_tmx`, `cwn`, `sccnn`, `ect_vit`, `inv_feature_mlp` |
+| `representation@dataset.transform.representation` | `dual_graph`, `one_skeleton`, `hasse_diagram`, `levi_graph`, `incidence_sc`, `adjacency_sc`, `up_/down_/hodge_laplacian_sc` |
 | `transform@dataset.transform.embedding`       | `random_walk_pe`, `moment_curve_embedding`, `random_features`, `degree`, `effective_resistance`, `er_stats` |
 | `task`                                       | `name`, `orientability`, `betti_numbers`; Calabi-Yau: `hodge_reg`, `hodge_class`, `chern_node`     |
 | `trainer`                                     | `default`                                                                                           |
@@ -221,6 +227,15 @@ Tasks:
   0 is the origin, whose entry is c2 . K = -(sum of the others); see
   below.
 
+`baseline.py` takes the same overrides and logs the trivial baselines
+as W&B runs with `model.name=baseline`: the majority class or the train
+median, and for `h11` the point count minus five (`kind=count`), which
+is exact for favorable polytopes, 94% of the `ks_h12lt10` rows. The
+count reads `n_vertices`, which the Hasse and dual representations
+overwrite, so pass
+`representation@dataset.transform.representation=one_skeleton`; the
+split does not depend on the representation.
+
 Splits are seeded with `dataset.seed` and sized by
 `dataset.train_parameters.split` (0.7/0.1/0.2); the split files encode
 both, so variants coexist under `dataset.root`. Stratification mirrors
@@ -242,7 +257,7 @@ smoke tests; the limit applies before the class filter.
 To feed the vertex coordinates instead of the random-walk embedding,
 propagate them to all simplex ranks with `propagate_convex_comb` before
 the representation and let the representation read them (works for
-`hasse_diagram` and `dual_graph`):
+`hasse_diagram`, `levi_graph` and `dual_graph`):
 
 ```bash
 python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_reg \
@@ -250,11 +265,28 @@ python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hod
     dataset.transform.representation.feature_propagation=x \
     transform@dataset.transform.embedding=propagate_convex_comb \
     '~dataset.transform.select_features' \
-    'dataset.transform_order=[embedding,representation]'
+    'dataset.transform_order=[embedding,representation,kappa,select_attributes]'
 ```
 
 The tests in `tests/test_cy_dataset.py` skip unless the installed
 mantra ships `CalabiYauDataset`.
+
+The `cy` dataset caches its transform chain like `MantraDataset` (see
+the OOD section). The chain ends with mantra's `SelectAttributes`
+(`config/transform/select_attributes.yaml`), so a cached sample holds
+only its `keep_keys`: the graph inputs, the task targets and what
+`baseline.py` reads. The chain also holds `kappa`, which writes the
+per-triangle intersection numbers for the triangle task, so every cy
+parquet needs the `intersection_numbers` column and any
+`dataset.transform_order` you pass must end with `kappa,
+select_attributes`. Simplicial and ECT chains select their own keep
+lists with `transform@dataset.transform.select_attributes=select_attributes_sc`
+or `=select_attributes_ect`, as the ECT example below does. Simplicial
+chains also add `+transform@dataset.transform.scale=scale_operators`
+before `kappa`: it divides every Laplacian and adjacency operator by
+its largest absolute row sum, without which the SCCNN's Chebyshev
+convolutions blow the features up by the operators' eigenvalues (up to
+14 here) at every layer.
 
 ### Point-set models
 
@@ -282,7 +314,42 @@ feature-propagation levels at node level). It needs `torch-cluster`,
 which `uv sync` installs. The random-walk embedding is still computed
 and then replaced by `select_features`; dropping it also needs
 `'~dataset.transform.embedding'` with
-`'dataset.transform_order=[representation,select_features]'`.
+`'dataset.transform_order=[representation,select_features,kappa,select_attributes]'`.
+
+`inv_feature_mlp` is the MLP with invariant features of Ewert et al.
+(2024): a point-wise column encoder max-pooled over the points plus an
+axis-wise row encoder max-pooled over the four axes, on the same
+coordinate matrix zero-padded to `model.max_points`. The paper used the
+vertex matrix of the polytope; `+transform@dataset.transform.hull=hull_vertices`
+marks the hull vertices among the lattice points and
+`model.point_mask=hull_mask` restricts the model to them (`hull` goes
+before `select_features` in `transform_order`).
+
+### Euler characteristic transform
+
+`ect_vit` reads only `batch.ect`, written by the mantra
+`EulerCharacteristicTransform`: per seeded direction, the Euler
+characteristic of the sublevel subcomplex at `resolution` thresholds,
+of the `max_rank`-skeleton or of every face. Every direction's curve is
+a token of a small pre-norm transformer; `main.py` standardises the
+curves with train-split statistics (`feature_stats`), without which the
+raw counts make the model collapse on validation. The transform reads
+the coordinates, so it must precede `select_features` in the order:
+
+```bash
+python main.py dataset=cy dataset.local_path=/path/to/manifolds.parquet task=hodge_class \
+    model=ect_vit '~dataset.transform.representation' '~dataset.transform.embedding' \
+    +transform@dataset.transform.ect=ect dataset.transform.select_features.src=coords \
+    'dataset.transform_order=[ect,select_features,kappa,select_attributes]' \
+    transform@dataset.transform.select_attributes=select_attributes_ect
+```
+
+Every top simplex of a Calabi-Yau triangulation contains the origin, so
+the ECT of the full complex is only the support function of the
+polytope; `dataset.transform.ect.per_rank=true` keeps the face count of
+every rank instead (`model.num_ranks=max_rank+1`), which is strictly
+more informative. At node level the lattice points join the token
+sequence and are predicted one by one.
 
 Read the Hodge results with the counting shortcut in mind: for a
 favorable polytope `h11_cy` (the `h12` column in the Kreuzer-Skarke
@@ -326,6 +393,89 @@ classification with `task=hodge_class task.target=c2
 task.task_level=node`. As at graph level, the classes are the values
 seen in the train split; a vertex value that occurs only in val or
 test is an error at start-up, since no model could predict it.
+
+### Triangle-level task
+
+`task=kappa_triangle` regresses the intersection number of the three
+toric divisors of every boundary triangle of the triangulation, i.e.
+every 3-cone of the fan. Point 0 is the origin, which CYTools identifies
+with the canonical class `K = -sum_l D_l`, so the `intersection_numbers`
+rows through index 0 are not triple intersections of toric divisors (a
+triangle through the origin would carry `K . D_j . D_k`, minus the
+anticanonical degree of the curve `D_j . D_k`, which the linear
+relations determine from the boundary numbers and the coordinates);
+the `kappa` transform ignores them like the self-intersections. It
+writes `kappa_2`, one value per boundary triangle in lexicographic order
+(zero where the sparse `intersection_numbers` have no entry),
+`simplex_index_2`, the triangles' vertex indices, and `triangle_mask`,
+true on the boundary triangles in the rank-2 order of the simplicial
+representations. Models with one embedding per vertex sum the three
+vertex embeddings of a triangle (`target_rows`), which is symmetric like
+the target; `sccnn` reads out its rank-2 states and `cwn`, whose layers
+update edges only, sums the final edge states of each triangle, both
+restricted by `triangle_mask`. A linear layer on the summed rows is
+additive in the vertices and cannot fit the target, so the task sets
+`model.head_layers=2`: the readout of every model becomes `head`, two
+Linear-LayerNorm-ReLU blocks before the final linear layer (`deepsets`
+already has one hidden layer in `rho` and `inv_feature_mlp` its
+`decoder_layers`; the head comes on top of those). The default
+`head_layers=0` is the plain linear layer, so the graph and node
+results are unchanged. About 40 % of the boundary triangles have
+intersection number 0, which is what the median baseline scores in
+rounded accuracy. The `kappa` transform with the `mask` argument and
+the boundary-only targets needs mantra's `cy-experiments` branch with
+`scripts/cy/patches/mantra-kappa-boundary.patch` applied; an older
+mantra fails at dataset construction.
+
+### Several phases per polytope
+
+Every polytope of the parquet files above carries one triangulation,
+the Delaunay one, so all targets are functions of the point set and
+the point-set models compete with the simplicial ones. A parquet with
+several Calabi-Yau phases of each polytope makes the per-simplex
+targets depend on the simplices: `scripts/cy/make_phases_parquet.py`
+(run in `.venv-cytools`) enumerates the fine regular star
+triangulations of a seeded random subset of the polytopes with at
+least two phases and within its enumeration caps, keeps one
+representative per 2-face restriction (the Calabi-Yau phase; the
+Delaunay triangulation when its phase is among them) and writes the
+usual columns plus `polytope_id`, `phase`, `n_phases`, `n_frst` and
+`is_delaunay`. `scripts/cy/phase_stats.py` checks such a file against
+the local formula for the intersection numbers, the c2 star sum and the
+chi identity, and prints how many phases the 1-skeleton and the
+boundary triangles tell apart and the ceiling of a phase-blind
+predictor.
+
+Training on it needs `dataset.group_by=polytope_id`, which puts all
+phases of a polytope into the same split (mantra `cy-experiments` with
+`scripts/cy/patches/mantra-group-split.patch`; `label_source` must then
+be constant within a polytope, which the Hodge numbers are). mantra
+reads the group before the pre-transform, so training itself needs no
+extra attribute; `polytope_id` is kept in the caches only for
+`baseline.py`, which then logs the `phase_median_oracle` of the
+per-vertex and per-triangle tasks: the median target of each vertex or
+boundary triangle over the phases of its polytope containing it, the
+best MAE any model that does not see the phase can reach. Adding the
+key changed the cache name of every Calabi-Yau chain once.
+
+Note that the intersection number of a boundary triangle is the same
+in every phase containing it, so the triangle task stays solvable
+without the phase; the per-vertex c2 sums over the triangles present
+and is the task that changes with the phase.
+
+The candidate-triangle task makes the triangle set itself the target:
+`task=kappa_candidate` with
+`transform@dataset.transform.kappa=kappa_with_candidates` predicts, for
+every point triple on a common 2-face of the polytope with at least
+four lattice points (`face2_points` in the phases parquet, rows of
+face and point index), the
+intersection number when the triple is a triangle of this phase and
+zero when it is not. The phases of a polytope differ exactly in how
+they triangulate such 2-faces, so a model that does not see the
+simplices is capped at the phase-blind oracle, while the triples of
+triangular 2-faces, present in every phase, are left out. The readout
+sums the three vertex rows of each candidate (`task_level=candidate`),
+for the simplicial models too, since an absent triangle has no cell.
 
 ## Evaluating subdivisions in the training run
 

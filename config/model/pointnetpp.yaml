@@ -16,3 +16,4 @@ k: 3
 # symmetric aggregation of the global level
 pool_method: sum
 task_level: graph # Get from task
+head_layers: 0
