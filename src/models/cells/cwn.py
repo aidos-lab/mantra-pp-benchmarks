@@ -4,13 +4,19 @@ import torch
 
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import List
+from typing import List, Optional
 from torch_sparse import SparseTensor
 from torch_scatter import scatter_add
 from torch_geometric.nn import MLP
 
 from src.models.conv_down import Conv, PropagateSignalDown
-from src.models.utils import head, target_rows, triangle_rows
+from src.models.utils import (
+    head,
+    per_rank,
+    resolve_max_rank,
+    target_rows,
+    triangle_rows,
+)
 
 
 class CWNLayer(nn.Module):
@@ -351,18 +357,27 @@ class _CWNDefaultUpdate(nn.Module):
 class CWN(torch.nn.Module):
     """Implementation of a specific version of CW network [1]_.
 
+    A layer updates the cells that have cells below and above them: the
+    edges with max_rank=2, the edges and the triangles with max_rank=3.
+    A cell of rank r receives from the (r-1)-cells on its boundary, from
+    the r-cells that share an (r+1)-cell with it and from those
+    (r+1)-cells. The vertices and the cells of rank max_rank keep their
+    projected input features; the readout carries every rank down to the
+    vertices.
+
     Parameters
     ----------
-    in_channels_0 : int
-        Dimension of input features on nodes (0-cells).
-    in_channels_1 : int
-        Dimension of input features on edges (1-cells).
-    in_channels_2 : int
-        Dimension of input features on faces (2-cells).
-    hid_channels : int
-        Dimension of hidden features.
+    in_channels : list of int
+        Dimension of input features, one per rank of the data.
+    hidden_channels : int or list of int
+        Dimension of hidden features: one per rank 0..max_rank, all
+        equal, or a single int.
     n_layers : int
         Number of CWN layers.
+    max_rank : int, optional
+        Top rank the model reads (default: 2, up to the triangles). 3
+        adds the tetrahedra of a 3-dimensional complex; None takes every
+        rank of the data.
     **kwargs : optional
         Additional arguments CWNLayer.
 
@@ -381,25 +396,41 @@ class CWN(torch.nn.Module):
         n_layers,
         task_level: str = 'graph',
         head_layers: int = 0,
+        max_rank: Optional[int] = 2,
         **kwargs,
     ):
         super().__init__()
         self.task_level = task_level
+        self.max_rank = resolve_max_rank(max_rank, in_channels)
+        hidden_channels = per_rank(hidden_channels, self.max_rank + 1)
 
-        self.proj_0 = torch.nn.Linear(in_channels[0], hidden_channels[0])
-        self.proj_1 = torch.nn.Linear(in_channels[1], hidden_channels[1])
-        self.proj_2 = torch.nn.Linear(in_channels[2], hidden_channels[2])
+        for rank, channels in enumerate(hidden_channels):
+            setattr(self, f"proj_{rank}", torch.nn.Linear(in_channels[rank], channels))
 
+        # One stack of layers per updated rank: `layers` for the edges,
+        # `layers_{r}` for the rank r >= 2 of a model with max_rank > r.
         self.layers = torch.nn.ModuleList(
             CWNLayer(
-                in_channels=hidden_channels,
+                in_channels=hidden_channels[:3],
                 out_channels=hidden_channels[0]
             )
             for _ in range(n_layers)
         )
-        self.readout = PropagateSignalDown(max_dimension=3, hidden_channel=hidden_channels[0])
-        # The layers update the edges only, so a triangle's state is the
-        # sum of its edges' final states.
+        for rank in range(2, self.max_rank):
+            setattr(
+                self,
+                f"layers_{rank}",
+                torch.nn.ModuleList(
+                    CWNLayer(
+                        in_channels=hidden_channels[rank - 1:rank + 2],
+                        out_channels=hidden_channels[rank]
+                    )
+                    for _ in range(n_layers)
+                ),
+            )
+        self.readout = PropagateSignalDown(max_dimension=self.max_rank + 1, hidden_channel=hidden_channels[0])
+        # The triangles read the sum of their edges' final states, which
+        # every max_rank updates.
         if task_level == 'triangle':
             self.triangle_readout = head(hidden_channels[0], kwargs['out_channels'], head_layers)
         # Candidate triangles need not be cells, so they read the vertices.
@@ -432,63 +463,52 @@ class CWN(torch.nn.Module):
 
         Parameters
         ----------
-        x_0 : torch.Tensor, shape = (n_nodes, in_channels_0)
-            Input features on the nodes (0-cells).
-        x_1 : torch.Tensor, shape = (n_edges, in_channels_1)
-            Input features on the edges (1-cells).
-        x_2 : torch.Tensor, shape = (n_faces, in_channels_2)
-            Input features on the faces (2-cells).
-        adjacency_0 : torch.Tensor, shape = (n_edges, n_edges)
-            Upper-adjacency matrix of rank 1.
-        incidence_2 : torch.Tensor, shape = (n_edges, n_faces)
-            Boundary matrix of rank 2.
-        incidence_1_t : torch.Tensor, shape = (n_edges, n_nodes)
-            Coboundary matrix of rank 1.
+        batch : torch_geometric.data.Data
+            Batch of `collate_simplicial` with, for every rank r up to
+            max_rank, the features `x_{r}`, the boundary matrix
+            `incidence_{r}` (r >= 1) and, for the updated ranks
+            1..max_rank-1, the upper adjacency `adjacency_{r}`.
 
         Returns
         -------
-        x_0 : torch.Tensor, shape = (n_nodes, in_channels_0)
-            Final hidden states of the nodes (0-cells).
-        x_1 : torch.Tensor, shape = (n_edges, in_channels_1)
-            Final hidden states the edges (1-cells).
-        x_2 : torch.Tensor, shape = (n_edges, in_channels_2)
-            Final hidden states of the faces (2-cells).
+        torch.Tensor
+            One row per complex, or per vertex, boundary triangle or
+            candidate triangle for the task levels below the complex.
         """
+        ranks = range(self.max_rank + 1)
+        x = [F.elu(getattr(self, f"proj_{rank}")(batch[f"x_{rank}"])) for rank in ranks]
 
-        x_0 = batch['x_0']
-        x_1 = batch['x_1']
-        x_2 = batch['x_2']
+        incidence = {
+            rank: self._reconstruct(batch, f"incidence_{rank}") for rank in ranks[1:]
+        }
+        stacks = {1: self.layers}
+        for rank in range(2, self.max_rank):
+            stacks[rank] = getattr(self, f"layers_{rank}")
+        adjacency = {
+            rank: self._reconstruct(batch, f"adjacency_{rank}") for rank in stacks
+        }
 
-        x_0 = F.elu(self.proj_0(x_0))
-        x_1 = F.elu(self.proj_1(x_1))
-        x_2 = F.elu(self.proj_2(x_2))
-
-        adjacency_1 = self._reconstruct(batch, "adjacency_1")
-        incidence_1 = self._reconstruct(batch, "incidence_1")
-        incidence_2 = self._reconstruct(batch, "incidence_2")
-
-        for layer in self.layers:
-            x_1 = layer(
-                x_0,
-                x_1,
-                x_2,
-                adjacency_1,
-                incidence_2,
-                incidence_1.t(),
-            )
+        for depth in range(len(self.layers)):
+            # Every rank reads the states of the previous layer.
+            updated = {
+                rank: stack[depth](
+                    x[rank - 1],
+                    x[rank],
+                    x[rank + 1],
+                    adjacency[rank],
+                    incidence[rank + 1],
+                    incidence[rank].t(),
+                )
+                for rank, stack in stacks.items()
+            }
+            for rank, state in updated.items():
+                x[rank] = state
 
         if self.task_level == 'triangle':
-            return self.triangle_readout(triangle_rows(incidence_2.t() @ x_1, batch))
+            return self.triangle_readout(triangle_rows(incidence[2].t() @ x[1], batch))
 
-        model_out = {
-            'x_0': x_0,
-            'x_1': x_1,
-            'x_2': x_2,
-        }
-        incidence_map = {
-            'incidence_1': incidence_1,
-            'incidence_2': incidence_2
-        }
+        model_out = {f"x_{rank}": x[rank] for rank in ranks}
+        incidence_map = {f"incidence_{rank}": matrix for rank, matrix in incidence.items()}
         out = self.readout(model_out, incidence_map)
         if self.task_level == 'candidate':
             return self.candidate_readout(target_rows(out['x_0'], batch, 'candidate'))

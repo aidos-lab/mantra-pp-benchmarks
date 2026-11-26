@@ -8,3 +8,4 @@ sc_order: 2
 aggr_norm: False
 task_level: graph # Get from task
 head_layers: 0
+max_rank: 2
