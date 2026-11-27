@@ -4,7 +4,8 @@ Takes the overrides of `main.py` (the `model` group is ignored) and logs
 one W&B run per baseline with the task's metrics on the test split: the
 majority class or the train median, for `h11` the vertex count minus
 five, which is exact for favorable polytopes, and on a dataset with
-several phases per polytope (`dataset.group_by`) the phase-blind oracle.
+several phases per polytope (`dataset.group_by`) the phase-blind oracle,
+with the median and, for an integer target, also with the mode.
 """
 
 import statistics
@@ -62,15 +63,26 @@ class PhaseOracle(nn.Module):
     """Phase-blind ceiling of a task on several phases per polytope.
 
     Predicts for a vertex, boundary triangle or candidate triangle, or at
-    the graph level for the polytope, the median of its target over the
-    phases of the polytope: the best MAE any predictor that sees the point
-    set and the simplex but not the phase can reach (the mode would be the
-    optimum of the rounded accuracy). For classification it predicts the
-    most frequent class. Reads the targets of the split it is evaluated
-    on, so it is a ceiling, not a model.
+    the graph level for the polytope, a centre of its target over the
+    phases of the polytope. No predictor that sees the point set and the
+    simplex but not the phase beats the median on the MAE, or the mode on
+    the rounded accuracy of an integer target. Reads the targets of the
+    split it is evaluated on, so it is a ceiling, not a model.
+
+    Parameters
+    ----------
+    dataset : Dataset
+        The split the oracle is evaluated on.
+    task_level : str
+        "graph", "node", "triangle" or "candidate".
+    out_channels : int
+        Number of classes; 1 for regression.
+    centre : callable
+        Maps the targets of one row over the phases to the prediction.
+        Classification always predicts the most frequent class.
     """
 
-    def __init__(self, dataset, task_level, out_channels=1):
+    def __init__(self, dataset, task_level, out_channels=1, centre=statistics.median):
         super().__init__()
         self.task_level = task_level
         self.out_channels = out_channels
@@ -79,7 +91,8 @@ class PhaseOracle(nn.Module):
         for data in dataset:
             for key, y in zip(self.keys(data), data.y.reshape(-1).tolist()):
                 values[(int(data.polytope_id), key)].append(y)
-        centre = statistics.median if out_channels == 1 else statistics.mode
+        if out_channels > 1:
+            centre = statistics.mode
         self.centres = {k: centre(v) for k, v in values.items()}
 
     def keys(self, data):
@@ -136,6 +149,11 @@ def main(cfg: RootConfig):
         baselines["phase_median_oracle"] = PhaseOracle(
             test_ds, cfg.task.task_level, cfg.model.out_channels
         )
+        # A continuous target has no mode worth predicting.
+        if not is_classification and bool((y == y.round()).all()):
+            baselines["phase_mode_oracle"] = PhaseOracle(
+                test_ds, cfg.task.task_level, centre=statistics.mode
+            )
 
     config = OmegaConf.to_container(cfg, resolve=True)
     for name, baseline in baselines.items():

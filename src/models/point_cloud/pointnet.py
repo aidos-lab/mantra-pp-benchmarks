@@ -38,8 +38,11 @@ class PointNetPP(nn.Module):
     Parameters
     ----------
     in_channels : int
-        Dimension of the point coordinates (4 for the lattice points);
-        the points enter the hierarchy as positions only.
+        Width of a point's row (4 for the lattice coordinates).
+    pos_channels : int or None
+        Leading columns that are the position of a point; the rest enter
+        the first SA level as its features. `None` takes every column,
+        so the points enter the hierarchy as positions only.
     hidden_channels : int
         Width of the shared MLPs.
     out_channels : int
@@ -67,6 +70,7 @@ class PointNetPP(nn.Module):
         hidden_channels: int = 64,
         out_channels: int = 1,
         dropout: float = 0.0,
+        pos_channels: int | None = None,
         sa_ratios=(0.5, 0.5),
         sa_radii=(2.0, 4.0),
         max_num_neighbors: int = 512,
@@ -86,6 +90,8 @@ class PointNetPP(nn.Module):
         self.sa_radii = list(sa_radii)
         self.max_num_neighbors = max_num_neighbors
         self.k = k
+        pos = in_channels if pos_channels is None else pos_channels
+        self.pos_channels = pos
 
         h = hidden_channels
         # A group's PointNet sees a point's features and its coordinates
@@ -94,15 +100,15 @@ class PointNetPP(nn.Module):
         self.sa_convs = nn.ModuleList(
             [
                 PointNetConv(
-                    mlp([feat + in_channels, h, h], dropout),
+                    mlp([feat + pos, h, h], dropout),
                     add_self_loops=False,
                 )
-                for feat in [0] + [h] * (len(sa_ratios) - 1)
+                for feat in [in_channels - pos] + [h] * (len(sa_ratios) - 1)
             ]
         )
-        self.global_nn = mlp([h + in_channels, h, h], dropout)
+        self.global_nn = mlp([h + pos, h, h], dropout)
         # FP levels run from the global level back to the input points,
-        # whose skip features are the coordinates.
+        # whose skip features are their input rows.
         skips = [h] * len(sa_ratios) + [in_channels]
         self.fp_mlps = nn.ModuleList(
             [mlp([h + skip, h, h], dropout) for skip in skips]
@@ -112,8 +118,9 @@ class PointNetPP(nn.Module):
         self.final_linear = head(h, out_channels, head_layers)
 
     def forward(self, batch) -> torch.Tensor:
-        x, p, b = None, batch.x, batch.batch
-        levels = [(p, p, b)]
+        p, b = batch.x[:, : self.pos_channels], batch.batch
+        x = batch.x[:, self.pos_channels :] if self.pos_channels < batch.x.shape[1] else None
+        levels = [(batch.x, p, b)]
         sa_levels = zip(self.sa_ratios, self.sa_radii, self.sa_convs)
         for ratio, r, conv in sa_levels:
             idx = fps(p, b, ratio=ratio, random_start=False)

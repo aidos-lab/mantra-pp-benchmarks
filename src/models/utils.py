@@ -29,11 +29,15 @@ def target_rows(x, batch, task_level):
     `node`: the vertex rows; representations whose nodes are not all
     vertices (e.g. the Levi graph) mark them in `vertex_mask`.
     `triangle`: the sum of the three vertex rows of every boundary
-    triangle in `simplex_index_2`, symmetric like the intersection numbers.
+    triangle in `simplex_index_2`, symmetric like the intersection numbers;
+    where the triangles have rows of their own (`triangle_node_index` of
+    `src.transforms.SimplexPoints`), those rows.
     `candidate`: the same sum over the candidate triangles of the 2-faces
     in `candidate_index_2`, present in the triangulation or not.
     """
     if task_level == "triangle":
+        if "triangle_node_index" in batch:
+            return x[batch.triangle_node_index]
         return x[batch.simplex_index_2].sum(0)
     if task_level == "candidate":
         return x[batch.candidate_index_2].sum(0)

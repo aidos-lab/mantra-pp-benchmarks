@@ -1,0 +1,17 @@
+# @package _global_
+# Point set of vertices and edges: barycentres and a
+# one-hot of the rank, no edges. For the point-set models; simp1 to simp4
+# differ in `max_rank` alone. kappa runs first, so the points of the
+# target triangles can be marked.
+defaults:
+  - /transform@dataset.transform.points: simplex_points
+  - override /representation@dataset.transform.representation: null
+  - override /transform@dataset.transform.embedding: null
+  - override /transform@dataset.transform.select_features: null
+  - override /transform@dataset.transform.select_attributes: select_attributes_points
+
+dataset:
+  transform:
+    points:
+      max_rank: 2
+  transform_order: [lift, kappa, points, select_attributes]

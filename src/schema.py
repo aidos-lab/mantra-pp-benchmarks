@@ -69,6 +69,8 @@ class DatasetMeta:
     transform_order: List[str] = field(default_factory=list)
     # Subdivisions of the test split, see the `ood` config group.
     ood_evaluations: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    # Further parquet files evaluated whole, name -> path (cy only).
+    ood_paths: Dict[str, str] = field(default_factory=dict)
 
 @dataclass
 class ModelMeta:

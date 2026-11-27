@@ -1,0 +1,8 @@
+# @package _global_
+# Run with the dect chain; model.max_rank picks the rank of the ladder.
+defaults:
+  - /experiment/cy/base
+  - override /model: dect
+
+trainer:
+  learning_rate: 0.0005

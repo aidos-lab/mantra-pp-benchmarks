@@ -1,0 +1,15 @@
+# @package _global_
+# Coordinates in `x` and the simplices of every rank as vertex indices.
+# For dect only; model.max_rank selects the ranks, so the ladder shares
+# one cache.
+defaults:
+  - /transform@dataset.transform.faces: face_index
+  - override /representation@dataset.transform.representation: null
+  - override /transform@dataset.transform.embedding: null
+  - override /transform@dataset.transform.select_attributes: select_attributes_points
+
+dataset:
+  transform:
+    select_features:
+      src: coords
+  transform_order: [lift, faces, select_features, kappa, select_attributes]

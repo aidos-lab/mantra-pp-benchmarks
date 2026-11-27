@@ -25,6 +25,11 @@ min_sample_per_class: null
 # (scripts/cy/make_phases_parquet.py).
 group_by: null
 
+# Parquet files evaluated whole with the trained model and logged under
+# `ood_<name>/`, e.g. the polytopes of a vertex count left out of
+# `local_path`. Classification needs every class of them in train.
+ood_paths: {}
+
 # null uses every CPU the job may run on.
 pre_transform_workers: null
 

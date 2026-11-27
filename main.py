@@ -15,7 +15,7 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.transforms import Compose
 
 
-from mantra.datasets import MantraDataset, CalabiYauDataset
+from mantra.datasets import CalabiYau, MantraDataset, CalabiYauDataset
 from mantra.representations.internal import SimplexTrie
 from mantra.representations.internal.simplex_trie import SimplexNode
 from mantra.transforms.task_transforms import (
@@ -118,8 +118,9 @@ def create_dataset(cfg):
     `ood` config group fills the table, and it is empty by default.
     `dataset.reload` rebuilds the splits once and every OOD split of the
     run.
-    The `cy` dataset uses the same cache layout through `CalabiYauDataset`
-    and has no OOD splits.
+    The `cy` dataset uses the same cache layout through `CalabiYauDataset`;
+    its OOD splits are the parquet files of `dataset.ood_paths`, each
+    evaluated whole.
 
     Returns
     -------
@@ -174,7 +175,18 @@ def create_dataset(cfg):
         )
         val_dataset = CalabiYauDataset(split_type="val", **dataset_parameters)
         test_dataset = CalabiYauDataset(split_type="test", **dataset_parameters)
-        ood_datasets = {}
+        ood_datasets = {
+            f"ood_{name}": CalabiYau(
+                root=dataset_cfg.root,
+                name=cache_name(dataset_cfg),
+                version=dataset_cfg.version,
+                local_path=path,
+                pre_transform=pre_transform,
+                pre_transform_workers=dataset_cfg.pre_transform_workers,
+                transform=task_transform,
+            )
+            for name, path in dataset_cfg.ood_paths.items()
+        }
     else:
         dataset_parameters = {
             "root": dataset_cfg.root,
@@ -214,14 +226,15 @@ def create_dataset(cfg):
     if cfg.task.task_type == "classification":
         labels = sorted(_target_values(train_dataset))
         label_to_index = {label: index for index, label in enumerate(labels)}
-        unseen = (
-            _target_values(val_dataset) | _target_values(test_dataset)
-        ) - set(labels)
+        held_out = [val_dataset, test_dataset]
+        if is_cy:
+            held_out += ood_datasets.values()
+        unseen = set().union(*map(_target_values, held_out)) - set(labels)
         if unseen:
             raise ValueError(
-                f"Classes {sorted(unseen)} occur in val/test but not in "
-                "train; change dataset.seed or raise "
-                "dataset.min_sample_per_class"
+                f"Classes {sorted(unseen)} occur in val/test or an OOD file "
+                "but not in train; change dataset.seed, raise "
+                "dataset.min_sample_per_class or run the task as regression"
             )
         remap_labels = RemapLabels(label_to_index)
 

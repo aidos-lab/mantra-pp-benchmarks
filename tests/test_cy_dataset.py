@@ -358,6 +358,32 @@ class TestCYTriangleLevel:
             assert batch.y.shape == (4 * batch.num_graphs, 1)
 
 
+class TestCYHeldOutFile:
+    def _held_out(self, tmp_path, rows):
+        folder = tmp_path / "held_out"
+        folder.mkdir()
+        return f"+dataset.ood_paths.v26={_write_parquet(folder, rows)}"
+
+    def test_ood_path_is_evaluated_whole(self, tmp_path):
+        ood_path = self._held_out(tmp_path, _rows(7))
+        cfg = _cfg(tmp_path, "task=hodge_reg", ONE_SKELETON, ood_path)
+        train, val, test, ood, _ = main.create_dataset(cfg)
+
+        assert len(train) + len(val) + len(test) == N_ROWS
+        assert list(ood) == ["ood_v26"]
+        assert sorted(float(data.y) for data in ood["ood_v26"]) == list(range(7))
+        loader = main.create_loaders(cfg, train, val, test, ood)[3]["ood_v26"]
+        assert sum(batch.num_graphs for batch in loader) == 7
+
+    def test_class_missing_from_train_raises(self, tmp_path):
+        rows = _rows(7)
+        for row in rows:
+            row["h11"] += 100
+        cfg = _cfg(tmp_path, "task=hodge_class", ONE_SKELETON, self._held_out(tmp_path, rows))
+        with pytest.raises(ValueError, match="OOD file"):
+            main.create_dataset(cfg)
+
+
 class TestCYTransformCache:
     def test_chain_is_cached_and_slimmed(self, tmp_path):
         """The representation chain runs once at process time; the cached
@@ -453,6 +479,22 @@ class TestCYPhases:
             # The median of two phases is their mean.
             expected = torch.stack([d.y.reshape(-1) for d in phases]).mean(0)
             assert pred[rows].tolist() == expected.tolist() * 2
+
+    def test_mode_oracle_predicts_a_label_of_one_of_the_phases(self, tmp_path):
+        import statistics
+
+        import baseline
+        from torch_geometric.data import Batch
+
+        _, _, test = self._phases(tmp_path, "kappa_triangle")
+        batch = Batch.from_data_list(list(test))
+        y = batch.y.reshape(-1)
+        mode = baseline.PhaseOracle(test, "triangle", centre=statistics.mode)(batch).reshape(-1)
+        median = baseline.PhaseOracle(test, "triangle")(batch).reshape(-1)
+        # Triangle (1,2,3) is 2p in one phase and 2p + 1 in the other: the
+        # mode is right in one of them, the median 2p + 0.5 in neither.
+        assert (mode == y).sum() == y.numel() - len(test) // 2
+        assert (median == y).sum() == y.numel() - len(test)
 
 
 try:

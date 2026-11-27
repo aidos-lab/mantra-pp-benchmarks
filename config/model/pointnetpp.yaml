@@ -3,6 +3,8 @@ _target_: src.models.point_cloud.pointnet.PointNetPP
 hidden_channels: 64
 out_channels: 1 # Get from task
 dropout: 0.0
+# Leading columns of `x` that are positions; null takes all of them.
+pos_channels: null
 
 # FPS sampling ratio and grouping radius per set-abstraction level; the
 # radii are sized for integer lattice coordinates.

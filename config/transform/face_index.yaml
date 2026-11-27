@@ -1,0 +1,4 @@
+_target_: src.transforms.FaceIndex
+
+# Vertices of the simplices of rank 1 to max_rank, as faces_index_<rank>.
+max_rank: 4

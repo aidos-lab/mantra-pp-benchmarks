@@ -1,0 +1,6 @@
+_target_: src.transforms.SimplexPoints
+
+# One point per simplex of rank at most max_rank: barycentre and a
+# one-hot of the rank.
+max_rank: 2
+source: coords
