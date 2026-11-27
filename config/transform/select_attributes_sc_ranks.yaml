@@ -1,0 +1,53 @@
+_target_: mantra.transforms.SelectAttributes
+
+# select_attributes_sc with the operators of every rank of the
+# 4-dimensional Calabi-Yau complexes, for CWN and SCCNN with
+# model.max_rank above 2. Absent keys are ignored.
+keep_keys:
+  - dimension
+  - x_0
+  - x_1
+  - x_2
+  - x_3
+  - x_4
+  - incidence_1
+  - incidence_2
+  - incidence_3
+  - incidence_4
+  - adjacency_0
+  - adjacency_1
+  - adjacency_2
+  - adjacency_3
+  - up_laplacian_0
+  - up_laplacian_1
+  - up_laplacian_2
+  - up_laplacian_3
+  - down_laplacian_1
+  - down_laplacian_2
+  - down_laplacian_3
+  - down_laplacian_4
+  - hodge_laplacian_0
+  - hodge_laplacian_1
+  - hodge_laplacian_2
+  - hodge_laplacian_3
+  - hodge_laplacian_4
+  - coords
+  - n_vertices
+  - h11
+  - h12
+  - c2
+  - c2_anticanonical
+  - kappa_2
+  - simplex_index_2
+  - kappa_candidate
+  - candidate_index_2
+  - candidate_present
+  - skc_log_tau
+  - skc_log_vol
+  - gv_log_tau
+  - gv_log_vol
+  - toric_cone_complete
+  - kclass_member
+  - kclass_margin
+  - polytope_id
+  - triangle_mask

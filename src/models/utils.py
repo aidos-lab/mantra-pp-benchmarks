@@ -18,6 +18,37 @@ def mlp(channels, dropout=0.0, layer_norm=True):
     return nn.Sequential(*layers)
 
 
+def resolve_max_rank(max_rank, in_channels):
+    """Top rank a simplicial model works on.
+
+    `in_channels` has one entry per rank of the data. None takes every
+    rank, so a model follows the dimension of its dataset; an int keeps
+    the ranks 0..max_rank and ignores the simplices above them.
+    """
+    available = len(in_channels) - 1
+    if max_rank is None:
+        max_rank = available
+    if not 2 <= max_rank <= available:
+        raise ValueError(
+            f"max_rank must be between 2 and the top rank of the data "
+            f"({available}), got {max_rank}"
+        )
+    return max_rank
+
+
+def per_rank(channels, num_ranks):
+    """`channels` as a list with one width per rank; an int is repeated."""
+    if isinstance(channels, int):
+        return [channels] * num_ranks
+    channels = list(channels)
+    if len(channels) != num_ranks:
+        raise ValueError(
+            f"hidden_channels has {len(channels)} entries for the ranks "
+            f"0..{num_ranks - 1}: pass one per rank or a single int"
+        )
+    return channels
+
+
 def pool(x, batch, reduce="mean"):
     """Readout of the rows of `x` into one row per graph of `batch`."""
     return scatter(x, batch, dim=-2, reduce=reduce)
