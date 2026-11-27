@@ -1,5 +1,9 @@
 #  No Triangulation Without Representation: Generalization in Topological Deep Learning
 
+[![NeurIPS 2026](https://img.shields.io/badge/NeurIPS-2026-4b44ce.svg)](https://arxiv.org/abs/2605.06467)
+[![arXiv](https://img.shields.io/badge/arXiv-2605.06467-b31b1b.svg)](https://arxiv.org/abs/2605.06467)
+[![Video](https://img.shields.io/badge/YouTube-Video-red?logo=youtube)](https://www.youtube.com/watch?v=rKYLh1ZZHYw)
+
 Code accompanying the paper *No Triangulation Without Representation:
 Generalization in Topological Deep Learning*.
 
