@@ -1,0 +1,16 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.MSELoss
+
+name: GVVolume
+task_type: regression
+
+# As skc_vol, at the tip of the cone bounded by the curve classes with
+# nonzero Gopakumar-Vafa invariants and the collapsing walls.
+target: gv_log_vol
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError

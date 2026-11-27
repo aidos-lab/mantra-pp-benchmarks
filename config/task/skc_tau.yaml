@@ -1,0 +1,18 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.MSELoss
+
+name: StretchedTau
+task_type: regression
+task_level: node
+
+# Log divisor volume per point at the tip of the stretched Kähler cone
+# of the phase (kahler_labels.py of the calabi-yau repository). Index 0 is
+# the origin and holds the anticanonical divisor.
+target: skc_log_tau
+
+metrics:
+  mae:
+    _target_: torchmetrics.MeanAbsoluteError

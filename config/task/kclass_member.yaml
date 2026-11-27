@@ -1,0 +1,21 @@
+defaults:
+  - base_task
+
+loss:
+  _target_: torch.nn.CrossEntropyLoss
+
+name: KahlerMember
+task_type: classification
+
+# Whether the Kähler class in the fifth coordinate (transform
+# `lift_coords`) lies in the Kähler cone of the phase. Every class is a
+# member for one phase and a non-member for another phase of the same
+# polytope, so a model that misses the phase or the class is at 50 %.
+target: kclass_member
+
+metrics:
+  accuracy:
+    _target_: torchmetrics.Accuracy
+  balanced_accuracy:
+    _target_: torchmetrics.Accuracy
+    average: macro

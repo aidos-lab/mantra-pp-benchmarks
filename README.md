@@ -477,6 +477,36 @@ triangular 2-faces, present in every phase, are left out. The readout
 sums the three vertex rows of each candidate (`task_level=candidate`),
 for the simplicial models too, since an absent triangle has no cell.
 
+The Kähler-cone tasks read the files of `kahler_labels.py` in the
+calabi-yau repository, which labels every phase of a phases parquet
+(`kahler_stats.py` there recomputes every label along a second path).
+The cone of a phase is the dual of CYTools' `mori_cone_cap`, which
+depends on the 2-face triangulations alone; on a non-favorable polytope
+(column `favorable` is 0) it is the slice of the Kähler cone that the
+toric divisors span. On the label file,
+`task=skc_tau` and `task=skc_vol` predict the log divisor volumes per
+point and the log Calabi-Yau volume at the tip of the stretched cone,
+`task=gv_tau` and `task=gv_vol` the same at the tip of the cone bounded
+by the curves with nonzero Gopakumar-Vafa invariants and the collapsing
+walls, and `task=toric_complete` whether the two cones agree. Finding
+the tip is a quadratic program over all walls, so these targets are not
+local. On the Kähler-class file, each row carries a class as one height
+per point; `transform@dataset.transform.lift=lift_coords` appends it to
+`coords` as a fifth coordinate before any other transform, so every
+chain sees the lifted points. `task=kclass_member` asks whether the
+class lies in the Kähler cone of the phase, that is whether the lower
+hull of the lifted points restricts to the 2-faces as the phase does,
+and `task=kclass_margin` regresses the least generator volume. Every
+class is a member for one phase of its polytope and a non-member for
+another, so a model that misses the phase or the class is at 50 %.
+The class file has no intersection numbers, so the `kappa` transform is
+deleted with `~transform@dataset.transform.kappa`. `baseline.py` logs
+the phase-blind oracle for the graph-level tasks as well.
+
+`representation=hasse_diagram` with `max_rank` (mantra `cy-hasse-ranks`)
+keeps the simplices up to that rank, vertex nodes first; one model on
+ranks 1 to 4 is the direct test of what each rank adds.
+
 ## Evaluating subdivisions in the training run
 
 The `ood` config group lists subdivisions of the test split that are
